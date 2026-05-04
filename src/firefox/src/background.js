@@ -66,9 +66,155 @@ browser.storage.onChanged.addListener((changes) => {
   if (refreshPrompts) agent._refreshSystemPrompts();
 });
 
-// Open sidebar when browser action is clicked
-browser.browserAction.onClicked.addListener(() => {
+// ────────────────────────────────────────────────────────────────────────
+// Tab grouping (visual scope for a WebBrain session)
+//
+// Same UX shape as the Chrome build (see src/chrome/src/background.js):
+// when the user clicks the browser action, the source tab joins (or
+// seeds) a colored "WebBrain" tab group for that window. Agent-spawned
+// tabs (new_tab tool, target=_blank redirects) auto-join the same group
+// via agent.js's `_addToWebBrainGroup`. The group label is what tells
+// the user at a glance "this is part of a WebBrain session".
+//
+// What we DON'T do on Firefox: scope the sidebar's visibility to group
+// membership. browser.sidebarAction is window-level, not per-tab —
+// there's no clean equivalent of Chrome's `setOptions({tabId, enabled})`.
+// The Firefox sidebar stays where the user puts it (closed/open via
+// toggle), which is fine because Firefox already has user-driven control.
+// ────────────────────────────────────────────────────────────────────────
+
+const webBrainGroupByWindow = new Map(); // windowId -> tabGroups groupId
+const WB_GROUPS_KEY = 'webBrainGroupByWindow';
+
+async function loadWebBrainGroups() {
+  if (!browser.tabGroups) return; // Firefox <142 — graceful skip
+  try {
+    const stored = await browser.storage.session?.get(WB_GROUPS_KEY);
+    const arr = stored?.[WB_GROUPS_KEY];
+    if (Array.isArray(arr)) {
+      for (const [windowId, groupId] of arr) {
+        // Validate each cached group still exists; user may have
+        // ungrouped or browser may have been closed between sessions.
+        try {
+          await browser.tabGroups.get(groupId);
+          webBrainGroupByWindow.set(windowId, groupId);
+        } catch { /* group gone, drop */ }
+      }
+    }
+  } catch { /* session storage unavailable on this profile */ }
+}
+function saveWebBrainGroups() {
+  browser.storage.session?.set({
+    [WB_GROUPS_KEY]: Array.from(webBrainGroupByWindow.entries()),
+  }).catch(() => {});
+}
+loadWebBrainGroups();
+
+/**
+ * Make sure `tab.windowId` has a "WebBrain" group AND that `tab` is in
+ * it. Always creates a fresh group rather than rebranding the user's
+ * existing group (Option 2 from the Chrome PR — strictly less invasive).
+ */
+async function ensureWebBrainGroup(tab) {
+  if (!browser.tabGroups || !tab?.id || tab.windowId == null) return -1;
+  try {
+    let groupId = webBrainGroupByWindow.get(tab.windowId);
+
+    // Validate cached group is still alive in the browser.
+    if (groupId != null) {
+      try {
+        await browser.tabGroups.get(groupId);
+      } catch {
+        groupId = null;
+        webBrainGroupByWindow.delete(tab.windowId);
+        saveWebBrainGroups();
+      }
+    }
+
+    if (groupId == null) {
+      // Create a fresh group with just this tab. Calling browser.tabs.group
+      // with no groupId moves the tab out of any prior user group into a
+      // new one — the user's old group keeps its other tabs intact.
+      groupId = await browser.tabs.group({ tabIds: [tab.id] });
+      try {
+        await browser.tabGroups.update(groupId, {
+          title: 'WebBrain', color: 'blue', collapsed: false,
+        });
+      } catch { /* style update can fail on locked groups; skip */ }
+      webBrainGroupByWindow.set(tab.windowId, groupId);
+      saveWebBrainGroups();
+    } else if (tab.groupId !== groupId) {
+      // Group exists but source tab not in it. Add it.
+      try {
+        await browser.tabs.group({ groupId, tabIds: [tab.id] });
+      } catch { /* tab might be moving; ignore */ }
+    }
+    return groupId;
+  } catch {
+    return -1;
+  }
+}
+
+// Forget the per-window mapping when the user manually ungroups.
+browser.tabGroups?.onRemoved?.addListener?.((group) => {
+  for (const [windowId, gid] of webBrainGroupByWindow) {
+    if (gid === group.id) {
+      webBrainGroupByWindow.delete(windowId);
+      saveWebBrainGroups();
+      break;
+    }
+  }
+});
+
+// Window closed — drop the mapping.
+browser.windows?.onRemoved?.addListener?.((windowId) => {
+  if (webBrainGroupByWindow.has(windowId)) {
+    webBrainGroupByWindow.delete(windowId);
+    saveWebBrainGroups();
+  }
+});
+
+// Action click: toggle sidebar (existing UX) AND ensure source tab is
+// in the WebBrain group so the colored label appears immediately.
+browser.browserAction.onClicked.addListener((tab) => {
   browser.sidebarAction.toggle();
+  // Async — sidebar toggle doesn't need to wait on grouping.
+  if (tab?.id) ensureWebBrainGroup(tab).catch(() => {});
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// Agent visual indicator (content-script bridge)
+//
+// While an agent run is in flight, ask the page's content script to
+// render a pulsing purple inset glow around the viewport plus a "Stop
+// WebBrain" floating button. The chat / chat_stream / continue handlers
+// wrap their await in a try/finally that calls sendIndicatorMessage.
+// agent.js fires HIDE_FOR_TOOL_USE / SHOW_AFTER_TOOL_USE around screenshot
+// capture so the agent doesn't see its own border in the pixels it sends
+// to the vision model.
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Tell a tab's content script to show/hide the agent indicator. Best-
+ * effort: silently no-ops on about:* / file:// pages without our
+ * content script and on tabs that haven't loaded yet.
+ */
+function sendIndicatorMessage(tabId, type) {
+  if (tabId == null || !type) return;
+  try {
+    browser.tabs.sendMessage(tabId, { type }).catch(() => { /* expected */ });
+  } catch { /* ignore */ }
+}
+
+// Stop button on the page → abort the agent run for that tab. Mirrors
+// the sidepanel's Stop button.
+browser.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type !== 'WB_STOP_AGENT') return; // not ours
+  const tabId = sender?.tab?.id;
+  if (tabId != null) {
+    try { agent.abort(tabId); } catch { /* ignore */ }
+  }
+  return Promise.resolve({ ok: true });
 });
 
 /**
@@ -93,18 +239,24 @@ async function handleMessage(msg, sender) {
 
       if (msg.apiMutationsAllowed) agent.setApiMutationsAllowed(tabId, true);
 
-      const updates = [];
-      const result = await agent.processMessage(tabId, msg.text, (type, data) => {
-        updates.push({ type, data });
-        browser.runtime.sendMessage({
-          target: 'sidepanel',
-          action: 'agent_update',
-          type,
-          data,
-        }).catch(() => {});
-      }, mode);
+      sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS');
 
-      return { content: result, updates };
+      const updates = [];
+      try {
+        const result = await agent.processMessage(tabId, msg.text, (type, data) => {
+          updates.push({ type, data });
+          browser.runtime.sendMessage({
+            target: 'sidepanel',
+            action: 'agent_update',
+            type,
+            data,
+          }).catch(() => {});
+        }, mode);
+
+        return { content: result, updates };
+      } finally {
+        sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
+      }
     }
 
     case 'chat_stream': {
@@ -114,16 +266,21 @@ async function handleMessage(msg, sender) {
 
       if (msg.apiMutationsAllowed) agent.setApiMutationsAllowed(tabId, true);
 
-      const result = await agent.processMessageStream(tabId, msg.text, (type, data) => {
-        browser.runtime.sendMessage({
-          target: 'sidepanel',
-          action: 'agent_update',
-          type,
-          data,
-        }).catch(() => {});
-      }, mode);
+      sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS');
+      try {
+        const result = await agent.processMessageStream(tabId, msg.text, (type, data) => {
+          browser.runtime.sendMessage({
+            target: 'sidepanel',
+            action: 'agent_update',
+            type,
+            data,
+          }).catch(() => {});
+        }, mode);
 
-      return { content: result };
+        return { content: result };
+      } finally {
+        sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
+      }
     }
 
     case 'continue': {
@@ -131,16 +288,21 @@ async function handleMessage(msg, sender) {
       if (!tabId) throw new Error('No tab ID');
       const mode = msg.mode || 'ask';
 
-      const result = await agent.continueProcessing(tabId, (type, data) => {
-        browser.runtime.sendMessage({
-          target: 'sidepanel',
-          action: 'agent_update',
-          type,
-          data,
-        }).catch(() => {});
-      }, mode);
+      sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS');
+      try {
+        const result = await agent.continueProcessing(tabId, (type, data) => {
+          browser.runtime.sendMessage({
+            target: 'sidepanel',
+            action: 'agent_update',
+            type,
+            data,
+          }).catch(() => {});
+        }, mode);
 
-      return { content: result };
+        return { content: result };
+      } finally {
+        sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
+      }
     }
 
     case 'clear_conversation': {

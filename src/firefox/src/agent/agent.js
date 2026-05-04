@@ -657,6 +657,82 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   /**
+   * Add the new tab to the per-window "WebBrain" tab group so the agent's
+   * spawned tabs share visual scope with the user's session. Mirrors
+   * src/chrome/src/agent/agent.js — same Option-2 semantics: query for
+   * an existing WebBrain group by title (rather than inheriting from
+   * sourceTab.groupId), so we never drag agent outputs into the user's
+   * own "Dev"/"Research" groups.
+   *
+   * If the user hasn't opened the sidebar yet (so no WebBrain group
+   * exists for this window), create one containing only the new tab.
+   * Background.js's browserAction.onClicked handler is the canonical
+   * place that opts the source tab in.
+   *
+   * Returns the group id, or -1 on Firefox <142 (no tabGroups API)
+   * or any failure.
+   */
+  async _addToWebBrainGroup(sourceTab, tabId) {
+    if (!browser.tabGroups || !sourceTab?.id || tabId == null) return -1;
+    try {
+      let existing = null;
+      try {
+        const groups = await browser.tabGroups.query({
+          title: 'WebBrain',
+          windowId: sourceTab.windowId,
+        });
+        if (Array.isArray(groups) && groups.length > 0) existing = groups[0];
+      } catch { /* tabGroups.query unsupported on this Firefox build */ }
+
+      if (existing) {
+        await browser.tabs.group({ groupId: existing.id, tabIds: [tabId] });
+        return existing.id;
+      }
+
+      const gid = await browser.tabs.group({ tabIds: [tabId] });
+      try {
+        await browser.tabGroups.update(gid, {
+          title: 'WebBrain', color: 'blue', collapsed: false,
+        });
+      } catch { /* style update can fail; group still exists */ }
+      return gid;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /**
+   * Wrap a screenshot capture in messages that ask the agent-visual-
+   * indicator content script to hide its pulsing border + Stop button
+   * for the duration of the capture. Without this, the agent's own
+   * indicator gets baked into every screenshot it sends to the vision
+   * model — both ugly and a small token-budget tax.
+   *
+   * Best-effort: if the content script isn't loaded (about:* / file://
+   * pages, or pre-existing tabs that loaded before the extension), the
+   * sendMessage rejects and we capture as-is.
+   */
+  async _withIndicatorsHidden(tabId, fn) {
+    let needsRestore = false;
+    try {
+      await browser.tabs.sendMessage(tabId, { type: 'WB_HIDE_FOR_TOOL_USE' });
+      needsRestore = true;
+      // Give the renderer one paint frame to apply the display:none the
+      // content script just set, before we capture.
+      await new Promise((r) => setTimeout(r, 16));
+    } catch { /* content script absent — capture without hiding */ }
+    try {
+      return await fn();
+    } finally {
+      if (needsRestore) {
+        try {
+          browser.tabs.sendMessage(tabId, { type: 'WB_SHOW_AFTER_TOOL_USE' }).catch(() => {});
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
+  /**
    * Capture a viewport screenshot via the WebExtension tabs API. Firefox
    * supports `scale: 1` on captureVisibleTab to force a CSS-pixel-aligned
    * image (otherwise it captures at devicePixelRatio, causing the same
@@ -688,11 +764,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       } catch (e) { /* fall back to defaults */ }
       // scale: 1 forces 1 image pixel per CSS pixel (Firefox-specific option,
       // ignored by Chrome but Chrome path uses CDP anyway).
-      const rawDataUrl = await browser.tabs.captureVisibleTab(tab.windowId, {
-        format: 'jpeg',
-        quality: 60,
-        scale: 1,
-      });
+      const rawDataUrl = await this._withIndicatorsHidden(tabId, () =>
+        browser.tabs.captureVisibleTab(tab.windowId, {
+          format: 'jpeg',
+          quality: 60,
+          scale: 1,
+        })
+      );
       if (!rawDataUrl) return null;
 
       // Firefox's captureVisibleTab doesn't take a clip/scale in a way that
@@ -1240,7 +1318,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         createProps.openerTabId = sourceTab.id;
       }
       const tab = await browser.tabs.create(createProps);
-      return { success: true, tabId: tab.id, url: args.url };
+      // Drop the new tab into the per-window WebBrain group so research
+      // chains stay visually together. Best-effort — graceful skip on
+      // Firefox <142 (no tabGroups API) via the helper's internal guard.
+      const groupId = await this._addToWebBrainGroup(sourceTab, tab.id);
+      return {
+        success: true,
+        tabId: tab.id,
+        url: args.url,
+        groupId: groupId >= 0 ? groupId : null,
+      };
     }
 
     if (name === 'screenshot') {
@@ -1256,10 +1343,12 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             error: 'Cannot capture screenshot: this tab is not the active tab in its window. Switch to the tab to take a screenshot, or use a different tool.',
           };
         }
-        const rawUrl = await browser.tabs.captureVisibleTab(tab.windowId, {
-          format: 'png',
-          quality: 80,
-        });
+        const rawUrl = await this._withIndicatorsHidden(tabId, () =>
+          browser.tabs.captureVisibleTab(tab.windowId, {
+            format: 'png',
+            quality: 80,
+          })
+        );
         // Shrink to the vision budget before handing the image to the
         // model. Same two-stage dance as Chrome: decode → pick target dims
         // → draw at target → iterative JPEG quality until bytes fit.
@@ -1351,7 +1440,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             `;
             const results = await browser.tabs.executeScript(tabId, { code: probeCode });
             const pageState = (results && results[0]) || {};
-            const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'png', quality: 80 });
+            const dataUrl = await this._withIndicatorsHidden(tabId, () =>
+              browser.tabs.captureVisibleTab(tab.windowId, { format: 'png', quality: 80 })
+            );
 
             // Synthesize a warning when summary claims completion but page
             // state contradicts it.
@@ -1477,7 +1568,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         try {
           const tab = await browser.tabs.get(tabId);
           if (tab?.active) {
-            result.image = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'png', quality: 80 });
+            result.image = await this._withIndicatorsHidden(tabId, () =>
+              browser.tabs.captureVisibleTab(tab.windowId, { format: 'png', quality: 80 })
+            );
           } else {
             result.screenshotFailed = true;
           }
