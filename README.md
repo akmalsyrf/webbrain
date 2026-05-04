@@ -160,6 +160,11 @@ The default UI-first rule exists because API actions are invisible (you don't se
 
 ## What's New
 
+### 6.0.1
+
+- **Firefox parity for the on-page agent indicator and tab grouping.** The pulsing purple border + "Stop WebBrain" floating button now appear on Firefox while the agent is running, identical to the Chrome experience. The browser action click also drops the source tab into a colored "WebBrain" tab group on Firefox 142+ (the version that introduced the `browser.tabGroups` API), and the agent's `new_tab` tool joins spawned tabs to the same group. Older Firefox versions silently skip the grouping step.
+- **What's NOT ported to Firefox:** sidebar-visibility scoping. Firefox's `browser.sidebarAction` is a window-level toggle with no per-tab `enabled` flag, so the Chrome behaviour where the panel hides on non-WebBrain tabs has no clean equivalent. Firefox sidebar continues to follow user toggle.
+
 ### 6.0.0
 
 - **On-page agent indicator (Chrome).** While the agent is acting on a tab, the page now shows a soft purple inset glow around the viewport plus a "Stop WebBrain" floating button at the bottom — same UX pattern as Claude-for-Chrome. Clicking Stop aborts the run without you having to switch back to the side panel. The indicator hides itself during screenshot capture so it doesn't end up in the images sent to the vision model.
