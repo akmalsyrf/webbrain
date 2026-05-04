@@ -158,7 +158,21 @@ The default UI-first rule exists because API actions are invisible (you don't se
 - **SPA navigation detection in Firefox.** Some single-page applications may not trigger content-script re-injection after client-side navigation.
 - **Firefox temporary add-on** — Firefox requires the extension to be loaded as a temporary add-on during development, which is removed on restart.
 
-## What's New in 4.2.0 (from 1.x)
+## What's New
+
+### 5.x
+
+- **Group-scoped side panel visibility (Chrome).** Clicking the WebBrain action now puts the source tab into a "WebBrain" tab group; the side panel is shown only for tabs in that group. Switch to any tab outside the group → panel hides. Drag the tab out of the group → panel hides. Mirrors how Claude-for-Chrome handles sidebar scope and replaces the older per-tab opt-in Set, which left the panel "sticky" across tab switches.
+  - Adds `tabs` and `tabGroups` permissions (Chrome will surface a permissions notice on auto-update).
+  - Tabs the agent opens via `new_tab` or `target=_blank` redirects automatically join the same group.
+- **Token-conscious screenshots.** All viewport and full-page screenshots are now resized to fit a vision-token budget (≤1568 tokens, ≤1.4 MB base64) before being sent to a vision model — uses CDP-side `clip.scale` for capture-time downscaling, with iterative JPEG-quality fallback (0.75 → 0.10) for the byte ceiling. Pathological full-page captures drop from ~19.6k tokens to ~750.
+- **Multilingual UI** in 5 languages (English, Spanish, French, Turkish, Chinese).
+- **Vision-model split-provider mode.** Pair a fast text-only planner with a separate vision-capable model; screenshots get a structured 6-section caption from the vision model and only the text reaches the planner.
+- **Profile auto-fill** for low-stakes signup forms — opt-in plaintext bio (name, work email, throwaway password) injected into the agent's system prompt.
+- **Cookie banner & paywall guidance** built into the universal preamble — agent dismisses OneTrust/Cookiebot/Didomi/Quantcast/Funding-Choices banners automatically and refuses to bypass paywalls.
+- **Site adapters** for ~25 high-traffic sites (GitHub, Stripe, Gmail, AWS console, NYT/WSJ/FT/Bloomberg/Economist paywalls, etc.).
+
+### 4.2.0 (from 1.x)
 
 - **Safety-first API behavior** via `/allow-api` per-conversation override (UI-first for mutations by default)
 - **Cross-origin iframe interaction tools** (`iframe_read`, `iframe_click`, `iframe_type`) for embedded forms and widgets
