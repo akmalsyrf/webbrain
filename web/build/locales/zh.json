@@ -48,7 +48,7 @@
   "features.agent.title": "完整浏览器代理",
   "features.agent.desc": "代你点击、输入、滚动、导航,并与页面交互。用自然语言指令自动化重复性任务。",
   "features.extraction.title": "数据提取",
-  "features.extraction.desc": "从任何页面提取结构化数据 —— 表格、列表、链接、表单。导出产品目录、搜索结果或任何页面内容。",
+  "features.extraction.desc": "从任何页面提取结构化数据 —— 表格、列表、链接、表单。导出产品目录、搜索结果或任何页面内容。支持 PDF。",
   "features.multi_provider.title": "多提供商 LLM",
   "features.multi_provider.desc": "兼容本地 llama.cpp、OpenAI、Claude 和 OpenRouter。使用你偏好的模型 —— 或用本地 AI 完全离线运行。",
   "features.privacy.title": "隐私优先",

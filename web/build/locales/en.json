@@ -48,7 +48,7 @@
   "features.agent.title": "Full Browser Agent",
   "features.agent.desc": "Click, type, scroll, navigate, and interact with pages on your behalf. Automate repetitive tasks with natural language instructions.",
   "features.extraction.title": "Data Extraction",
-  "features.extraction.desc": "Extract structured data from any page — tables, lists, links, forms. Export product catalogs, search results, or any page content.",
+  "features.extraction.desc": "Extract structured data from any page — tables, lists, links, forms. Export product catalogs, search results, or any page content. Works with PDFs.",
   "features.multi_provider.title": "Multi-Provider LLM",
   "features.multi_provider.desc": "Works with local llama.cpp, OpenAI, Claude, and OpenRouter. Use your preferred model — or run completely offline with local AI.",
   "features.privacy.title": "Privacy First",

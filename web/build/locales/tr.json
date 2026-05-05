@@ -48,7 +48,7 @@
   "features.agent.title": "Tam tarayıcı ajanı",
   "features.agent.desc": "Senin yerine tıklar, yazar, kaydırır, gezinir ve sayfalarla etkileşir. Doğal dil talimatlarıyla tekrar eden işleri otomatikleştir.",
   "features.extraction.title": "Veri çıkarma",
-  "features.extraction.desc": "Her sayfadan yapılandırılmış veri çıkar — tablolar, listeler, bağlantılar, formlar. Ürün kataloglarını, arama sonuçlarını ya da herhangi bir sayfa içeriğini dışa aktar.",
+  "features.extraction.desc": "Her sayfadan yapılandırılmış veri çıkar — tablolar, listeler, bağlantılar, formlar. Ürün kataloglarını, arama sonuçlarını ya da herhangi bir sayfa içeriğini dışa aktar. PDF'lerle çalışır.",
   "features.multi_provider.title": "Çoklu LLM sağlayıcı",
   "features.multi_provider.desc": "Yerel llama.cpp, OpenAI, Claude ve OpenRouter ile çalışır. Tercih ettiğin modeli kullan — ya da yerel AI ile tamamen çevrimdışı çalış.",
   "features.privacy.title": "Önce gizlilik",

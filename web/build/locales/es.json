@@ -48,7 +48,7 @@
   "features.agent.title": "Agente completo de navegador",
   "features.agent.desc": "Hace clic, escribe, desplaza, navega e interactúa con las páginas por ti. Automatiza tareas repetitivas con instrucciones en lenguaje natural.",
   "features.extraction.title": "Extracción de datos",
-  "features.extraction.desc": "Extrae datos estructurados de cualquier página — tablas, listas, enlaces, formularios. Exporta catálogos de productos, resultados de búsqueda o cualquier contenido.",
+  "features.extraction.desc": "Extrae datos estructurados de cualquier página — tablas, listas, enlaces, formularios. Exporta catálogos de productos, resultados de búsqueda o cualquier contenido. Compatible con PDF.",
   "features.multi_provider.title": "Multi-proveedor de LLM",
   "features.multi_provider.desc": "Funciona con llama.cpp local, OpenAI, Claude y OpenRouter. Usa el modelo que prefieras — o trabaja totalmente sin conexión con IA local.",
   "features.privacy.title": "Privacidad primero",
