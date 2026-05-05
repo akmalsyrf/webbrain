@@ -315,6 +315,14 @@ export class AnthropicOAuthProvider extends AnthropicProvider {
       'Authorization': `Bearer ${this._accessToken || ''}`,
       'anthropic-version': '2023-06-01',
       'anthropic-beta': 'oauth-2025-04-20',
+      // CORS opt-in. The browser would normally block direct calls to
+      // api.anthropic.com from an extension origin (failing the
+      // preflight); Anthropic exposes this header as the documented
+      // escape hatch. Same posture the API-key path uses — it's
+      // independent of the auth method, so the OAuth call needs it
+      // too. Dropping this surfaces as a CORS / preflight rejection
+      // even when the OAuth token itself is fine.
+      'anthropic-dangerous-direct-browser-access': 'true',
     };
   }
 

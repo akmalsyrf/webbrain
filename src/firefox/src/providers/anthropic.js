@@ -294,6 +294,11 @@ export class AnthropicOAuthProvider extends AnthropicProvider {
       'Authorization': `Bearer ${this._accessToken || ''}`,
       'anthropic-version': '2023-06-01',
       'anthropic-beta': 'oauth-2025-04-20',
+      // CORS opt-in for browser-origin calls to api.anthropic.com —
+      // independent of the auth method, so OAuth needs it too. Without
+      // it the browser blocks the preflight even when the token is
+      // fine. Same posture as the API-key Anthropic path.
+      'anthropic-dangerous-direct-browser-access': 'true',
     };
   }
 

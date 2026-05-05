@@ -13,10 +13,20 @@ export class ProviderManager {
 
   /**
    * Load saved configuration from browser.storage.
+   *
+   * Merge semantics: defaults provide the SHAPE (which provider keys
+   * exist), stored configs override per-key values where the user has
+   * customized them. Without the merge, upgrades that introduce a
+   * new provider entry (e.g. `claude_subscription` in v6.1) would
+   * never appear for users with a saved `providers` object — they'd
+   * have to clear extension storage to see the new entry. There's no
+   * "delete provider" operation, so spreading defaults can't
+   * resurrect a user-removed entry.
    */
   async load() {
     const data = await browser.storage.local.get(['providers', 'activeProvider']);
-    const configs = data.providers || this._defaultConfigs();
+    const stored = data.providers || {};
+    const configs = { ...this._defaultConfigs(), ...stored };
     this.activeProviderId = data.activeProvider || 'llamacpp';
 
     this.providers.clear();
