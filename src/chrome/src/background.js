@@ -1,5 +1,17 @@
 import { ProviderManager } from './providers/manager.js';
 import { Agent } from './agent/agent.js';
+import {
+  startClaudeOAuth,
+  refreshClaudeAccessToken,
+  signOutClaude,
+  getClaudeOAuthStatus,
+} from './providers/oauth-claude.js';
+import {
+  startOpenAIOAuth,
+  signOutOpenAI,
+  getOpenAIOAuthStatus,
+  getOpenAIAccessToken,
+} from './providers/oauth-openai.js';
 
 /**
  * WebBrain Service Worker (Background Script)
@@ -543,6 +555,61 @@ async function handleMessage(msg, sender) {
 
     case 'list_ollama_models': {
       return await providerManager.listOllamaModels(msg.providerId);
+    }
+
+    // ── Claude Pro/Max OAuth ─────────────────────────────────────────
+    // The actual flow runs in the background script (not the settings
+    // page) so the chrome.tabs.onUpdated listener doesn't disappear if
+    // the user switches away from settings mid-flow. The settings page
+    // just dispatches start/signout/status and re-renders on the result.
+    //
+    // No proactive refresh-alarm: AnthropicOAuthProvider does lazy
+    // refresh on every chat call (token expiry check + a 401-retry
+    // safety net). Skipping the alarm avoids adding the `alarms`
+    // permission and the re-permission prompt that would trigger.
+    case 'claude_oauth_start': {
+      try {
+        await startClaudeOAuth();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'claude_oauth_signout': {
+      await signOutClaude();
+      return { ok: true };
+    }
+    case 'claude_oauth_status': {
+      return await getClaudeOAuthStatus();
+    }
+    case 'claude_oauth_test': {
+      // "Test connection" button. Round-trip a 1-token chat through
+      // the active provider config (not through providerManager.testProvider
+      // because the OAuth provider may not be the active provider yet).
+      try {
+        await refreshClaudeAccessToken();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'openai_oauth_start': {
+      try {
+        await startOpenAIOAuth();
+        const token = await getOpenAIAccessToken();
+        await providerManager.updateProvider('openai_subscription', { apiKey: token || '' });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'openai_oauth_signout': {
+      await signOutOpenAI();
+      await providerManager.updateProvider('openai_subscription', { apiKey: '' });
+      return { ok: true };
+    }
+    case 'openai_oauth_status': {
+      return await getOpenAIOAuthStatus();
     }
 
     // --- Page Info (quick, no agent loop) ---

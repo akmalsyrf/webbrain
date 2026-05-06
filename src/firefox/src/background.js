@@ -1,5 +1,11 @@
 import { ProviderManager } from './providers/manager.js';
 import { Agent } from './agent/agent.js';
+import {
+  startClaudeOAuth,
+  refreshClaudeAccessToken,
+  signOutClaude,
+  getClaudeOAuthStatus,
+} from './providers/oauth-claude.js';
 
 /**
  * WebBrain Background Script (Firefox)
@@ -350,6 +356,37 @@ async function handleMessage(msg, sender) {
 
     case 'list_ollama_models': {
       return await providerManager.listOllamaModels(msg.providerId);
+    }
+
+    // ── Claude Pro/Max OAuth ─────────────────────────────────────────
+    // OAuth flow runs in the background script so the
+    // browser.tabs.onUpdated listener stays alive even if the user
+    // navigates away from settings mid-flow. Lazy-refresh on every
+    // chat call (in AnthropicOAuthProvider) makes a proactive alarm
+    // unnecessary, which keeps us off the `alarms` permission and
+    // avoids a re-permission prompt at update.
+    case 'claude_oauth_start': {
+      try {
+        await startClaudeOAuth();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'claude_oauth_signout': {
+      await signOutClaude();
+      return { ok: true };
+    }
+    case 'claude_oauth_status': {
+      return await getClaudeOAuthStatus();
+    }
+    case 'claude_oauth_test': {
+      try {
+        await refreshClaudeAccessToken();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
     }
 
     case 'get_page_info': {

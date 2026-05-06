@@ -1,4 +1,9 @@
 import { BaseLLMProvider } from './base.js';
+import {
+  getClaudeAccessToken,
+  refreshClaudeAccessToken,
+  CLAUDE_CODE_SYSTEM_PREAMBLE,
+} from './oauth-claude.js';
 
 /**
  * Provider for Anthropic Claude API (native, not OpenAI-compatible).
@@ -259,5 +264,87 @@ export class AnthropicProvider extends BaseLLMProvider {
       }
     }
     yield { type: 'done', content: '' };
+  }
+}
+
+/**
+ * AnthropicOAuthProvider — Anthropic Messages API authenticated with a
+ * Claude.ai Pro/Max OAuth token instead of an API key.
+ *
+ * See `src/chrome/src/providers/anthropic.js`'s AnthropicOAuthProvider
+ * for full design notes — this is the Firefox mirror with browser.* APIs.
+ *
+ * The mandatory Claude Code system-prompt prefix and the Bearer +
+ * `anthropic-beta: oauth-2025-04-20` header swap are critical: Anthropic's
+ * OAuth gate rejects requests missing either, so do NOT strip them.
+ */
+export class AnthropicOAuthProvider extends AnthropicProvider {
+  constructor(config) {
+    super(config);
+    this._accessToken = null;
+  }
+
+  get name() {
+    return 'anthropic-oauth';
+  }
+
+  get baseUrl() {
+    return 'https://api.anthropic.com';
+  }
+
+  _headers() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this._accessToken || ''}`,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'oauth-2025-04-20',
+      // CORS opt-in for browser-origin calls to api.anthropic.com —
+      // independent of the auth method, so OAuth needs it too. Without
+      // it the browser blocks the preflight even when the token is
+      // fine. Same posture as the API-key Anthropic path.
+      'anthropic-dangerous-direct-browser-access': 'true',
+    };
+  }
+
+  _convertMessages(messages) {
+    const out = super._convertMessages(messages);
+    const prefixed = out.system
+      ? `${CLAUDE_CODE_SYSTEM_PREAMBLE}\n\n${out.system}`
+      : CLAUDE_CODE_SYSTEM_PREAMBLE;
+    return { system: prefixed, messages: out.messages };
+  }
+
+  async _ensureFreshToken() {
+    this._accessToken = await getClaudeAccessToken();
+  }
+
+  async chat(messages, options = {}) {
+    await this._ensureFreshToken();
+    try {
+      return await super.chat(messages, options);
+    } catch (e) {
+      if (/Anthropic error 401/.test(e.message)) {
+        await refreshClaudeAccessToken();
+        await this._ensureFreshToken();
+        return await super.chat(messages, options);
+      }
+      throw e;
+    }
+  }
+
+  async *chatStream(messages, options = {}) {
+    await this._ensureFreshToken();
+    try {
+      yield* super.chatStream(messages, options);
+      return;
+    } catch (e) {
+      if (/Anthropic stream error 401/.test(e.message)) {
+        await refreshClaudeAccessToken();
+        await this._ensureFreshToken();
+        yield* super.chatStream(messages, options);
+        return;
+      }
+      throw e;
+    }
   }
 }

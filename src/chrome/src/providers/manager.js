@@ -1,6 +1,6 @@
 import { LlamaCppProvider } from './llamacpp.js';
 import { OpenAICompatibleProvider } from './openai.js';
-import { AnthropicProvider } from './anthropic.js';
+import { AnthropicProvider, AnthropicOAuthProvider } from './anthropic.js';
 
 /**
  * Manages LLM provider instances and persists configuration.
@@ -13,10 +13,22 @@ export class ProviderManager {
 
   /**
    * Load saved configuration from chrome.storage.
+   *
+   * Merge semantics: defaults provide the SHAPE (which provider keys
+   * exist), stored configs override per-key values where the user has
+   * customized them. We MUST merge rather than treating stored as
+   * authoritative — otherwise upgrades that introduce a new provider
+   * entry (e.g. `claude_subscription` in v6.1) would never appear for
+   * users who already have a `providers` object in storage. They'd
+   * have to manually clear extension storage to see the new entry.
+   *
+   * Note we don't have a "delete provider" operation in the manager,
+   * so spreading defaults can't resurrect a user-removed entry.
    */
   async load() {
     const data = await chrome.storage.local.get(['providers', 'activeProvider']);
-    const configs = data.providers || this._defaultConfigs();
+    const stored = data.providers || {};
+    const configs = { ...this._defaultConfigs(), ...stored };
     this.activeProviderId = data.activeProvider || 'llamacpp';
 
     this.providers.clear();
@@ -95,6 +107,27 @@ export class ProviderManager {
         apiKey: '',
         enabled: false,
       },
+      // Subscription auth (OAuth) entry, kept distinct from the API-key
+      // entry above so a user can have both configured and switch
+      // between them. Tokens live in `chrome.storage.local` under
+      // `anthropicOauthTokens` (see oauth-claude.js), not in this
+      // config. Settings UI shows a "Sign in with Claude" button for
+      // this provider instead of the API-key field.
+      claude_subscription: {
+        type: 'anthropic_oauth',
+        label: 'Claude (Pro/Max subscription)',
+        model: 'claude-sonnet-4-6',
+        enabled: false,
+      },
+      openai_subscription: {
+        type: 'openai',
+        label: 'OpenAI (ChatGPT subscription)',
+        providerName: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5',
+        apiKey: '',
+        enabled: false,
+      },
       webbrain: {
         type: 'openai',
         label: 'WebBrain Cloud',
@@ -115,6 +148,8 @@ export class ProviderManager {
         return new OpenAICompatibleProvider(config);
       case 'anthropic':
         return new AnthropicProvider(config);
+      case 'anthropic_oauth':
+        return new AnthropicOAuthProvider(config);
       default:
         throw new Error(`Unknown provider type: ${config.type}`);
     }

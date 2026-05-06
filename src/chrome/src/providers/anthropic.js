@@ -1,5 +1,10 @@
 import { BaseLLMProvider } from './base.js';
 import { fetchWithFallback } from './fetch-with-fallback.js';
+import {
+  getClaudeAccessToken,
+  refreshClaudeAccessToken,
+  CLAUDE_CODE_SYSTEM_PREAMBLE,
+} from './oauth-claude.js';
 
 /**
  * Provider for Anthropic Claude API (native, not OpenAI-compatible).
@@ -262,5 +267,114 @@ export class AnthropicProvider extends BaseLLMProvider {
       }
     }
     yield { type: 'done', content: '' };
+  }
+}
+
+/**
+ * AnthropicOAuthProvider — same Anthropic Messages API, but authenticates
+ * with a Claude.ai Pro/Max OAuth token instead of an API key.
+ *
+ * Differs from AnthropicProvider in three places:
+ *   1. Auth: `Authorization: Bearer <oauth-token>` + `anthropic-beta:
+ *      oauth-2025-04-20`, no `x-api-key`. Token is refreshed lazily
+ *      on every chat call (and eagerly on 401 → refresh → retry once).
+ *   2. System prompt: prefixed with the mandatory Claude Code preamble.
+ *      Anthropic's OAuth gate flags requests that omit it. Do NOT
+ *      strip the prefix.
+ *   3. Connection test: posts a 1-token "ok" prompt — same as base —
+ *      but a 401 here is the "user needs to sign in again" signal,
+ *      which the settings UI surfaces with its own error string.
+ *
+ * Implementation note on retry-after-refresh: we cache the access
+ * token on the instance (`this._accessToken`) before each request so
+ * the inherited sync `_headers()` can read it without going async.
+ * `super.chat` / `super.chatStream` use that token via _headers() and
+ * the inherited body-construction logic.
+ */
+export class AnthropicOAuthProvider extends AnthropicProvider {
+  constructor(config) {
+    super(config);
+    this._accessToken = null;
+  }
+
+  get name() {
+    return 'anthropic-oauth';
+  }
+
+  // OAuth tokens go through `api.anthropic.com` regardless of what the
+  // user puts in baseUrl — Anthropic only honors the OAuth bearer at
+  // their canonical host. We could allow a custom baseUrl for proxies
+  // but that's a power-user feature and out of scope for now.
+  get baseUrl() {
+    return 'https://api.anthropic.com';
+  }
+
+  _headers() {
+    // _accessToken is populated by _ensureFreshToken() before any
+    // chat/stream call. If it's missing, we fail loudly via the
+    // server's 401, which getClaudeAccessToken() will surface as
+    // "Not signed in" via the message.
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this._accessToken || ''}`,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'oauth-2025-04-20',
+      // CORS opt-in. The browser would normally block direct calls to
+      // api.anthropic.com from an extension origin (failing the
+      // preflight); Anthropic exposes this header as the documented
+      // escape hatch. Same posture the API-key path uses — it's
+      // independent of the auth method, so the OAuth call needs it
+      // too. Dropping this surfaces as a CORS / preflight rejection
+      // even when the OAuth token itself is fine.
+      'anthropic-dangerous-direct-browser-access': 'true',
+    };
+  }
+
+  _convertMessages(messages) {
+    const out = super._convertMessages(messages);
+    // Mandatory Claude Code preamble. Stripping this triggers OAuth-gate
+    // rejection — see oauth-claude.js for the rationale.
+    const prefixed = out.system
+      ? `${CLAUDE_CODE_SYSTEM_PREAMBLE}\n\n${out.system}`
+      : CLAUDE_CODE_SYSTEM_PREAMBLE;
+    return { system: prefixed, messages: out.messages };
+  }
+
+  async _ensureFreshToken() {
+    // getClaudeAccessToken refreshes lazily if expiry has passed.
+    this._accessToken = await getClaudeAccessToken();
+  }
+
+  async chat(messages, options = {}) {
+    await this._ensureFreshToken();
+    try {
+      return await super.chat(messages, options);
+    } catch (e) {
+      // Token may have been revoked / hard-expired between our cache
+      // check and the request landing. One retry-after-refresh is
+      // safe; further failures bubble out as auth errors.
+      if (/Anthropic error 401/.test(e.message)) {
+        await refreshClaudeAccessToken();
+        await this._ensureFreshToken();
+        return await super.chat(messages, options);
+      }
+      throw e;
+    }
+  }
+
+  async *chatStream(messages, options = {}) {
+    await this._ensureFreshToken();
+    try {
+      yield* super.chatStream(messages, options);
+      return;
+    } catch (e) {
+      if (/Anthropic stream error 401/.test(e.message)) {
+        await refreshClaudeAccessToken();
+        await this._ensureFreshToken();
+        yield* super.chatStream(messages, options);
+        return;
+      }
+      throw e;
+    }
   }
 }

@@ -358,6 +358,14 @@ function renderProviders() {
         { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.anthropic.com' },
       ],
     },
+    // OAuth-based Claude subscription provider. Card body rendered by
+    // renderClaudeOAuthCard() — sign-in button + auth status + disclaimer.
+    claude_subscription: {
+      customRender: 'claude_oauth',
+      fields: [
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'claude-sonnet-4-20250514' },
+      ],
+    },
     webbrain: {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://auth.webbrain.one/v1' },
@@ -369,6 +377,12 @@ function renderProviders() {
   for (const [id, config] of Object.entries(providersData)) {
     const isActive = id === activeProviderId;
     const fieldDefs = providerConfigs[id]?.fields || [];
+
+    // Custom render for the OAuth Claude provider (sign-in button etc.).
+    if (providerConfigs[id]?.customRender === 'claude_oauth') {
+      providersContainer.appendChild(renderClaudeOAuthCard(id, config, isActive, fieldDefs));
+      continue;
+    }
 
     const card = document.createElement('div');
     card.className = `provider-card ${isActive ? 'active' : ''}`;
@@ -449,6 +463,118 @@ function renderProviders() {
   document.querySelectorAll('.btn-load-models').forEach(btn => {
     btn.addEventListener('click', () => loadOllamaModels(btn.dataset.provider));
   });
+}
+
+/**
+ * Render the Claude (Pro/Max subscription) provider card. Differs from
+ * the normal cards in that auth is via OAuth (Sign in with Claude button)
+ * — see Chrome equivalent for full notes.
+ */
+function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
+  const card = document.createElement('div');
+  card.className = `provider-card ${isActive ? 'active' : ''}`;
+
+  let fieldsHTML = '';
+  for (const field of fieldDefs) {
+    const label = field.labelKey ? t(field.labelKey) : (field.label || field.key);
+    const placeholder = field.placeholder || '';
+    fieldsHTML += `
+      <div class="field">
+        <label>${escapeHtml(label)}</label>
+        <input type="${field.type}" data-provider="${id}" data-key="${field.key}"
+               value="${escapeHtml(config[field.key] || '')}" placeholder="${escapeHtml(placeholder)}">
+      </div>
+    `;
+  }
+
+  card.innerHTML = `
+    <div class="provider-header">
+      <div>
+        <span class="provider-name">${escapeHtml(config.label || id)}</span>
+        <span class="provider-type">oauth</span>
+      </div>
+      ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
+    </div>
+
+    <div class="claude-oauth-status" id="claude-oauth-status-${id}"
+         style="padding:10px 12px;border-radius:6px;background:var(--surface2,#f5f5f7);
+                margin-bottom:10px;font-size:13px;color:var(--text2);">
+      Loading sign-in status…
+    </div>
+
+    ${fieldsHTML}
+
+    <div class="btn-row">
+      <button class="btn-primary btn-claude-signin" data-provider="${id}" style="display:none;">
+        Sign in with Claude
+      </button>
+      <button class="btn-secondary btn-claude-signout" data-provider="${id}" style="display:none;">
+        Sign out
+      </button>
+      <button class="btn-primary btn-save" data-provider="${id}">${escapeHtml(t('st.providers.save'))}</button>
+      <button class="btn-secondary btn-test" data-provider="${id}">${escapeHtml(t('st.providers.test'))}</button>
+      ${!isActive ? `<button class="btn-secondary btn-activate" data-provider="${id}">${escapeHtml(t('st.providers.set_active'))}</button>` : ''}
+    </div>
+
+    <div class="test-result" id="test-${id}"></div>
+
+    <div style="margin-top:14px;padding:10px 12px;border-radius:6px;
+                background:rgba(204,153,0,0.08);border:1px solid rgba(204,153,0,0.25);
+                font-size:12px;color:var(--text2);line-height:1.5;">
+      <strong>Heads up:</strong> Uses your Claude.ai Pro/Max subscription's quota via the OAuth flow Anthropic ships for Claude Code. This is a third-party use of that flow — Anthropic's terms restrict using Pro/Max subscriptions with non-Anthropic tools, and the integration could stop working at any time if Anthropic rotates their CLI's OAuth client. Your access + refresh tokens are stored in <code>browser.storage.local</code> in plaintext (same as API keys). Use at your own risk; for production / reliability, prefer the API-key Anthropic provider above.
+    </div>
+  `;
+
+  refreshClaudeOAuthStatus(id);
+
+  card.querySelector('.btn-claude-signin').addEventListener('click', () => signInWithClaude(id));
+  card.querySelector('.btn-claude-signout').addEventListener('click', () => signOutOfClaude(id));
+
+  return card;
+}
+
+async function refreshClaudeOAuthStatus(id) {
+  const statusEl = document.getElementById(`claude-oauth-status-${id}`);
+  const signInBtn = document.querySelector(`.btn-claude-signin[data-provider="${id}"]`);
+  const signOutBtn = document.querySelector(`.btn-claude-signout[data-provider="${id}"]`);
+  if (!statusEl) return;
+
+  try {
+    const status = await sendToBackground('claude_oauth_status');
+    if (status?.signedIn) {
+      const obtained = new Date(status.obtainedAt || Date.now()).toLocaleString();
+      const expires = new Date(status.expiresAt || Date.now()).toLocaleTimeString();
+      statusEl.innerHTML = `<strong style="color:var(--ok,#1a8a4a);">Signed in.</strong> Token issued ${escapeHtml(obtained)}, refreshes around ${escapeHtml(expires)}.`;
+      if (signInBtn) signInBtn.style.display = 'none';
+      if (signOutBtn) signOutBtn.style.display = '';
+    } else {
+      statusEl.innerHTML = `Not signed in. Click <strong>Sign in with Claude</strong> to authorize this extension against your Claude.ai account.`;
+      if (signInBtn) signInBtn.style.display = '';
+      if (signOutBtn) signOutBtn.style.display = 'none';
+    }
+  } catch (e) {
+    statusEl.innerHTML = `Status unavailable: ${escapeHtml(e.message)}`;
+  }
+}
+
+async function signInWithClaude(id) {
+  const statusEl = document.getElementById(`claude-oauth-status-${id}`);
+  if (statusEl) statusEl.innerHTML = `Opening Claude.ai sign-in tab… complete authorization in the new tab. The sign-in tab closes automatically once you approve.`;
+  try {
+    const res = await sendToBackground('claude_oauth_start');
+    if (res?.ok) {
+      await refreshClaudeOAuthStatus(id);
+    } else {
+      if (statusEl) statusEl.innerHTML = `Sign-in failed: ${escapeHtml(res?.error || 'Unknown error')}`;
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `Sign-in failed: ${escapeHtml(e.message)}`;
+  }
+}
+
+async function signOutOfClaude(id) {
+  await sendToBackground('claude_oauth_signout');
+  await refreshClaudeOAuthStatus(id);
 }
 
 async function loadOllamaModels(id) {

@@ -14,6 +14,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
   - **OpenAI** (GPT-5.3, etc.)
   - **OpenRouter** (access 100+ models)
   - **Anthropic Claude** (native API)
+  - **Claude (Pro/Max subscription)** — sign in with your Claude.ai account via OAuth instead of an API key. See *Known Issues* below for the ToS / reliability caveats.
 - **Side Panel UI** — Clean chat interface that lives alongside your browsing
 - **Per-Tab Conversations** — Each tab has its own chat history
 - **Streaming** — Real-time token streaming from all providers
@@ -157,6 +158,7 @@ The default UI-first rule exists because API actions are invisible (you don't se
   - Site adapters, vision detection, loop detection, and the auto-screenshot loop *are* mirrored to Firefox.
 - **SPA navigation detection in Firefox.** Some single-page applications may not trigger content-script re-injection after client-side navigation.
 - **Firefox temporary add-on** — Firefox requires the extension to be loaded as a temporary add-on during development, which is removed on restart.
+- **Claude (Pro/Max subscription) provider is grey-area.** Sign-in uses the same OAuth flow Claude Code (Anthropic's own CLI) ships, including its public client_id. Anthropic's terms restrict using a Pro/Max subscription with non-Anthropic tools, and Anthropic can revoke their CLI's OAuth client at any time — at which point this provider stops working. The system prompt is also auto-prefixed with `"You are Claude Code, Anthropic's official CLI for Claude."` because Anthropic's OAuth gate flags requests that omit it. For production use prefer the API-key Anthropic provider.
 
 ## What's New
 
