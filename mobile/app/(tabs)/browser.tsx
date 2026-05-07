@@ -6,18 +6,26 @@ import {
   TextInput,
   View as RNView,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAgent } from '@/context/AgentContext';
+import { PAGE_SCRIPT } from '@/agent/inject';
 
 export default function BrowserScreen() {
-  const { url, setUrl, working } = useAgent();
+  const { url, setUrl, working, registerWebView, onWebViewMessage } = useAgent();
   const [draft, setDraft] = useState(url);
   const [loading, setLoading] = useState(false);
   const webRef = useRef<WebView>(null);
   const isDark = (useColorScheme() ?? 'light') === 'dark';
+
+  // Register the WebView with the agent context so tools can reach it.
+  // Using a callback ref guarantees we register the actual mounted instance.
+  useEffect(() => {
+    registerWebView(webRef.current);
+    return () => registerWebView(null);
+  }, [registerWebView]);
 
   // Keep the URL bar text in sync if the agent navigates the WebView.
   useEffect(() => {
@@ -30,6 +38,10 @@ export default function BrowserScreen() {
     if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     setUrl(u);
     setDraft(u);
+  }
+
+  function handleMessage(event: WebViewMessageEvent) {
+    onWebViewMessage(event.nativeEvent.data);
   }
 
   return (
@@ -62,9 +74,7 @@ export default function BrowserScreen() {
         </Pressable>
       </RNView>
 
-      {(loading || working) && (
-        <ActivityIndicator style={styles.spinner} />
-      )}
+      {(loading || working) && <ActivityIndicator style={styles.spinner} />}
 
       <WebView
         ref={webRef}
@@ -77,6 +87,16 @@ export default function BrowserScreen() {
           // (which would re-trigger the WebView source).
           setDraft(navState.url);
         }}
+        onMessage={handleMessage}
+        injectedJavaScriptBeforeContentLoaded={PAGE_SCRIPT}
+        // Re-inject after every load so SPA route changes that wipe window
+        // state still get the AX tree + RPC handlers.
+        injectedJavaScript={PAGE_SCRIPT}
+        javaScriptEnabled
+        domStorageEnabled
+        thirdPartyCookiesEnabled
+        // iOS / Android both need this for postMessage from page → RN.
+        // (iOS: messagingEnabled is enabled implicitly when onMessage is set.)
       />
     </View>
   );

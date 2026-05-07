@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
+import { Link, Tabs } from 'expo-router';
 import React from 'react';
+import { Pressable } from 'react-native';
 
 import BlinkingTabIcon from '@/components/BlinkingTabIcon';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
@@ -32,6 +33,20 @@ export default function TabLayout() {
         options={{
           title: 'Chat',
           tabBarIcon: ({ color }) => <TabBarIcon name="comments" color={color} />,
+          headerRight: () => (
+            <Link href="/modal" asChild>
+              <Pressable accessibilityLabel="Settings">
+                {({ pressed }) => (
+                  <FontAwesome
+                    name="cog"
+                    size={22}
+                    color={Colors[colorScheme ?? 'light'].text}
+                    style={{ marginRight: 16, opacity: pressed ? 0.5 : 1 }}
+                  />
+                )}
+              </Pressable>
+            </Link>
+          ),
         }}
       />
       <Tabs.Screen
