@@ -1,5 +1,7 @@
 # WebBrain
 
+![Claude Chrome vs WebBrain](assets/webbrain-vs-claude-chrome.gif)
+
 Open-source AI browser agent for Chrome and Firefox. Chat with any web page, automate browser tasks, and run multi-step agent workflows — powered by your choice of LLM.
 
 ## Features
