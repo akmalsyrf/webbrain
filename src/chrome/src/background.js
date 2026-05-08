@@ -156,21 +156,6 @@ loadWebBrainGroups();
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 
 /**
- * Decide whether the side panel should show for `tab`.
- * Modern Chrome: tab.groupId === window's WebBrain group.
- * Legacy fallback: panelTabs membership.
- */
-function shouldEnablePanelForTab(tab) {
-  if (!tab) return false;
-  if (chrome.tabGroups) {
-    const wbGroupId = webBrainGroupByWindow.get(tab.windowId);
-    if (wbGroupId == null) return false;
-    return tab.groupId === wbGroupId;
-  }
-  return panelTabs.has(tab.id);
-}
-
-/**
  * Apply the current visibility decision to a tab. Cheap; called from any
  * listener that might have changed the answer (onActivated, onUpdated,
  * tabGroups.onRemoved, etc.).
@@ -179,12 +164,19 @@ async function refreshPanelVisibility(tabId) {
   let tab;
   try { tab = await chrome.tabs.get(tabId); } catch { return; }
   if (!tab) return;
-  const enabled = shouldEnablePanelForTab(tab);
+  // Always enabled. Previously we toggled enabled:false here for tabs
+  // outside the WebBrain group, but that exposed an undefeatable race in
+  // chrome.action.onClicked: setOptions({enabled: true}) is async and the
+  // synchronously-following sidePanel.open() could observe the still-
+  // disabled state and silently no-op, requiring a second click. Keeping
+  // the panel always-enabled sidesteps the race entirely. The visible
+  // trade-off is that the side-panel button is offered on every tab; the
+  // user can still close the panel manually when they leave a WB tab.
   try {
     await chrome.sidePanel.setOptions({
       tabId,
-      ...(enabled ? { path: 'src/ui/sidepanel.html' } : {}),
-      enabled,
+      path: 'src/ui/sidepanel.html',
+      enabled: true,
     });
   } catch { /* ignore */ }
 }
@@ -241,22 +233,12 @@ async function ensureWebBrainGroup(tab) {
   }
 }
 
-// Disable the panel up-front on every tab. With group-scoped visibility,
-// the panel is OFF by default everywhere — tabs only "earn" the panel by
-// being part of a WebBrain group.
-async function disablePanelOnAllTabs() {
-  try {
-    const tabs = await chrome.tabs.query({});
-    for (const t of tabs) {
-      if (t.id == null) continue;
-      const enabled = shouldEnablePanelForTab(t);
-      if (!enabled) {
-        chrome.sidePanel.setOptions({ tabId: t.id, enabled: false }).catch(() => {});
-      }
-    }
-  } catch { /* ignore */ }
-}
-disablePanelOnAllTabs();
+// NB: we never pre-disable the side panel on any tab. See the comment in
+// refreshPanelVisibility above for why — disabling per-tab races with
+// chrome.action.onClicked, swallowing the user's first click. The
+// manifest's `default_path` keeps the panel implicitly enabled
+// everywhere; refreshPanelVisibility re-asserts enabled:true on tab
+// activation/group changes as defense-in-depth.
 
 // ────────────────────────────────────────────────────────────────────────
 // Agent visual indicator (content-script bridge)
@@ -295,15 +277,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Synchronous response — return undefined.
 });
 
-chrome.tabs.onCreated.addListener((tab) => {
-  if (tab?.id == null) return;
-  // New tab inherits "panel off" unless it lands in a WebBrain group
-  // (e.g. agent's `_addToWebBrainGroup` adds it). The onUpdated handler
-  // below will flip the panel on if/when that happens.
-  if (!shouldEnablePanelForTab(tab)) {
-    chrome.sidePanel.setOptions({ tabId: tab.id, enabled: false }).catch(() => {});
-  }
-});
+// (Was: chrome.tabs.onCreated handler that pre-disabled the panel on
+// non-WebBrain tabs. Removed — same race as the startup pass it was a
+// per-tab analogue of. See refreshPanelVisibility for the rationale.)
 
 // IMPORTANT: must be a sync handler with no awaits before sidePanel.open(),
 // otherwise the user-gesture token expires across the await and Chrome
