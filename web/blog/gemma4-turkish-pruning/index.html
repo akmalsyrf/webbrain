@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pruning Gemma 4 26B-A4B for Small GPUs: Turkish-First, Language-Agnostic — WebBrain Blog</title>
+  <meta name="description" content="A practical Gemma 4 26B-A4B expert-pruning run: remove low-activation experts for Turkish+English workloads, then recover quality with a short LoRA heal.">
+  <meta name="keywords" content="Gemma 4, MoE pruning, expert pruning, Turkish LLM, GGUF, IQ4_XS, LoRA, small GPU, WebBrain">
+  <meta property="og:title" content="Pruning Gemma 4 26B-A4B for Small GPUs">
+  <meta property="og:description" content="128→101 experts/layer, 26B→21B params, ~11 GB 4-bit GGUF. Router hooks + long-tail expert removal + brief LoRA heal.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://webbrain.one/blog/gemma4-turkish-pruning">
+  <meta property="og:image" content="https://webbrain.one/og-image.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pruning Gemma 4 26B-A4B for Small GPUs">
+  <meta name="twitter:description" content="Turkish-first PoC, language-agnostic method: router telemetry, surgical expert pruning, short LoRA recovery.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="canonical" href="https://webbrain.one/blog/gemma4-turkish-pruning">
+  <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:#0b0e17;color:#e4e4ec;line-height:1.75;margin:0}a{color:#a78bfa;text-decoration:none}a:hover{text-decoration:underline}main{max-width:760px;margin:0 auto;padding:56px 24px 80px}h1{font-size:38px;line-height:1.2;margin:0 0 14px}h2{font-size:24px;margin:36px 0 12px}.meta,.lede{color:#9aa0b5}.meta{font-size:13px;margin-bottom:10px}.lede{font-size:19px;margin-bottom:34px}ul{margin:0 0 18px 22px}li{margin-bottom:6px}.card{background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.28);border-radius:12px;padding:14px 16px}.nav{border-bottom:1px solid rgba(255,255,255,0.08);padding:14px 24px}.nav a{color:#e4e4ec}.foot{border-top:1px solid rgba(255,255,255,0.08);margin-top:52px;padding-top:20px;color:#9aa0b5;font-size:14px}</style>
+</head>
+<body>
+  <div class="nav"><a href="/blog">← Blog</a></div>
+  <main>
+    <div class="meta">May 19, 2026 · 4 min read</div>
+    <h1>Pruning Gemma 4 26B-A4B to run on small GPUs</h1>
+    <p class="lede">I’m pruning Google’s Gemma 4 26B-A4B for a Turkish + English deployment. The proof of concept is Turkish-first, but the method is language-agnostic: measure which experts are actually used, remove the long tail, then do a short LoRA heal to recover from the cuts.</p>
+
+    <h2>Why this works on MoE models</h2>
+    <p>MoE models develop implicit specialization. In practice, Gemma 4 experts quietly separate across scripts and patterns: CJK characters, Cyrillic, Devanagari, Arabic script, Hangul, and more. For Turkish + English workloads, a meaningful subset of experts barely activates.</p>
+
+    <h2>Method</h2>
+    <ul>
+      <li>Hook the routers and collect per-expert activation stats on Turkish + code + math + web-heavy data.</li>
+      <li>Surgically prune low-utility long-tail experts at the layer level.</li>
+      <li>Run a brief LoRA heal on Turkish instruction data so the model adapts to the reduced expert set.</li>
+    </ul>
+
+    <h2>Early results</h2>
+    <div class="card">
+      <ul>
+        <li><strong>128 → 101</strong> experts per layer</li>
+        <li><strong>26B → 21B</strong> parameters (~<strong>21%</strong> smaller)</li>
+        <li>4-bit GGUF size: ~<strong>11 GB</strong></li>
+        <li>Fits <strong>24 GB</strong> GPUs; possible on <strong>12 GB</strong> with <strong>IQ4_XS</strong></li>
+        <li>Turkish fluency + code + general knowledge remain solid in practical checks</li>
+      </ul>
+    </div>
+
+    <h2>Why prune + heal instead of retrain or plain finetune?</h2>
+    <p><strong>Pretraining from scratch</strong> takes months and large budgets, and throws away Gemma’s pretraining value. <strong>Finetuning only</strong> keeps the full heavyweight model. <strong>Prune + heal</strong> preserves the valuable base and removes what this deployment does not use.</p>
+
+    <h2>Why this matters next</h2>
+    <p>Even if VRAM gets cheaper, we still want specialized smaller models running side by side (planner, vision, coder). Pruning is the right operational tool: start from a strong base, keep only what serves the job.</p>
+
+    <p>Model link: <a href="https://huggingface.co/esokullu/gemma4-tr-26b-a4b-pruned-gguf" target="_blank" rel="noopener">huggingface.co/esokullu/gemma4-tr-26b-a4b-pruned-gguf</a></p>
+
+    <div class="foot">Tags: #LLM #MoE #Pruning</div>
+  </main>
+</body>
+</html>
