@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemma 4 26B-A4B Budama: Küçük GPU’larda Türkçe + İngilizce MoE — WebBrain Blog</title>
+  <meta name="description" content="Gemma 4 26B-A4B üzerinde uzman (expert) budama deneyi: Türkçe + İngilizce iş yükleri için düşük aktif uzmanları çıkarıp LoRA ile toparlayarak modeli 24 GB ve hatta 12 GB sınıfı GPU’lara indirme notları.">
+  <meta name="keywords" content="Gemma 4, MoE pruning, expert pruning, Turkish LLM, GGUF, IQ4_XS, LoRA, small GPU, WebBrain">
+  <meta property="og:title" content="Gemma 4 26B-A4B Budama: Küçük GPU’larda Türkçe + İngilizce MoE">
+  <meta property="og:description" content="128→101 expert/layer, 26B→21B parametre, 4-bit GGUF ~11 GB. Router hook + uzun kuyruk expert kesimi + kısa LoRA heal yaklaşımı.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://webbrain.one/blog/gemma4-turkish-pruning">
+  <meta property="og:image" content="https://webbrain.one/og-image.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gemma 4 26B-A4B Budama: Türkçe POC">
+  <meta name="twitter:description" content="Language-agnostic expert pruning tekniğiyle Gemma 4’ü küçük GPU’lara sığdırma notları.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="canonical" href="https://webbrain.one/blog/gemma4-turkish-pruning">
+  <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:#0b0e17;color:#e4e4ec;line-height:1.75;margin:0}a{color:#a78bfa;text-decoration:none}a:hover{text-decoration:underline}main{max-width:760px;margin:0 auto;padding:56px 24px 80px}h1{font-size:38px;line-height:1.2;margin:0 0 14px}h2{font-size:24px;margin:36px 0 12px}.meta,.lede{color:#9aa0b5}.meta{font-size:13px;margin-bottom:10px}.lede{font-size:19px;margin-bottom:34px}ul{margin:0 0 18px 22px}li{margin-bottom:6px}.card{background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.28);border-radius:12px;padding:14px 16px}.nav{border-bottom:1px solid rgba(255,255,255,0.08);padding:14px 24px}.nav a{color:#e4e4ec}.foot{border-top:1px solid rgba(255,255,255,0.08);margin-top:52px;padding-top:20px;color:#9aa0b5;font-size:14px}</style>
+</head>
+<body>
+  <div class="nav"><a href="/blog">← Blog</a></div>
+  <main>
+    <div class="meta">19 Mayıs 2026 · 4 dk okuma</div>
+    <h1>Gemma 4 26B-A4B’yi küçük GPU’lara indirgeme: Türkçe odaklı MoE budama</h1>
+    <p class="lede">Google’ın Gemma 4 26B-A4B modelini, Türkçe + İngilizce kullanım senaryosu için buduyoruz. İlk kanıt-çalışma Türkçe üzerinde; ama yöntem dil-agnostik: belirli dil/script örüntülerinde düşük aktive olan expert’ları ölç, kes, sonra kısa bir LoRA “iyileştirmesi” ile toparla.</p>
+
+    <h2>Motivasyon</h2>
+    <p>MoE modellerde expert’lar zamanla örtük uzmanlaşma geliştiriyor: CJK karakterleri, Kiril, Devanagari, Arap alfabesi, Hangul gibi örüntüler farklı expert kümelerinde yoğunlaşabiliyor. Türkçe + İngilizce hedefli bir dağıtımda, expert’ların bir kısmı neredeyse hiç ateşlenmiyor.</p>
+
+    <h2>Yöntem (özet)</h2>
+    <ul>
+      <li>Router katmanlarına hook ekleyip Turkish + code + math + web veri karışımında expert aktivasyonlarını topluyoruz.</li>
+      <li>Uzun kuyruktaki düşük kullanım expert’larını katman bazında cerrahi şekilde çıkarıyoruz.</li>
+      <li>Kesim sonrası bozulmayı telafi etmek için Türkçe instruction verisiyle kısa bir LoRA heal koşuyoruz.</li>
+    </ul>
+
+    <h2>İlk sonuçlar</h2>
+    <div class="card">
+      <ul>
+        <li><strong>128 → 101</strong> expert / layer</li>
+        <li><strong>26B → 21B</strong> parametre (yaklaşık <strong>%21</strong> küçülme)</li>
+        <li>4-bit GGUF boyutu: yaklaşık <strong>11 GB</strong></li>
+        <li><strong>24 GB</strong> GPU’da rahat çalışıyor; <strong>IQ4_XS</strong> ile <strong>12 GB</strong> sınıfı da mümkün</li>
+        <li>Türkçe akıcılık + kod + genel bilgi: pratik testlerde güçlü</li>
+      </ul>
+    </div>
+
+    <h2>Neden “prune + heal”?</h2>
+    <p><strong>Sıfırdan pretrain</strong> aylar ve çok yüksek maliyet demek; ayrıca Gemma’nın mevcut ön-eğitim değerini çöpe atıyor. <strong>Sadece finetune</strong> ise aynı büyük modeli taşımaya devam ediyor. <strong>Prune + heal</strong> yaklaşımı, pretrain bilgisini korurken kullanılmayan kapasiteyi atıyor.</p>
+
+    <h2>Neden önemli?</h2>
+    <p>VRAM ucuzlasa bile görev-başına özelleşmiş küçük modeller (planner, vision, coder) yan yana koşacak. Bu dünyada ana beceri “sıfırdan dev model kurmak” değil, güçlü bir tabanı göreve göre inceltmek olacak.</p>
+
+    <p>Model bağlantısı: <a href="https://huggingface.co/esokullu/gemma4-tr-26b-a4b-pruned-gguf" target="_blank" rel="noopener">huggingface.co/esokullu/gemma4-tr-26b-a4b-pruned-gguf</a></p>
+
+    <div class="foot">Etiketler: #LLM #MoE #Pruning</div>
+  </main>
+</body>
+</html>
