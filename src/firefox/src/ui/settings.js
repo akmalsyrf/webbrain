@@ -6,7 +6,7 @@ import { t, getLocale, setLocale, LANGUAGES } from './i18n.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '7.2.1';
+const EXT_VERSION = '7.3.0';
 
 const providersContainer = document.getElementById('providers');
 const verboseToggle = document.getElementById('toggle-verbose');
@@ -62,6 +62,11 @@ let authToken = '';
 let authEmail = '';
 let authDefaultModel = '';
 
+// Filter + collapse state for the providers panel. See chrome/settings.js
+// for the rationale.
+let providerFilter = 'all';     // 'all' | 'local' | 'cloud' | 'router'
+const expandedProviders = new Set();
+
 // --- Init ---
 
 async function init() {
@@ -73,7 +78,10 @@ async function init() {
   renderAuthSection();
 
   // Load display settings
-  const stored = await browser.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork']);
+  const stored = await browser.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'providerFilter']);
+  if (typeof stored.providerFilter === 'string' && ['all','local','cloud','router'].includes(stored.providerFilter)) {
+    providerFilter = stored.providerFilter;
+  }
   verboseToggle.checked = stored.verboseMode || false;
   screenshotToggle.checked = stored.screenshotFallback ?? true; // on by default
   maxStepsRange.value = stored.maxAgentSteps || 60;
@@ -357,8 +365,36 @@ function renderProviders() {
         { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.anthropic.com' },
       ],
     },
+    gemini: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'AIza...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'gemini-2.0-flash' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+      ],
+    },
+    mistral: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'API key' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'mistral-large-latest' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.mistral.ai/v1' },
+      ],
+    },
+    deepseek: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'sk-...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'deepseek-chat' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.deepseek.com/v1' },
+      ],
+    },
+    xai: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'xai-...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'grok-4' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.x.ai/v1' },
+      ],
+    },
     // OAuth-based Claude subscription provider. Card body rendered by
-    // renderClaudeOAuthCard() — sign-in button + auth status + disclaimer.
+    // renderClaudeOAuthCardBody() — sign-in button + auth status + disclaimer.
     claude_subscription: {
       customRender: 'claude_oauth',
       fields: [
@@ -367,26 +403,31 @@ function renderProviders() {
     },
   };
 
-  for (const [id, config] of Object.entries(providersData)) {
+  // Filter pill row above the providers list.
+  providersContainer.appendChild(renderProviderFilterBar());
+
+  const entries = Object.entries(providersData);
+  let visibleCount = 0;
+  for (const [id, config] of entries) {
     const isActive = id === activeProviderId;
     const fieldDefs = providerConfigs[id]?.fields || [];
 
-    // Custom render for the OAuth Claude provider (sign-in button etc.).
+    const category = config.category || 'cloud';
+    if (providerFilter !== 'all' && category !== providerFilter && !isActive) continue;
+    visibleCount++;
+
     if (providerConfigs[id]?.customRender === 'claude_oauth') {
-      providersContainer.appendChild(renderClaudeOAuthCard(id, config, isActive, fieldDefs));
+      providersContainer.appendChild(
+        wrapCollapsibleCard(id, config, isActive, renderClaudeOAuthCardBody(id, config, fieldDefs))
+      );
       continue;
     }
-
-    const card = document.createElement('div');
-    card.className = `provider-card ${isActive ? 'active' : ''}`;
 
     let fieldsHTML = '';
     for (const field of fieldDefs) {
       const label = field.labelKey ? t(field.labelKey) : (field.label || field.key);
       const placeholder = field.placeholderKey ? t(field.placeholderKey) : (field.placeholder || '');
       if (field.type === 'checkbox') {
-        // For useCompactPrompt on local providers, default to checked when
-        // the config key hasn't been explicitly set yet (matches provider logic).
         let isChecked = config[field.key];
         if (field.key === 'useCompactPrompt' && config[field.key] == null) {
           const localProviders = ['llamacpp', 'ollama', 'lmstudio'];
@@ -401,8 +442,6 @@ function renderProviders() {
           </div>
         `;
       } else {
-        // For Ollama's model field, attach a <datalist> + a "Load models"
-        // button so users can pick from `ollama list` without typing.
         const isOllamaModel = id === 'ollama' && field.key === 'model';
         const listAttr = isOllamaModel ? `list="models-${id}"` : '';
         const datalistHTML = isOllamaModel ? `<datalist id="models-${id}"></datalist>` : '';
@@ -424,14 +463,7 @@ function renderProviders() {
       }
     }
 
-    card.innerHTML = `
-      <div class="provider-header">
-        <div>
-          <span class="provider-name">${escapeHtml(config.label || id)}</span>
-          <span class="provider-type">${escapeHtml(config.type)}</span>
-        </div>
-        ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
-      </div>
+    const body = `
       ${fieldsHTML}
       <div class="btn-row">
         <button class="btn-primary btn-save" data-provider="${id}">${escapeHtml(t('st.providers.save'))}</button>
@@ -441,7 +473,14 @@ function renderProviders() {
       <div class="test-result" id="test-${id}"></div>
     `;
 
-    providersContainer.appendChild(card);
+    providersContainer.appendChild(wrapCollapsibleCard(id, config, isActive, body));
+  }
+
+  if (visibleCount === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'provider-filter-empty';
+    empty.textContent = t('st.providers.filter.empty') || 'No providers in this category. Switch filter to All.';
+    providersContainer.appendChild(empty);
   }
 
   document.querySelectorAll('.btn-save').forEach(btn => {
@@ -456,6 +495,98 @@ function renderProviders() {
   document.querySelectorAll('.btn-load-models').forEach(btn => {
     btn.addEventListener('click', () => loadOllamaModels(btn.dataset.provider));
   });
+  document.querySelectorAll('.btn-claude-signin').forEach(btn => {
+    btn.addEventListener('click', () => signInWithClaude(btn.dataset.provider));
+  });
+  document.querySelectorAll('.btn-claude-signout').forEach(btn => {
+    btn.addEventListener('click', () => signOutOfClaude(btn.dataset.provider));
+  });
+  document.querySelectorAll('.claude-oauth-status').forEach(el => {
+    const id = el.id.replace(/^claude-oauth-status-/, '');
+    if (id) queueMicrotask(() => refreshClaudeOAuthStatus(id));
+  });
+}
+
+/**
+ * Build the filter pill row. See chrome/settings.js for the canonical doc.
+ */
+function renderProviderFilterBar() {
+  const bar = document.createElement('div');
+  bar.className = 'provider-filter-bar';
+  const filters = [
+    { key: 'all',    labelKey: 'st.providers.filter.all' },
+    { key: 'local',  labelKey: 'st.providers.filter.local' },
+    { key: 'cloud',  labelKey: 'st.providers.filter.cloud' },
+    { key: 'router', labelKey: 'st.providers.filter.router' },
+  ];
+  for (const f of filters) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `provider-filter-pill${providerFilter === f.key ? ' active' : ''}`;
+    btn.dataset.filter = f.key;
+    btn.textContent = t(f.labelKey);
+    btn.addEventListener('click', () => {
+      if (providerFilter === f.key) return;
+      // Snapshot whatever the user has typed but not yet saved BEFORE we
+      // rebuild the DOM — otherwise input values for the currently-rendered
+      // cards are lost (e.g. typed an API key, then clicked a filter pill
+      // to compare two providers).
+      syncInputsIntoProvidersData();
+      providerFilter = f.key;
+      try { browser.storage.local.set({ providerFilter: f.key }); } catch {}
+      renderProviders();
+    });
+    bar.appendChild(btn);
+  }
+  return bar;
+}
+
+/**
+ * Wrap a provider card body in a collapsible shell. See chrome/settings.js
+ * for the design notes.
+ */
+function wrapCollapsibleCard(id, config, isActive, bodyHtml) {
+  const expanded = isActive || expandedProviders.has(id);
+  const card = document.createElement('div');
+  card.className = `provider-card ${isActive ? 'active' : ''} ${expanded ? 'expanded' : 'collapsed'}`;
+  card.dataset.providerId = id;
+  card.dataset.providerCategory = config.category || 'cloud';
+
+  const header = document.createElement('div');
+  header.className = 'provider-header provider-header-clickable';
+  // Model name appears in the collapsed header as small mono-font text — the
+  // headline question for any AI tool is "what model is this set to?", and
+  // making the user expand the card to find out is bad UX. Empty model (e.g.
+  // LM Studio defaults to whatever's loaded) just renders nothing rather
+  // than a placeholder.
+  const modelStr = (config.model && String(config.model).trim()) || '';
+  header.innerHTML = `
+    <div class="provider-header-left">
+      <span class="provider-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+      <span class="provider-name">${escapeHtml(config.label || id)}</span>
+      <span class="provider-type">${escapeHtml(config.type)}</span>
+      ${config.category ? `<span class="provider-category-badge provider-category-${escapeHtml(config.category)}">${escapeHtml(config.category)}</span>` : ''}
+      ${modelStr ? `<span class="provider-model" title="${escapeHtml(modelStr)}">${escapeHtml(modelStr)}</span>` : ''}
+    </div>
+    ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
+  `;
+  header.addEventListener('click', (e) => {
+    if (e.target.closest('button, input, a, select')) return;
+    // Snapshot unsaved typing in other expanded cards before we rebuild
+    // the DOM — same reason as the filter-pill handler above.
+    syncInputsIntoProvidersData();
+    if (expandedProviders.has(id)) expandedProviders.delete(id);
+    else expandedProviders.add(id);
+    renderProviders();
+  });
+
+  const body = document.createElement('div');
+  body.className = 'provider-body';
+  body.innerHTML = bodyHtml;
+
+  card.appendChild(header);
+  if (expanded) card.appendChild(body);
+  return card;
 }
 
 /**
@@ -463,10 +594,8 @@ function renderProviders() {
  * the normal cards in that auth is via OAuth (Sign in with Claude button)
  * — see Chrome equivalent for full notes.
  */
-function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
-  const card = document.createElement('div');
-  card.className = `provider-card ${isActive ? 'active' : ''}`;
-
+function renderClaudeOAuthCardBody(id, config, fieldDefs) {
+  const isActive = id === activeProviderId;
   let fieldsHTML = '';
   for (const field of fieldDefs) {
     const label = field.labelKey ? t(field.labelKey) : (field.label || field.key);
@@ -480,15 +609,7 @@ function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
     `;
   }
 
-  card.innerHTML = `
-    <div class="provider-header">
-      <div>
-        <span class="provider-name">${escapeHtml(config.label || id)}</span>
-        <span class="provider-type">oauth</span>
-      </div>
-      ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
-    </div>
-
+  return `
     <div class="claude-oauth-status" id="claude-oauth-status-${id}"
          style="padding:10px 12px;border-radius:6px;background:var(--surface2,#f5f5f7);
                 margin-bottom:10px;font-size:13px;color:var(--text2);">
@@ -517,14 +638,6 @@ function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
       <strong>Heads up:</strong> Uses your Claude.ai Pro/Max subscription's quota via the OAuth flow Anthropic ships for Claude Code. This is a third-party use of that flow — Anthropic's terms restrict using Pro/Max subscriptions with non-Anthropic tools, and the integration could stop working at any time if Anthropic rotates their CLI's OAuth client. Your access + refresh tokens are stored in <code>browser.storage.local</code> in plaintext (same as API keys). Use at your own risk; for production / reliability, prefer the API-key Anthropic provider above.
     </div>
   `;
-
-  card.querySelector('.btn-claude-signin').addEventListener('click', () => signInWithClaude(id));
-  card.querySelector('.btn-claude-signout').addEventListener('click', () => signOutOfClaude(id));
-  // Run after the caller appends the card; refreshClaudeOAuthStatus()
-  // looks up elements through document.getElementById().
-  queueMicrotask(() => refreshClaudeOAuthStatus(id));
-
-  return card;
 }
 
 async function refreshClaudeOAuthStatus(id) {
