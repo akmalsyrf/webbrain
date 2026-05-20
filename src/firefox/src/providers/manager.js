@@ -56,6 +56,7 @@ export class ProviderManager {
     return {
       llamacpp: {
         type: 'llamacpp',
+        category: 'local',
         label: 'llama.cpp (Local)',
         baseUrl: 'http://localhost:8080',
         model: '',
@@ -64,6 +65,7 @@ export class ProviderManager {
       },
       ollama: {
         type: 'openai',
+        category: 'local',
         label: 'Ollama (Local)',
         providerName: 'ollama',
         baseUrl: 'http://localhost:11434/v1',
@@ -74,6 +76,7 @@ export class ProviderManager {
       },
       lmstudio: {
         type: 'openai',
+        category: 'local',
         label: 'LM Studio (Local)',
         providerName: 'lmstudio',
         baseUrl: 'http://localhost:1234/v1',
@@ -84,6 +87,7 @@ export class ProviderManager {
       },
       openai: {
         type: 'openai',
+        category: 'cloud',
         label: 'OpenAI',
         providerName: 'openai',
         baseUrl: 'https://api.openai.com/v1',
@@ -91,20 +95,62 @@ export class ProviderManager {
         apiKey: '',
         enabled: false,
       },
+      anthropic: {
+        type: 'anthropic',
+        category: 'cloud',
+        label: 'Anthropic Claude',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-sonnet-4-20250514',
+        apiKey: '',
+        enabled: false,
+      },
+      gemini: {
+        type: 'openai',
+        category: 'cloud',
+        label: 'Google Gemini',
+        providerName: 'gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-2.0-flash',
+        apiKey: '',
+        enabled: false,
+      },
+      mistral: {
+        type: 'openai',
+        category: 'cloud',
+        label: 'Mistral AI',
+        providerName: 'mistral',
+        baseUrl: 'https://api.mistral.ai/v1',
+        model: 'mistral-large-latest',
+        apiKey: '',
+        enabled: false,
+      },
+      deepseek: {
+        type: 'openai',
+        category: 'cloud',
+        label: 'DeepSeek',
+        providerName: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat',
+        apiKey: '',
+        enabled: false,
+      },
+      xai: {
+        type: 'openai',
+        category: 'cloud',
+        label: 'xAI Grok',
+        providerName: 'xai',
+        baseUrl: 'https://api.x.ai/v1',
+        model: 'grok-4',
+        apiKey: '',
+        enabled: false,
+      },
       openrouter: {
         type: 'openai',
+        category: 'router',
         label: 'OpenRouter',
         providerName: 'openrouter',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'anthropic/claude-sonnet-4',
-        apiKey: '',
-        enabled: false,
-      },
-      anthropic: {
-        type: 'anthropic',
-        label: 'Anthropic Claude',
-        baseUrl: 'https://api.anthropic.com',
-        model: 'claude-sonnet-4-20250514',
         apiKey: '',
         enabled: false,
       },
@@ -114,11 +160,25 @@ export class ProviderManager {
       // oauth-claude.js), not in this config.
       claude_subscription: {
         type: 'anthropic_oauth',
+        category: 'cloud',
         label: 'Claude (Pro/Max subscription)',
         model: 'claude-sonnet-4-20250514',
         enabled: false,
       },
     };
+  }
+
+  /**
+   * Provider category for filter UI. See chrome/providers/manager.js for
+   * the canonical doc. Categories: 'local' | 'cloud' | 'router'. Reads
+   * config.category first; falls back to a per-id table so pre-7.3
+   * stored configs classify correctly.
+   */
+  static categoryFor(id, config) {
+    if (config && config.category) return config.category;
+    if (['llamacpp', 'ollama', 'lmstudio'].includes(id)) return 'local';
+    if (id === 'openrouter') return 'router';
+    return 'cloud';
   }
 
   _createProvider(id, config) {
@@ -196,12 +256,19 @@ export class ProviderManager {
   }
 
   /**
-   * Get all provider configs for the settings UI.
+   * Get all provider configs for the settings UI. Each entry includes a
+   * `category` field ('local' | 'cloud' | 'router') so the UI can filter
+   * without re-deriving the classification.
    */
   getAll() {
     const result = {};
     for (const [id, provider] of this.providers) {
-      result[id] = { id, ...provider.config };
+      const config = provider.config;
+      result[id] = {
+        id,
+        ...config,
+        category: ProviderManager.categoryFor(id, config),
+      };
     }
     return result;
   }

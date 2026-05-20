@@ -6,7 +6,7 @@ import { t, getLocale, setLocale, LANGUAGES } from './i18n.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '7.2.1';
+const EXT_VERSION = '7.3.0';
 
 const providersContainer = document.getElementById('providers');
 const verboseToggle = document.getElementById('toggle-verbose');
@@ -64,6 +64,13 @@ let authToken = '';
 let authEmail = '';
 let authDefaultModel = '';
 
+// Filter + collapse state for the providers panel. With 11+ providers the
+// flat list is unwieldy — filter keeps the visual surface small, and
+// per-card collapse defaults non-active cards to header-only so the page
+// doesn't scroll forever.
+let providerFilter = 'all';     // 'all' | 'local' | 'cloud' | 'router'
+const expandedProviders = new Set(); // ids the user explicitly expanded this session
+
 // --- Init ---
 
 async function init() {
@@ -75,7 +82,10 @@ async function init() {
   renderAuthSection();
 
   // Load display settings
-  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'notifySound', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork']);
+  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'notifySound', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'providerFilter']);
+  if (typeof stored.providerFilter === 'string' && ['all','local','cloud','router'].includes(stored.providerFilter)) {
+    providerFilter = stored.providerFilter;
+  }
   verboseToggle.checked = stored.verboseMode || false;
   screenshotToggle.checked = stored.screenshotFallback ?? true; // on by default
   maxStepsRange.value = stored.maxAgentSteps || 60;
@@ -375,6 +385,34 @@ function renderProviders() {
         { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.anthropic.com' },
       ],
     },
+    gemini: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'AIza...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'gemini-2.0-flash' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+      ],
+    },
+    mistral: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'API key' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'mistral-large-latest' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.mistral.ai/v1' },
+      ],
+    },
+    deepseek: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'sk-...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'deepseek-chat' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.deepseek.com/v1' },
+      ],
+    },
+    xai: {
+      fields: [
+        { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'xai-...' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'grok-4' },
+        { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.x.ai/v1' },
+      ],
+    },
     // OAuth-based Claude subscription provider. The card body is rendered
     // by renderClaudeOAuthCard() — it shows a sign-in/out button, the
     // current account state, and a disclaimer about Anthropic's terms.
@@ -387,19 +425,31 @@ function renderProviders() {
     },
   };
 
-  for (const [id, config] of Object.entries(providersData)) {
+  // Filter bar — sits above the list. Pill row, click-to-switch.
+  // "All" includes everything; the per-category pills hide cards whose
+  // `category` doesn't match. The active provider is ALWAYS visible
+  // regardless of filter (so the user never loses track of it).
+  providersContainer.appendChild(renderProviderFilterBar());
+
+  const entries = Object.entries(providersData);
+  let visibleCount = 0;
+  for (const [id, config] of entries) {
     const isActive = id === activeProviderId;
     const fieldDefs = providerConfigs[id]?.fields || [];
 
-    // Custom render for the OAuth Claude provider. Lives in its own
-    // function because the card body is mostly buttons + status, not
-    // form fields, and the auth state is fetched async.
+    // Filter: hide cards whose category doesn't match (active always shown).
+    const category = config.category || 'cloud';
+    if (providerFilter !== 'all' && category !== providerFilter && !isActive) continue;
+    visibleCount++;
+
+    // Custom render for the OAuth Claude provider — same collapsible
+    // wrapper, but the body comes from renderClaudeOAuthCard().
     if (providerConfigs[id]?.customRender === 'claude_oauth') {
-      providersContainer.appendChild(renderClaudeOAuthCard(id, config, isActive, fieldDefs));
+      providersContainer.appendChild(
+        wrapCollapsibleCard(id, config, isActive, renderClaudeOAuthCardBody(id, config, fieldDefs))
+      );
       continue;
     }
-    const card = document.createElement('div');
-    card.className = `provider-card ${isActive ? 'active' : ''}`;
 
     let fieldsHTML = '';
     for (const field of fieldDefs) {
@@ -445,14 +495,7 @@ function renderProviders() {
       }
     }
 
-    card.innerHTML = `
-      <div class="provider-header">
-        <div>
-          <span class="provider-name">${escapeHtml(config.label || id)}</span>
-          <span class="provider-type">${escapeHtml(config.type)}</span>
-        </div>
-        ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
-      </div>
+    const body = `
       ${fieldsHTML}
       <div class="btn-row">
         <button class="btn-primary btn-save" data-provider="${id}">${escapeHtml(t('st.providers.save'))}</button>
@@ -462,7 +505,17 @@ function renderProviders() {
       <div class="test-result" id="test-${id}"></div>
     `;
 
-    providersContainer.appendChild(card);
+    providersContainer.appendChild(wrapCollapsibleCard(id, config, isActive, body));
+  }
+
+  // If the filter would leave the list empty (no cards match and no active
+  // provider in this category either), tell the user. Don't make them
+  // guess why nothing is showing.
+  if (visibleCount === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'provider-filter-empty';
+    empty.textContent = t('st.providers.filter.empty') || 'No providers in this category. Switch filter to All.';
+    providersContainer.appendChild(empty);
   }
 
   document.querySelectorAll('.btn-save').forEach(btn => {
@@ -477,12 +530,100 @@ function renderProviders() {
   document.querySelectorAll('.btn-load-models').forEach(btn => {
     btn.addEventListener('click', () => loadOllamaModels(btn.dataset.provider));
   });
+  // OAuth-Claude-specific bindings. These only fire if the OAuth card is
+  // currently rendered (i.e., expanded — collapsed bodies aren't in DOM).
+  document.querySelectorAll('.btn-claude-signin').forEach(btn => {
+    btn.addEventListener('click', () => signInWithClaude(btn.dataset.provider));
+  });
+  document.querySelectorAll('.btn-claude-signout').forEach(btn => {
+    btn.addEventListener('click', () => signOutOfClaude(btn.dataset.provider));
+  });
+  document.querySelectorAll('.claude-oauth-status').forEach(el => {
+    const id = el.id.replace(/^claude-oauth-status-/, '');
+    if (id) queueMicrotask(() => refreshClaudeOAuthStatus(id));
+  });
 }
 
 /**
- * Render the Claude (Pro/Max subscription) provider card.
+ * Build the filter pill row. Clicking a pill updates `providerFilter`,
+ * persists it to storage, and re-renders. Categories: all / local /
+ * cloud / router.
+ */
+function renderProviderFilterBar() {
+  const bar = document.createElement('div');
+  bar.className = 'provider-filter-bar';
+  const filters = [
+    { key: 'all',    labelKey: 'st.providers.filter.all' },
+    { key: 'local',  labelKey: 'st.providers.filter.local' },
+    { key: 'cloud',  labelKey: 'st.providers.filter.cloud' },
+    { key: 'router', labelKey: 'st.providers.filter.router' },
+  ];
+  for (const f of filters) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `provider-filter-pill${providerFilter === f.key ? ' active' : ''}`;
+    btn.dataset.filter = f.key;
+    btn.textContent = t(f.labelKey);
+    btn.addEventListener('click', () => {
+      if (providerFilter === f.key) return;
+      providerFilter = f.key;
+      try { chrome.storage.local.set({ providerFilter: f.key }); } catch {}
+      renderProviders();
+    });
+    bar.appendChild(btn);
+  }
+  return bar;
+}
+
+/**
+ * Wrap a provider card's body in a collapsible shell. Active provider
+ * starts expanded; everything else starts collapsed but the user can
+ * toggle individual cards open by clicking the header. Expansion state
+ * is session-only (resets on settings reload) — keeps the default
+ * predictable rather than reflecting whatever the user last poked at.
+ */
+function wrapCollapsibleCard(id, config, isActive, bodyHtml) {
+  const expanded = isActive || expandedProviders.has(id);
+  const card = document.createElement('div');
+  card.className = `provider-card ${isActive ? 'active' : ''} ${expanded ? 'expanded' : 'collapsed'}`;
+  card.dataset.providerId = id;
+  card.dataset.providerCategory = config.category || 'cloud';
+
+  const header = document.createElement('div');
+  header.className = 'provider-header provider-header-clickable';
+  header.innerHTML = `
+    <div class="provider-header-left">
+      <span class="provider-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+      <span class="provider-name">${escapeHtml(config.label || id)}</span>
+      <span class="provider-type">${escapeHtml(config.type)}</span>
+      ${config.category ? `<span class="provider-category-badge provider-category-${escapeHtml(config.category)}">${escapeHtml(config.category)}</span>` : ''}
+    </div>
+    ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
+  `;
+  header.addEventListener('click', (e) => {
+    // Ignore clicks that originated on inputs/buttons inside the header
+    // (none today, but future-proof).
+    if (e.target.closest('button, input, a, select')) return;
+    if (expandedProviders.has(id)) expandedProviders.delete(id);
+    else expandedProviders.add(id);
+    renderProviders();
+  });
+
+  const body = document.createElement('div');
+  body.className = 'provider-body';
+  body.innerHTML = bodyHtml;
+
+  card.appendChild(header);
+  if (expanded) card.appendChild(body);
+  return card;
+}
+
+/**
+ * Render the BODY of the Claude (Pro/Max subscription) provider card.
  *
- * Differs from a normal provider card in three ways:
+ * Returns the inner HTML — header + outer wrapper come from
+ * wrapCollapsibleCard() in renderProviders(). Differs from a normal
+ * provider card in three ways:
  *   - No API-key field. Auth is via OAuth — handled by the background
  *     script. We just dispatch claude_oauth_start/signout/status.
  *   - Loaded auth state shows the obtained-at timestamp and a "Sign
@@ -490,13 +631,13 @@ function renderProviders() {
  *   - A persistent disclaimer warns the user that Anthropic's terms
  *     restrict third-party clients from using Pro/Max subs and that
  *     this integration may stop working at any time.
+ *
+ * Event bindings (sign-in/out) + the async status refresh fire from
+ * the per-card pass at the end of renderProviders() — see
+ * bindClaudeOAuthCards().
  */
-function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
-  const card = document.createElement('div');
-  card.className = `provider-card ${isActive ? 'active' : ''}`;
-
-  // Build the editable model field with the same pattern as the other
-  // provider cards so save/test/activate keep working uniformly.
+function renderClaudeOAuthCardBody(id, config, fieldDefs) {
+  const isActive = id === activeProviderId;
   let fieldsHTML = '';
   for (const field of fieldDefs) {
     const label = field.labelKey ? t(field.labelKey) : (field.label || field.key);
@@ -510,15 +651,7 @@ function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
     `;
   }
 
-  card.innerHTML = `
-    <div class="provider-header">
-      <div>
-        <span class="provider-name">${escapeHtml(config.label || id)}</span>
-        <span class="provider-type">oauth</span>
-      </div>
-      ${isActive ? `<span style="color:var(--accent);font-size:11px;font-weight:600">${escapeHtml(t('st.providers.active'))}</span>` : ''}
-    </div>
-
+  return `
     <div class="claude-oauth-status" id="claude-oauth-status-${id}"
          style="padding:10px 12px;border-radius:6px;background:var(--surface2,#f5f5f7);
                 margin-bottom:10px;font-size:13px;color:var(--text2);">
@@ -547,17 +680,6 @@ function renderClaudeOAuthCard(id, config, isActive, fieldDefs) {
       <strong>Heads up:</strong> Uses your Claude.ai Pro/Max subscription's quota via the OAuth flow Anthropic ships for Claude Code. This is a third-party use of that flow — Anthropic's terms restrict using Pro/Max subscriptions with non-Anthropic tools, and the integration could stop working at any time if Anthropic rotates their CLI's OAuth client. Your access + refresh tokens are stored in <code>chrome.storage.local</code> in plaintext (same as API keys). Use at your own risk; for production / reliability, prefer the API-key Anthropic provider above.
     </div>
   `;
-
-  card.querySelector('.btn-claude-signin').addEventListener('click', () => signInWithClaude(id));
-  card.querySelector('.btn-claude-signout').addEventListener('click', () => signOutOfClaude(id));
-  // Run after the caller appends the card; refreshClaudeOAuthStatus()
-  // looks up elements through document.getElementById().
-  queueMicrotask(() => refreshClaudeOAuthStatus(id));
-  // Save / Test / Activate share handlers with the normal provider
-  // cards via the document.querySelectorAll bindings at the end of
-  // renderProviders() — we don't need to re-bind here.
-
-  return card;
 }
 
 async function refreshClaudeOAuthStatus(id) {

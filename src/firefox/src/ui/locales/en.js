@@ -127,6 +127,11 @@ export default {
   'st.display.traces_link.open': 'Open Traces →',
 
   'st.providers.info.html': '<strong>Getting started with llama.cpp:</strong><br>Run <code>llama-server -m your-model.gguf --port 8080</code> to start a local server.<br>No API key needed — it runs entirely on your machine.',
+  'st.providers.filter.all': 'All',
+  'st.providers.filter.local': 'Local',
+  'st.providers.filter.cloud': 'Cloud',
+  'st.providers.filter.router': 'Router',
+  'st.providers.filter.empty': 'No providers in this category. Switch the filter to "All" to see everything.',
   'st.providers.save': 'Save',
   'st.providers.test': 'Test Connection',
   'st.providers.set_active': 'Set Active',

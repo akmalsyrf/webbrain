@@ -57,6 +57,16 @@ const { bumpSemver, rewriteVersionInJsonText, rewriteVersionByAnchor, isReleaseB
   'file://' + path.join(ROOT, 'scripts/bump-version.mjs').replace(/\\/g, '/')
 );
 
+// providers/manager.js — pure ESM at module load (chrome.* only inside
+// methods). We import the class so we can exercise the static categoryFor()
+// helper and inspect the default-configs shape (categorization parity).
+const { ProviderManager: ProviderManagerCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/providers/manager.js').replace(/\\/g, '/')
+);
+const { ProviderManager: ProviderManagerFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/providers/manager.js').replace(/\\/g, '/')
+);
+
 // tools.js — pure ESM. We import getToolsForMode from each side so we can
 // verify the strict/loose `done` description swap.
 const { getToolsForMode: getToolsForModeCh } = await import(
@@ -1368,6 +1378,104 @@ test('reason is informative', () => {
   assert.equal(isCredentialField({ type: 'password' }).reason, 'input type=password');
   assert.match(isCredentialField({ type: 'text', autocomplete: 'one-time-code' }).reason, /autocomplete=one-time-code/);
   assert.match(isCredentialField({ type: 'text', name: 'api_key' }).reason, /name matches credential pattern/);
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// Provider categorization (filter UI)
+// ────────────────────────────────────────────────────────────────────────
+
+console.log('\nprovider categorization');
+
+test('categoryFor: local family (llamacpp / ollama / lmstudio)', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    assert.equal(PM.categoryFor('llamacpp', { type: 'llamacpp' }), 'local');
+    assert.equal(PM.categoryFor('ollama', { type: 'openai' }), 'local');
+    assert.equal(PM.categoryFor('lmstudio', { type: 'openai' }), 'local');
+  }
+});
+
+test('categoryFor: cloud family (openai / anthropic / gemini / mistral / deepseek / xai / oauth)', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    assert.equal(PM.categoryFor('openai', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('anthropic', { type: 'anthropic' }), 'cloud');
+    assert.equal(PM.categoryFor('gemini', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('mistral', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('deepseek', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('xai', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('claude_subscription', { type: 'anthropic_oauth' }), 'cloud');
+  }
+});
+
+test('categoryFor: openrouter is router', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    assert.equal(PM.categoryFor('openrouter', { type: 'openai' }), 'router');
+  }
+});
+
+test('categoryFor: config.category overrides the per-id fallback', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    // If a stored config explicitly tags itself, that wins even if the id
+    // looks like something else (future-proofing for user-added providers).
+    assert.equal(PM.categoryFor('custom_proxy', { category: 'router', type: 'openai' }), 'router');
+    assert.equal(PM.categoryFor('openai', { category: 'local', type: 'openai' }), 'local');
+  }
+});
+
+test('categoryFor: unknown id with no category defaults to cloud', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    assert.equal(PM.categoryFor('some_new_thing', { type: 'openai' }), 'cloud');
+    assert.equal(PM.categoryFor('whatever', {}), 'cloud');
+  }
+});
+
+test('_defaultConfigs: every entry carries an explicit category', () => {
+  // Walk the actual default config table on each platform and assert
+  // each entry has a category field. Catches "I added a provider but
+  // forgot to set its category" at test time, not at user-render time.
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    const mgr = new PM();
+    const defaults = mgr._defaultConfigs();
+    for (const [id, config] of Object.entries(defaults)) {
+      assert.ok(
+        ['local', 'cloud', 'router'].includes(config.category),
+        `${PM.name}: provider ${id} missing/invalid category (got ${JSON.stringify(config.category)})`
+      );
+    }
+  }
+});
+
+test('_defaultConfigs: new cloud providers present and disabled by default', () => {
+  // Don't enable cloud providers by default — they all require an API key.
+  // Auto-enabling them would create dead entries in the UI.
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    const mgr = new PM();
+    const defaults = mgr._defaultConfigs();
+    for (const id of ['gemini', 'mistral', 'deepseek', 'xai']) {
+      assert.ok(defaults[id], `${PM.name}: missing default config for ${id}`);
+      assert.equal(defaults[id].category, 'cloud', `${PM.name}: ${id} should be cloud`);
+      assert.equal(defaults[id].enabled, false, `${PM.name}: ${id} should default to disabled`);
+      assert.ok(defaults[id].baseUrl, `${PM.name}: ${id} missing baseUrl`);
+      assert.ok(defaults[id].model, `${PM.name}: ${id} missing default model`);
+    }
+  }
+});
+
+test('_defaultConfigs: chrome and firefox share the same provider set', () => {
+  const chDefaults = new ProviderManagerCh()._defaultConfigs();
+  const fxDefaults = new ProviderManagerFx()._defaultConfigs();
+  assert.deepEqual(
+    Object.keys(chDefaults).sort(),
+    Object.keys(fxDefaults).sort(),
+    'chrome and firefox provider lists diverged'
+  );
+  // Categories must also match — drift here would mean the filter UI
+  // shows different buckets on each platform.
+  for (const id of Object.keys(chDefaults)) {
+    assert.equal(
+      chDefaults[id].category, fxDefaults[id].category,
+      `provider ${id}: category differs (chrome=${chDefaults[id].category}, firefox=${fxDefaults[id].category})`
+    );
+  }
 });
 
 await run();
