@@ -49,6 +49,11 @@ export default {
   'sp.continue_bar': 'Reached the step limit ({steps} steps). Want me to keep going?',
   'sp.continue_btn': 'Continue',
 
+  'sp.clarify.submit': 'Send',
+  'sp.clarify.input_placeholder': 'Type your answer…',
+  'sp.clarify.input_placeholder_with_options': 'Or type a different answer…',
+  'sp.clarify.your_answer': 'Your answer:',
+
   'sp.step.details': 'details',
   'sp.step.input_label': 'Input',
   'sp.step.result_label': 'Result',

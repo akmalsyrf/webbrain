@@ -532,8 +532,119 @@ chrome.runtime.onMessage.addListener((msg) => {
     case 'warning':
       hideActivity();
       break;
+
+    case 'clarify':
+      // Agent paused to ask the user a question. Render an inline card in
+      // the current assistant bubble; the user picks an option or types a
+      // custom answer, and we post `clarify_response` back to the bg.
+      renderClarifyCard(data);
+      break;
   }
 });
+
+/**
+ * Render a clarify() prompt inside the current assistant message. Shows the
+ * question, optional "reason" hint, suggested-option buttons, and a free-
+ * text input. First submit (option click OR text submit) disables the card
+ * and routes the answer to the background. UI stays visible after answering
+ * so the user can see what they chose.
+ */
+function renderClarifyCard(data) {
+  hideActivity();
+  if (!currentAssistantEl) return;
+  const tabId = currentTabId;
+  if (!tabId) return;
+  const clarifyId = String(data.clarifyId || '');
+  if (!clarifyId) return;
+
+  const content = currentAssistantEl.querySelector('.message-content');
+  if (!content) return;
+
+  const card = document.createElement('div');
+  card.className = 'clarify-card';
+  card.dataset.clarifyId = clarifyId;
+
+  const qEl = document.createElement('div');
+  qEl.className = 'clarify-question';
+  qEl.textContent = String(data.question || '').slice(0, 600);
+  card.appendChild(qEl);
+
+  if (data.reason) {
+    const reasonEl = document.createElement('div');
+    reasonEl.className = 'clarify-reason';
+    reasonEl.textContent = String(data.reason).slice(0, 400);
+    card.appendChild(reasonEl);
+  }
+
+  const options = Array.isArray(data.options) ? data.options.slice(0, 4) : [];
+  const optionsEl = options.length ? document.createElement('div') : null;
+  if (optionsEl) {
+    optionsEl.className = 'clarify-options';
+    for (const opt of options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'clarify-option';
+      b.textContent = String(opt).slice(0, 200);
+      b.addEventListener('click', () => submitClarify(card, tabId, clarifyId, b.textContent, 'option'));
+      optionsEl.appendChild(b);
+    }
+    card.appendChild(optionsEl);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'clarify-row';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'clarify-input';
+  input.placeholder = options.length
+    ? (typeof t === 'function' ? t('sp.clarify.input_placeholder_with_options') : 'Or type a different answer…')
+    : (typeof t === 'function' ? t('sp.clarify.input_placeholder') : 'Type your answer…');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim()) {
+      e.preventDefault();
+      submitClarify(card, tabId, clarifyId, input.value.trim(), 'text');
+    }
+  });
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'button';
+  submitBtn.className = 'clarify-submit';
+  submitBtn.textContent = typeof t === 'function' ? t('sp.clarify.submit') : 'Send';
+  submitBtn.addEventListener('click', () => {
+    const v = input.value.trim();
+    if (v) submitClarify(card, tabId, clarifyId, v, 'text');
+  });
+  row.appendChild(input);
+  row.appendChild(submitBtn);
+  card.appendChild(row);
+
+  content.appendChild(card);
+  scrollToBottom();
+  try { input.focus(); } catch {}
+}
+
+function submitClarify(card, tabId, clarifyId, answer, source) {
+  // Lock the card so the user can't double-submit and so it's visually
+  // clear what was chosen. The pending Promise on the agent side only
+  // accepts the first response anyway, but UI feedback matters.
+  if (card.classList.contains('clarify-answered')) return;
+  card.classList.add('clarify-answered');
+  for (const el of card.querySelectorAll('button, input')) {
+    el.disabled = true;
+  }
+  const answered = document.createElement('div');
+  answered.className = 'clarify-your-answer';
+  answered.textContent = (typeof t === 'function' ? t('sp.clarify.your_answer') : 'Your answer:') + ' ' + answer;
+  card.appendChild(answered);
+  scrollToBottom();
+
+  chrome.runtime.sendMessage({
+    action: 'clarify_response',
+    tabId,
+    clarifyId,
+    answer,
+    source,
+  }).catch(() => { /* background may be torn down — clarify state already lives there */ });
+}
 
 
 // ==========================================================================

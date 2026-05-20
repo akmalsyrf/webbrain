@@ -323,6 +323,20 @@ async function handleMessage(msg, sender) {
       return { ok: true };
     }
 
+    case 'clarify_response': {
+      // Side panel posts the user's answer to a pending clarify() tool
+      // call. The agent's executeTool() handler is awaiting this exact
+      // (tabId, clarifyId) pair and resumes the run when we resolve it.
+      const tabId = msg.tabId || sender.tab?.id;
+      if (!tabId) return { ok: false, error: 'No tab ID' };
+      const clarifyId = String(msg.clarifyId || '');
+      const answer = String(msg.answer || '').trim();
+      if (!clarifyId) return { ok: false, error: 'clarifyId required' };
+      if (!answer) return { ok: false, error: 'answer required' };
+      const matched = agent.submitClarifyResponse(tabId, clarifyId, answer, msg.source || 'user');
+      return { ok: matched, matched };
+    }
+
     case 'get_debug_log': {
       return { log: agent.getDebugLog() };
     }

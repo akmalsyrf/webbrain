@@ -210,6 +210,24 @@ const ADAPTERS = [
 - Comments live below the article in a separate thread component.
 - Subscribe button is a popup form — needs an email and may require email confirmation.`,
   },
+  {
+    // WordPress matcher is host-agnostic — self-hosted WP runs on millions
+    // of domains. We trigger on the admin/login paths, which are
+    // standardized across virtually every WP install.
+    name: 'wordpress',
+    category: 'general',
+    match: (url) => /^https?:\/\/[^/]+\/(wp-admin|wp-login\.php)(\/|$|\?)/.test(url),
+    notes: `
+- "My API key" on WordPress is AMBIGUOUS. The two common meanings:
+    (a) a WP REST API *application password* — per-user, lives at Users → Profile → "Application Passwords" panel (URL contains \`profile.php\`). This is the most common interpretation of "my WordPress API key".
+    (b) a *plugin-specific* key (Rank Math Content AI, Jetpack, Akismet, WP Mail SMTP, etc.) — lives in that plugin's own settings page.
+  If the user said "my API key" without naming a plugin, prefer (a) and read Users → Profile first. Don't pattern-match on plugin names just because they have "AI" or "API" in them. If both (a) and Application Passwords exist AND the site has multiple plugin keys, call \`clarify\` once to ask the user which they mean.
+- Don't blindly click \`index: 0\` in /wp-admin/. The first interactive element on every admin page is a skip-to-content link, localized per-user — "Skip to content", "Ana içeriğe git", "Saltar al contenido", "Перейти к содержимому", "コンテンツへスキップ", etc. Clicking it never changes meaningful state. If a \`click({text:...})\` returns "Ambiguous text match", read \`candidates\` and pick the one whose \`tag\`/\`ancestor\` matches your intent.
+- Two navigation surfaces: top admin bar (horizontal, near the very top) is shortcuts; left sidebar (vertical) is the primary menu. Sidebar items have hover-expanded sub-items. If you need a sub-item that isn't visible, hover the parent via \`click_ax\` first, then re-fetch the a11y tree.
+- Plugin settings pages put the relevant value on the page directly — once you've navigated there, call \`read_page\` or \`get_accessibility_tree\` BEFORE clicking any sub-link or sub-tab. Don't keep navigating "to find the right page" — you're usually already there.
+- Localized labels (Turkish examples): Yazılar=Posts, Sayfalar=Pages, Eklentiler=Plugins, Ayarlar=Settings, Kullanıcılar=Users, Profil=Profile, Genel Ayarlar=General Settings, Başlangıç/Pano=Dashboard. Match on URL paths (\`profile.php\`, \`users.php\`, \`options-general.php\`, \`plugins.php\`, \`admin.php?page=...\`) rather than visible text when the site is in a non-English language.
+- Login pages (\`wp-login.php\`) have a stable shape: \`#user_login\` (username/email), \`#user_pass\` (password), \`#wp-submit\` (submit). The password field is type=password — when the user provides credentials, do not echo them in any summary.`,
+  },
 
   // ─── Commerce ─────────────────────────────────────────────────────────
   {

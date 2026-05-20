@@ -57,6 +57,19 @@ const { bumpSemver, rewriteVersionInJsonText, rewriteVersionByAnchor, isReleaseB
   'file://' + path.join(ROOT, 'scripts/bump-version.mjs').replace(/\\/g, '/')
 );
 
+// credential-fields.js — pure ESM detector, no DOM. Both chrome and
+// firefox copies are imported so we assert the regex doesn't drift.
+const { isCredentialField, SENSITIVE_NAME_RE, CREDENTIAL_NOTE } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/agent/credential-fields.js').replace(/\\/g, '/')
+);
+const {
+  isCredentialField: isCredentialFieldFx,
+  SENSITIVE_NAME_RE: SENSITIVE_NAME_RE_FX,
+  CREDENTIAL_NOTE: CREDENTIAL_NOTE_FX,
+} = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/agent/credential-fields.js').replace(/\\/g, '/')
+);
+
 // agent.js imports tools.js and cdp-client.js (which uses chrome.*). We need
 // only the loop-detection helpers, so we extract them via a tiny standalone
 // shim that mirrors the relevant Agent methods. Keep this in sync with
@@ -212,6 +225,18 @@ test('matches generic finance — chase', () => {
 test('matches generic finance — robinhood', () => {
   const a = getActiveAdapter('https://robinhood.com/account/positions');
   assert.equal(a?.category, 'finance');
+});
+
+test('matches wordpress wp-admin on any host', () => {
+  assert.equal(getActiveAdapter('https://example.com/wp-admin/')?.name, 'wordpress');
+  assert.equal(getActiveAdapter('https://teknofili.com/wp-admin/profile.php')?.name, 'wordpress');
+  assert.equal(getActiveAdapter('https://my-blog.io/wp-admin/admin.php?page=rank-math')?.name, 'wordpress');
+  assert.equal(getActiveAdapter('https://example.com/wp-login.php')?.name, 'wordpress');
+  // Front-end of a WP site is NOT a match — adapter is admin-only.
+  assert.equal(getActiveAdapter('https://example.com/'), null);
+  assert.equal(getActiveAdapter('https://example.com/some-post/'), null);
+  // /wp-admin must be a path segment, not a substring elsewhere in URL.
+  assert.equal(getActiveAdapter('https://example.com/blog/wp-admin-tutorial/'), null);
 });
 
 test('returns null for unknown sites', () => {
@@ -1188,6 +1213,86 @@ test('isReleaseBoundary: composes with bumpSemver to classify the next version',
   // Explicit override path also routes through correctly.
   assert.equal(isReleaseBoundary(bumpSemver('7.0.5', '8.2.0')), true);
   assert.equal(isReleaseBoundary(bumpSemver('7.0.5', '8.2.3')), false);
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// Credential-field detection
+// ────────────────────────────────────────────────────────────────────────
+
+console.log('\ncredential-field detection');
+
+test('parity: chrome and firefox copies are identical', () => {
+  assert.equal(SENSITIVE_NAME_RE.source, SENSITIVE_NAME_RE_FX.source);
+  assert.equal(SENSITIVE_NAME_RE.flags, SENSITIVE_NAME_RE_FX.flags);
+  assert.equal(CREDENTIAL_NOTE, CREDENTIAL_NOTE_FX);
+});
+
+test('detects <input type="password">', () => {
+  assert.equal(isCredentialField({ type: 'password' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'password', name: 'user' }).sensitive, true);
+});
+
+test('detects autocomplete=current-password / new-password / one-time-code', () => {
+  assert.equal(isCredentialField({ type: 'text', autocomplete: 'current-password' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', autocomplete: 'new-password' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', autocomplete: 'one-time-code' }).sensitive, true);
+  // Case-insensitive
+  assert.equal(isCredentialField({ type: 'text', autocomplete: 'Current-Password' }).sensitive, true);
+});
+
+test('detects name= matching credential vocab', () => {
+  assert.equal(isCredentialField({ type: 'text', name: 'password' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'pwd' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'api_key' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'apiKey' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'api-key' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'access_token' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'refresh_token' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'client_secret' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'private_key' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'otp' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'mfa_code' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: '2fa' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'recovery-code' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'backup_code' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'seed-phrase' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'passphrase' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', name: 'pin_code' }).sensitive, true);
+});
+
+test('detects id / aria-label / placeholder / labelText', () => {
+  assert.equal(isCredentialField({ type: 'text', id: 'pwd-field' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', ariaLabel: 'Enter your API key' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', placeholder: 'One-time password' }).sensitive, true);
+  assert.equal(isCredentialField({ type: 'text', labelText: 'Your secret' }).sensitive, true);
+});
+
+test('rejects non-credential fields (negative carveouts)', () => {
+  assert.equal(isCredentialField({ type: 'text', name: 'username' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'email', name: 'email' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'text', name: 'first_name' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'text', name: 'address' }).sensitive, false);
+  // Bare "auth" / "auto" / "key" do NOT trigger — too common (author,
+  // autocomplete, keyboard). The regex requires credential-specific vocab.
+  assert.equal(isCredentialField({ type: 'text', name: 'author' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'text', name: 'autocomplete' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'text', name: 'keyword' }).sensitive, false);
+  assert.equal(isCredentialField({ type: 'text', placeholder: 'Search for keywords...' }).sensitive, false);
+  // type=password ALWAYS wins, even with innocuous name
+  assert.equal(isCredentialField({ type: 'password', name: 'foo' }).sensitive, true);
+});
+
+test('handles missing / malformed input gracefully', () => {
+  assert.equal(isCredentialField(null).sensitive, false);
+  assert.equal(isCredentialField(undefined).sensitive, false);
+  assert.equal(isCredentialField({}).sensitive, false);
+  assert.equal(isCredentialField({ type: null, name: null }).sensitive, false);
+});
+
+test('reason is informative', () => {
+  assert.equal(isCredentialField({ type: 'password' }).reason, 'input type=password');
+  assert.match(isCredentialField({ type: 'text', autocomplete: 'one-time-code' }).reason, /autocomplete=one-time-code/);
+  assert.match(isCredentialField({ type: 'text', name: 'api_key' }).reason, /name matches credential pattern/);
 });
 
 await run();

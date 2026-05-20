@@ -1,5 +1,6 @@
 import { AGENT_TOOLS, AGENT_TOOL_NAMES, getToolsForMode, SYSTEM_PROMPT_ASK, SYSTEM_PROMPT_ACT } from './tools.js';
 import { URL_FAMILY_TOOLS, resourceBucket, bucketArgsKey } from './loop-bucket.js';
+import { isCredentialField, CREDENTIAL_NOTE } from './credential-fields.js';
 import { getActiveAdapter, UNIVERSAL_PREAMBLE } from './adapters.js';
 import {
   fetchUrl,
@@ -51,6 +52,9 @@ export class Agent {
     // Cache for `_isPdfTab` HEAD probes — see Chrome agent.js for
     // design notes. Same (tabId,url) → isPdf shape.
     this._isPdfTabCache = new Map();
+    // Pending clarify() tool calls awaiting user input — see Chrome
+    // agent.js. Keyed by tabId → (clarifyId → {resolve, ts}).
+    this._pendingClarifications = new Map();
   }
 
   setApiMutationsAllowed(tabId, allowed) {
@@ -365,7 +369,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
       onUpdate('tool_call', { name: fnName, args: fnArgs });
       const _toolStart = Date.now();
-      const toolResult = await this.executeTool(tabId, fnName, fnArgs);
+      const toolResult = await this.executeTool(tabId, fnName, fnArgs, onUpdate);
       try {
         const runId = this.currentRunId.get(tabId);
         if (runId) {
@@ -1039,6 +1043,35 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    */
   abort(tabId) {
     this.abortFlags.set(tabId, true);
+    this._cancelClarifications(tabId, 'aborted by user');
+  }
+
+  /**
+   * Resolve a pending clarify() tool call with the user's answer. Called by
+   * background.js when the side panel posts `clarify_response`.
+   * Returns true if a matching pending clarification was found.
+   */
+  submitClarifyResponse(tabId, clarifyId, answer, source = 'user') {
+    const tabPending = this._pendingClarifications.get(tabId);
+    if (!tabPending) return false;
+    const entry = tabPending.get(clarifyId);
+    if (!entry) return false;
+    try { entry.resolve({ answer, source }); } catch {}
+    return true;
+  }
+
+  /**
+   * Cancel every pending clarify() on a tab. Used by abort() and
+   * clearConversation() to keep the agent loop from deadlocking when the
+   * user bails out mid-question.
+   */
+  _cancelClarifications(tabId, reason) {
+    const tabPending = this._pendingClarifications.get(tabId);
+    if (!tabPending) return;
+    for (const [, entry] of tabPending) {
+      try { entry.resolve({ cancelled: true, reason }); } catch {}
+    }
+    this._pendingClarifications.delete(tabId);
   }
 
   /**
@@ -1110,6 +1143,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    * Clear conversation for a tab.
    */
   clearConversation(tabId) {
+    this._cancelClarifications(tabId, 'conversation cleared');
     this.conversations.delete(tabId);
     this.conversationIds.delete(tabId); // next getConversation() mints a fresh id
     if (this._doneBlockCount) this._doneBlockCount.delete(tabId);
@@ -1416,8 +1450,56 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   /**
    * Execute a tool call by dispatching to the content script or chrome APIs.
+   *
+   * `onUpdate` is optional and only consumed by tools that need to talk
+   * back to the side panel mid-call (currently just `clarify`).
    */
-  async executeTool(tabId, name, args) {
+  async executeTool(tabId, name, args, onUpdate = null) {
+    // clarify: pause the run and wait for the user to answer. This tool
+    // does NOT touch the page — it's a meta-action that bridges agent ↔
+    // user. The handler resolves when background.js routes the user's
+    // response via submitClarifyResponse(), or when abort/clearConversation
+    // cancels.
+    if (name === 'clarify') {
+      const question = String(args?.question || '').trim();
+      if (!question) {
+        return { success: false, error: 'clarify: `question` is required (a single sentence asking the user something specific).' };
+      }
+      const options = Array.isArray(args?.options)
+        ? args.options.map(s => String(s).slice(0, 200)).filter(Boolean).slice(0, 4)
+        : [];
+      const reason = args?.reason ? String(args.reason).slice(0, 300) : null;
+      const clarifyId = `clr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const tabPending = this._pendingClarifications.get(tabId) || new Map();
+      this._pendingClarifications.set(tabId, tabPending);
+
+      const responsePromise = new Promise((resolve) => {
+        tabPending.set(clarifyId, { resolve, ts: Date.now() });
+      });
+
+      if (typeof onUpdate === 'function') {
+        try {
+          onUpdate('clarify', { clarifyId, question, options, reason });
+        } catch { /* UI emit must never break the run */ }
+      }
+
+      const response = await responsePromise;
+      tabPending.delete(clarifyId);
+      if (tabPending.size === 0) this._pendingClarifications.delete(tabId);
+
+      if (response && response.cancelled) {
+        return { success: false, cancelled: true, reason: response.reason || 'clarify cancelled' };
+      }
+      const answer = String(response?.answer || '').trim();
+      return {
+        success: true,
+        answer,
+        source: response?.source || 'user',
+        note: 'This is a direct reply from the user. Treat it as authoritative for the question you asked; do not re-ask. Continue the task with this answer in mind.',
+      };
+    }
+
     // Tools handled by the background/service worker
     if (name === 'navigate') {
       await browser.tabs.update(tabId, { url: args.url });
@@ -2067,6 +2149,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         action,
         params: args,
       });
+      this._annotateCredentialField(name, response);
       return response;
     } catch (e) {
       // Content script might not be injected — try injecting it
@@ -2079,11 +2162,32 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           action,
           params: args,
         });
+        this._annotateCredentialField(name, response);
         return response;
       } catch (e2) {
         return { error: `Failed to communicate with page: ${e2.message}` };
       }
     }
+  }
+
+  /**
+   * If a successful set_field touched a credential/secret field, append a
+   * note to the tool result so the model is reminded not to echo the value
+   * in subsequent text/summaries. Detection lives in credential-fields.js
+   * (pure ESM, node-testable). Content scripts ship `fieldMeta`; we apply
+   * the policy here so the regex stays in one place.
+   */
+  _annotateCredentialField(toolName, response) {
+    if (toolName !== 'set_field') return;
+    if (!response || !response.success || !response.fieldMeta) return;
+    try {
+      const det = isCredentialField(response.fieldMeta);
+      if (det.sensitive) {
+        response.note = CREDENTIAL_NOTE;
+        response.sensitiveField = true;
+        response.sensitiveReason = det.reason;
+      }
+    } catch { /* never let detection failure break the tool call */ }
   }
 
   /**

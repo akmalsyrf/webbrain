@@ -822,3 +822,106 @@ body {
   border: 1px solid rgba(244, 67, 54, 0.3);
   color: #ff8a80;
 }
+
+/* Clarify card — agent paused to ask user a question */
+.clarify-card {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius, 6px);
+  background: var(--accent-dim, rgba(33, 150, 243, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clarify-question {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.clarify-reason {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.clarify-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clarify-option {
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--bg-input, rgba(255,255,255,0.04));
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.clarify-option:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.clarify-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.clarify-row {
+  display: flex;
+  gap: 6px;
+}
+
+.clarify-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.clarify-input:disabled {
+  opacity: 0.5;
+}
+
+.clarify-submit {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clarify-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.clarify-answered {
+  border-color: var(--success, #4caf50);
+  background: rgba(76, 175, 80, 0.06);
+}
+
+.clarify-your-answer {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+

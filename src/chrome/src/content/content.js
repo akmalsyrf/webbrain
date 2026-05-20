@@ -1540,6 +1540,39 @@
           // Verify: read back the value and confirm it contains what we typed.
           const actual = el.isContentEditable ? (el.textContent || '') : (el.value || '');
           const verified = actual.includes(text);
+
+          // Collect field attributes for credential-field detection. The
+          // detector itself lives in src/agent/credential-fields.js (pure
+          // ESM, runs background-side) so the regex has one home and is
+          // node-testable. We just ship the facts.
+          const fieldMeta = (() => {
+            try {
+              const tag = el.tagName ? el.tagName.toLowerCase() : '';
+              const fieldType = el.tagName === 'INPUT' ? (el.type || 'text').toLowerCase() : tag;
+              const elId = el.id || null;
+              let labelText = null;
+              try {
+                if (elId) {
+                  const lbl = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(elId) : elId.replace(/"/g, '\\"')) + '"]');
+                  if (lbl) labelText = (lbl.textContent || '').trim().slice(0, 120);
+                }
+                if (!labelText && el.closest) {
+                  const wrap = el.closest('label');
+                  if (wrap) labelText = (wrap.textContent || '').trim().slice(0, 120);
+                }
+              } catch {}
+              return {
+                tag,
+                type: fieldType,
+                name: el.getAttribute ? el.getAttribute('name') : null,
+                id: elId,
+                autocomplete: el.getAttribute ? el.getAttribute('autocomplete') : null,
+                ariaLabel: el.getAttribute ? el.getAttribute('aria-label') : null,
+                placeholder: el.getAttribute ? el.getAttribute('placeholder') : null,
+                labelText,
+              };
+            } catch { return null; }
+          })();
           if (submit) {
             try {
               // Detect combobox/searchbox pattern: if the element is a searchbox,
@@ -1596,6 +1629,7 @@
             rect,
             verified,
             actual: verified ? undefined : actual.slice(0, 200),
+            fieldMeta,
           };
         } catch (e) {
           return { success: false, error: e && e.message || String(e) };
