@@ -21,12 +21,10 @@ const modeActBtn = document.getElementById('btn-mode-act');
 const actWarning = document.getElementById('act-warning');
 const inputArea = document.getElementById('input-area');
 const stopBtn = document.getElementById('btn-stop');
-// Tab Recorder (v7.4) — toolbar Stop button + live banner. Recording is
-// started by the agent's `record_tab` tool in response to a prompt; the
-// toolbar button is hidden until a recording is in flight, then becomes
-// a Stop affordance (so the user can halt it without typing "stop
-// recording").
-const recordBtn = document.getElementById('btn-record');
+// Tab Recorder (v7.4) — recording is started entirely via the agent's
+// `record_tab` tool (prompt-driven). The live red banner that appears
+// during a recording carries its own Stop button; that's the only UI
+// surface. No toolbar button — keeping one was duplicate UI.
 const recordingBanner = document.getElementById('recording-banner');
 const recordingTimerEl = document.getElementById('recording-timer');
 const recordingStopBtn = document.getElementById('btn-recording-stop');
@@ -463,10 +461,6 @@ function formatRecordTimer(ms) {
 }
 
 function setRecordingUI(active) {
-  if (recordBtn) {
-    recordBtn.classList.toggle('hidden', !active);
-    recordBtn.classList.toggle('active', active);
-  }
   if (recordingBanner) recordingBanner.classList.toggle('hidden', !active);
   if (active) {
     if (!recordingTimerInterval) {
@@ -503,7 +497,6 @@ async function hydrateRecordingFromBackground() {
 
 async function stopRecording() {
   if (recordingStopBtn) recordingStopBtn.disabled = true;
-  if (recordBtn) recordBtn.disabled = true;
   try {
     const res = await sendToBackground('stop_tab_recording');
     if (!res?.ok) {
@@ -513,12 +506,9 @@ async function stopRecording() {
     setRecordingUI(false);
   } finally {
     if (recordingStopBtn) recordingStopBtn.disabled = false;
-    if (recordBtn) recordBtn.disabled = false;
   }
 }
 
-// Both surfaces (toolbar button + banner button) do the same thing.
-if (recordBtn) recordBtn.addEventListener('click', stopRecording);
 if (recordingStopBtn) recordingStopBtn.addEventListener('click', stopRecording);
 
 // Hydrate on panel boot — the agent may have started a recording before

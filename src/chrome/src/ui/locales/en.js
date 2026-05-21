@@ -9,7 +9,6 @@ export default {
   'sp.status.error': 'Error: {msg}',
   'sp.status.failed': 'Connection failed',
   'sp.btn.verbose': 'Toggle verbose tool log',
-  'sp.btn.record.active': 'Stop recording',
   'sp.record.stop': 'Stop',
   'sp.record.banner_label': 'Recording',
   'sp.record.error': 'Recording error: {error}',

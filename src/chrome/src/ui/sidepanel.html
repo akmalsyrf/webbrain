@@ -35,18 +35,10 @@
             <line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
         </button>
-        <!-- Record button is HIDDEN by default. It only appears (as a Stop
-             square) while a recording is in progress, set up via the agent's
-             `record_tab` tool. Recording is prompt-driven now — the user
-             says "record this meeting" and the agent starts it; clicking
-             this button (or the banner Stop) ends it. We don't render an
-             idle "Start" affordance in the toolbar because it confused
-             users into thinking the toolbar was the primary entry point. -->
-        <button id="btn-record" class="hidden" data-i18n-title="sp.btn.record.active">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-        </button>
+        <!-- (Recording is now entirely prompt-driven via the agent's
+             `record_tab` tool. The live recording banner below the
+             header carries its own Stop button, so there's no need for
+             a toolbar affordance — keeping both was duplicate UI.) -->
         <button id="btn-settings" data-i18n-title="sp.btn.settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>

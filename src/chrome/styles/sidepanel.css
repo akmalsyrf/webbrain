@@ -929,13 +929,9 @@ body {
 
 /* ─── Tab Recorder (v7.4) ─────────────────────────────────────────── */
 
-/* Toolbar Stop button. Hidden by default — only renders while a recording
-   is in flight. Always red because its only purpose is to stop. The
-   options popover that used to live below it was removed when recording
-   switched to prompt-driven (agent's `record_tab` tool). */
-#btn-record { color: #ff4136; }
-#btn-record:hover { color: #e63b32; }
-#btn-record.hidden { display: none; }
+/* (No toolbar button — the live recording banner below carries its own
+   Stop control. Recording is started entirely via the agent's
+   `record_tab` tool.) */
 
 /* Live recording banner — sits below the inspection banner. Red bg so the
    user can't miss it, with a pulsing dot. */
