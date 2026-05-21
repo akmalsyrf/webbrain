@@ -103,8 +103,22 @@ export async function transcribeAudio(providers, audioBlob, opts = {}) {
   // includes /v1 for every provider in our manager, so just append.
   const url = picked.baseUrl.replace(/\/$/, '') + '/audio/transcriptions';
 
+  // Re-tag the blob as audio/webm before upload. The recorder produces a
+  // single WebM container with video + audio tracks, so its native MIME
+  // is video/webm. OpenAI's /v1/audio/transcriptions accepts the .webm
+  // extension but rejects video MIMEs at the gateway with HTTP 415
+  // ("Unsupported Media Type") — even though the bytes are otherwise
+  // identical and the server would extract the audio track anyway. Groq
+  // is lenient about this and accepts video/webm, but the right fix is
+  // to send the audio MIME everywhere. We re-wrap rather than mutating
+  // the original blob because Blob.type is read-only.
+  const t0 = audioBlob.type || '';
+  const uploadBlob = t0.startsWith('audio/')
+    ? audioBlob
+    : new Blob([audioBlob], { type: 'audio/webm' });
+
   const form = new FormData();
-  form.append('file', audioBlob, filename);
+  form.append('file', uploadBlob, filename);
   form.append('model', model);
   form.append('response_format', 'verbose_json'); // gets segments + timestamps
   form.append('temperature', '0');
