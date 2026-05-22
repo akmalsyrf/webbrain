@@ -21,6 +21,13 @@ const modeActBtn = document.getElementById('btn-mode-act');
 const actWarning = document.getElementById('act-warning');
 const inputArea = document.getElementById('input-area');
 const stopBtn = document.getElementById('btn-stop');
+// Tab Recorder (v7.4) — recording is started entirely via the agent's
+// `record_tab` tool (prompt-driven). The live red banner that appears
+// during a recording carries its own Stop button; that's the only UI
+// surface. No toolbar button — keeping one was duplicate UI.
+const recordingBanner = document.getElementById('recording-banner');
+const recordingTimerEl = document.getElementById('recording-timer');
+const recordingStopBtn = document.getElementById('btn-recording-stop');
 
 let currentTabId = null;
 let isProcessing = false;
@@ -436,7 +443,167 @@ async function sendMessage() {
   }
 }
 
+// ─── Tab Recorder (v7.4) ────────────────────────────────────────────
+// State: idle ↔ recording. The agent's `record_tab` tool is what flips
+// the panel into recording mode (background broadcasts a started event);
+// the toolbar Stop button + the banner Stop button are the two ways to
+// flip back. The banner timer is driven off recordingState.startedAt
+// (received from background), so it survives panel re-mount.
+
+let recordingTimerInterval = null;
+let recordingStartedAt = null;
+
+function formatRecordTimer(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = String(Math.floor(total / 60)).padStart(2, '0');
+  const s = String(total % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function setRecordingUI(active) {
+  if (recordingBanner) recordingBanner.classList.toggle('hidden', !active);
+  if (active) {
+    if (!recordingTimerInterval) {
+      recordingTimerInterval = setInterval(() => {
+        if (recordingStartedAt && recordingTimerEl) {
+          recordingTimerEl.textContent = formatRecordTimer(Date.now() - recordingStartedAt);
+        }
+      }, 1000);
+    }
+    if (recordingTimerEl && recordingStartedAt) {
+      recordingTimerEl.textContent = formatRecordTimer(Date.now() - recordingStartedAt);
+    }
+  } else {
+    if (recordingTimerInterval) {
+      clearInterval(recordingTimerInterval);
+      recordingTimerInterval = null;
+    }
+    if (recordingTimerEl) recordingTimerEl.textContent = '00:00';
+    recordingStartedAt = null;
+  }
+}
+
+async function hydrateRecordingFromBackground() {
+  try {
+    const res = await sendToBackground('get_recording_state');
+    if (res?.state?.active) {
+      recordingStartedAt = res.state.startedAt;
+      setRecordingUI(true);
+    } else {
+      setRecordingUI(false);
+    }
+  } catch { /* background not ready yet, ignore */ }
+}
+
+async function stopRecording() {
+  if (recordingStopBtn) recordingStopBtn.disabled = true;
+  try {
+    const res = await sendToBackground('stop_tab_recording');
+    if (!res?.ok) {
+      alert(t('sp.record.error', { error: res?.error || 'unknown' }));
+      return;
+    }
+    setRecordingUI(false);
+  } finally {
+    if (recordingStopBtn) recordingStopBtn.disabled = false;
+  }
+}
+
+if (recordingStopBtn) recordingStopBtn.addEventListener('click', stopRecording);
+
+// Hydrate on panel boot — the agent may have started a recording before
+// this panel even mounted (Cmd+T to a new tab, then switch back).
+hydrateRecordingFromBackground();
+
 // --- Listen for Agent Updates ---
+
+// Recorder broadcasts — independent of the per-tab agent_update flow.
+// These are intentionally NOT scoped by tabId because the recording banner
+// is global (a panel on any tab in the window should reflect that a record
+// is in progress on tab X).
+// Holds the latest finished recording result (filename + optional
+// transcript) so Phase 3's "Summarize" CTA can read it.
+let lastRecordingResult = null;
+let lastTranscript = null;
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.target !== 'sidepanel' || msg.action !== 'recording_update') return;
+  if (msg.event === 'started') {
+    recordingStartedAt = msg.state?.startedAt || Date.now();
+    setRecordingUI(true);
+  } else if (msg.event === 'stopped') {
+    setRecordingUI(false);
+    lastRecordingResult = msg.result || null;
+    if (lastRecordingResult?.transcribeAfter) {
+      showRecordingStatus(t('sp.record.transcribing'));
+    } else if (lastRecordingResult?.filename) {
+      showRecordingStatus(t('sp.record.saved', { filename: lastRecordingResult.filename }), { autoHide: 6000 });
+    }
+  } else if (msg.event === 'transcribing') {
+    showRecordingStatus(t('sp.record.transcribing'));
+  } else if (msg.event === 'transcribed') {
+    if (msg.result?.ok) {
+      lastTranscript = msg.result.text || null;
+      showRecordingStatus(
+        t('sp.record.transcribed', { filename: msg.result.transcriptFilename || 'transcript.txt' }),
+        { autoHide: 8000, summarizable: true }
+      );
+    } else {
+      showRecordingStatus(t('sp.record.transcribe_failed', { error: msg.result?.error || 'unknown' }), { autoHide: 8000 });
+    }
+  }
+});
+
+// Minimal status strip just below the (now-hidden) recording banner.
+// Carries post-recording notifications: "saved to Downloads", "transcribing…",
+// "transcript ready" + optional Summarize CTA (Phase 3).
+function showRecordingStatus(text, opts = {}) {
+  let el = document.getElementById('recording-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'recording-status';
+    el.className = 'recording-status';
+    const banner = document.getElementById('recording-banner');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(el, banner.nextSibling);
+    } else {
+      document.body.appendChild(el);
+    }
+  }
+  el.innerHTML = ''; // reset
+  const span = document.createElement('span');
+  span.textContent = text;
+  el.appendChild(span);
+  if (opts.summarizable && lastTranscript) {
+    const btn = document.createElement('button');
+    btn.textContent = t('sp.record.summarize');
+    btn.className = 'btn-summarize-recording';
+    btn.addEventListener('click', () => summarizeLastTranscript());
+    el.appendChild(btn);
+  }
+  el.classList.remove('hidden');
+  if (opts.autoHide) {
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => el.classList.add('hidden'), opts.autoHide);
+  }
+}
+
+// Phase 3 placeholder — wired below when we add the summarize message
+// handoff. Defined here so showRecordingStatus can reference it.
+function summarizeLastTranscript() {
+  if (!lastTranscript) return;
+  // The sidepanel's send-message path expects a user-typed string. Drop the
+  // transcript in as if the user pasted it with a summary instruction.
+  const prompt =
+    `I just recorded a tab. Here is the Whisper transcript — please summarize it ` +
+    `in 5-8 bullet points and extract any action items, decisions, and open ` +
+    `questions. Be concise.\n\n----- TRANSCRIPT -----\n${lastTranscript}\n----- END TRANSCRIPT -----`;
+  if (inputEl) {
+    inputEl.value = prompt;
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  if (sendBtn) sendBtn.click();
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
@@ -647,13 +814,16 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
   card.appendChild(answered);
   scrollToBottom();
 
-  chrome.runtime.sendMessage({
-    action: 'clarify_response',
-    tabId,
-    clarifyId,
-    answer,
-    source,
-  }).catch(() => { /* background may be torn down — clarify state already lives there */ });
+  // IMPORTANT: include `target: 'background'`. Without it, background's
+  // message router (chrome.runtime.onMessage in background.js) silently
+  // drops the message — the very first line is
+  //   if (msg.target !== 'background') return;
+  // …and the agent's pending clarify Promise hangs forever, leaving the
+  // run stuck in `status: "running"` even after the user answers. Use
+  // sendToBackground() rather than chrome.runtime.sendMessage directly
+  // so the target field is always injected.
+  sendToBackground('clarify_response', { tabId, clarifyId, answer, source })
+    .catch(() => { /* background may be torn down — clarify state already lives there */ });
 }
 
 

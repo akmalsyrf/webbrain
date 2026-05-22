@@ -7,6 +7,14 @@ import {
   getClaudeOAuthStatus,
 } from './providers/oauth-claude.js';
 import { getBalance as capsolverGetBalance } from './agent/captcha-solver.js';
+// (ensureOffscreen + transcribeAudio used to be imported here; both are
+// now consumed inside src/recorder/host.js, which background.js calls into.)
+import {
+  startTabRecording,
+  stopTabRecording,
+  getRecordingState,
+  setProviderManager as setRecorderProviderManager,
+} from './recorder/host.js';
 
 /**
  * WebBrain Service Worker (Background Script)
@@ -15,6 +23,11 @@ import { getBalance as capsolverGetBalance } from './agent/captcha-solver.js';
 
 const providerManager = new ProviderManager();
 const agent = new Agent(providerManager);
+
+// Wire the recorder to our provider manager so its transcription path
+// can look up the user's configured Whisper-compatible provider. Must
+// happen AFTER providerManager is constructed.
+setRecorderProviderManager(providerManager);
 
 // Load maxSteps setting
 async function loadMaxSteps() {
@@ -152,6 +165,11 @@ function savePanelTabs() {
   chrome.storage.session?.set({ [PANEL_TABS_KEY]: Array.from(panelTabs) }).catch(() => {});
 }
 loadPanelTabs();
+
+// (Tab recorder state + Whisper-transcription helpers moved to
+// src/recorder/host.js so the agent's prompt-driven tools can share
+// the exact same orchestration with the sidepanel button. background.js
+// just exposes routes that call into the module.)
 
 // Per-window WebBrain group ID. windowId -> tabGroups groupId.
 const webBrainGroupByWindow = new Map();
@@ -619,6 +637,21 @@ async function handleMessage(msg, sender) {
         return { ok: false, error: e.message };
       }
     }
+    // ── Tab Recorder routes (v7.4) ────────────────────────────────
+    // Thin wrappers around src/recorder/host.js. Same module is also
+    // imported by agent.js so the prompt-driven `record_tab` and
+    // `stop_recording` tools share the exact same orchestration.
+    case 'start_tab_recording': {
+      const tabId = msg.tabId || sender.tab?.id;
+      return await startTabRecording(tabId, msg.options || {});
+    }
+    case 'stop_tab_recording': {
+      return await stopTabRecording();
+    }
+    case 'get_recording_state': {
+      return { ok: true, state: getRecordingState() };
+    }
+
     // --- Page Info (quick, no agent loop) ---
     case 'get_page_info': {
       const tabId = msg.tabId || sender.tab?.id;

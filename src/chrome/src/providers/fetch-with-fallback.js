@@ -7,36 +7,12 @@
  * even with host_permissions and privateNetworkAccess.
  */
 
-let offscreenReady = false;
+import { ensureOffscreen } from '../offscreen/ensure.js';
 
-async function ensureOffscreen() {
-  if (offscreenReady) return;
-  try {
-    // Check if offscreen document already exists
-    const existing = await chrome.offscreen.hasDocument();
-    if (existing) {
-      offscreenReady = true;
-      return;
-    }
-  } catch {
-    // hasDocument not available in older Chrome — try creating anyway
-  }
-  try {
-    await chrome.offscreen.createDocument({
-      url: 'src/offscreen/offscreen.html',
-      reasons: ['LOCAL_STORAGE'], // closest available reason for networking
-      justification: 'Proxy fetch requests to local network LLM servers',
-    });
-    offscreenReady = true;
-  } catch (e) {
-    // Already exists or not supported — either way, try sending messages
-    if (e.message?.includes('already exists')) {
-      offscreenReady = true;
-    } else {
-      throw e;
-    }
-  }
-}
+// (Previously this file had its own ensureOffscreen() — moved to a shared
+// helper in ../offscreen/ensure.js so the recorder and the fetch proxy
+// can co-exist in one offscreen document. See that file for the full
+// rationale on why reasons must be declared together up front.)
 
 /**
  * Try direct fetch first. If it fails with a network error, retry

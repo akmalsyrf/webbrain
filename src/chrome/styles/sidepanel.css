@@ -926,3 +926,79 @@ body {
   border-top: 1px dashed var(--border);
 }
 
+
+/* ─── Tab Recorder (v7.4) ─────────────────────────────────────────── */
+
+/* (No toolbar button — the live recording banner below carries its own
+   Stop control. Recording is started entirely via the agent's
+   `record_tab` tool.) */
+
+/* Live recording banner — sits below the inspection banner. Red bg so the
+   user can't miss it, with a pulsing dot. */
+#recording-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 65, 54, 0.12);
+  border-bottom: 1px solid rgba(255, 65, 54, 0.3);
+  font-size: 12px;
+  color: var(--text-primary, #e8e8e8);
+}
+#recording-banner.hidden { display: none; }
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4136;
+  animation: rec-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+.recording-label { flex: 1; font-weight: 600; }
+.recording-timer { font-variant-numeric: tabular-nums; font-weight: 600; color: #ff4136; }
+.recording-stop {
+  background: #ff4136;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recording-stop:hover { background: #e63b32; }
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-dot { animation: none; }
+}
+
+/* Post-recording status strip — replaces the live banner once recording stops.
+   Carries: "saved to Downloads", "transcribing…", "transcript ready + Summarize". */
+.recording-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(108, 99, 255, 0.10);
+  border-bottom: 1px solid rgba(108, 99, 255, 0.25);
+  font-size: 12px;
+  color: var(--text-primary, #e8e8e8);
+  transition: opacity 0.2s;
+}
+.recording-status.hidden { display: none; }
+.recording-status span { flex: 1; }
+.btn-summarize-recording {
+  background: var(--accent, #6c63ff);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-summarize-recording:hover { background: var(--accent2, #5a52d5); }

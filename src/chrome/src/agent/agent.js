@@ -20,6 +20,11 @@ import {
 } from './pdf-tools.js';
 import * as trace from '../trace/recorder.js';
 import { solveCaptcha, detectCaptcha, injectToken } from './captcha-solver.js';
+import {
+  startTabRecording as recorderStart,
+  stopTabRecording as recorderStop,
+  getRecordingState as recorderGetState,
+} from '../recorder/host.js';
 
 /**
  * The WebBrain Agent — orchestrates multi-step LLM + tool-use loops.
@@ -2616,6 +2621,34 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           }
         }
 
+        // If the user asked to save this screenshot to Downloads, do it
+        // here — directly from the service worker via chrome.downloads.
+        // This runs BEFORE the vision-presentation branch because saving
+        // is independent of whether the agent can see the image. The
+        // screenshot data URLs are clean (image/png or image/jpeg with
+        // no parameters) so they pass through downloads.download safely
+        // — unlike the recorder's video/webm;codecs=... edge case.
+        let savedFile = null;
+        if (args && args.save) {
+          try {
+            const mimeMatch = /^data:([^;]+);/.exec(dataUrl);
+            const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+            const ext = mime === 'image/jpeg' ? 'jpg' : 'png';
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_');
+            let filename = (args.filename || `webbrain-screenshot-${stamp}.${ext}`).trim();
+            // Strip any directory components for safety; chrome.downloads
+            // disallows them in MV3 anyway.
+            filename = filename.split('/').pop().split('\\').pop();
+            if (!/\.(png|jpg|jpeg)$/i.test(filename)) filename += `.${ext}`;
+            const downloadId = await chrome.downloads.download({
+              url: dataUrl, filename, saveAs: false,
+            });
+            savedFile = { downloadId, filename, mimeType: mime };
+          } catch (e) {
+            savedFile = { error: e.message || String(e) };
+          }
+        }
+
         // Pick the presentation path based on what the active providers can
         // actually do with an image. Order matters: a dedicated vision model
         // (cheaper, summary-only) wins over the main provider's own vision.
@@ -2633,6 +2666,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
               description: `[Screenshot described by vision model ${desc.model}]\n${desc.text}`,
               page: probe || undefined,
               coordAligned,
+              savedFile: savedFile || undefined,
             };
           }
           // Sub-call failed — fall through to raw-image path if the main
@@ -2650,16 +2684,28 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             description,
             page: probe || undefined,
             coordAligned,
+            savedFile: savedFile || undefined,
             _attachImage: dataUrl,
           };
         }
 
-        // No vision anywhere — the model literally cannot see this. Return
-        // an error rather than a deceptive "success" so the agent doesn't
-        // hallucinate about what's on screen.
+        // No vision: still a useful tool if the user asked to save.
+        if (savedFile && !savedFile.error) {
+          return {
+            success: true,
+            method: 'save_only',
+            description: `Screenshot saved to Downloads as ${savedFile.filename}. (The active model has no vision, so the image was not shown to the model.)`,
+            savedFile,
+            page: probe || undefined,
+            coordAligned,
+          };
+        }
+
+        // No vision anywhere AND not saving — the model literally cannot see
+        // this. Return an error rather than a deceptive "success".
         return {
           success: false,
-          error: 'This model cannot see images: it has no vision capability and no dedicated vision model is configured. In provider settings, enable "Model supports vision" for the active provider or set a vision model. For now, use get_accessibility_tree, get_interactive_elements, or read_page to inspect the page.',
+          error: 'This model cannot see images: it has no vision capability and no dedicated vision model is configured. In provider settings, enable "Model supports vision" for the active provider or set a vision model. For now, use get_accessibility_tree, get_interactive_elements, or read_page to inspect the page. (If you only wanted to save the screenshot to a file, pass `save:true` — that works without vision.)',
         };
       } catch (e) {
         return { success: false, error: `Screenshot failed: ${e.message}` };
@@ -2914,6 +2960,47 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
     }
 
+    // ─── Tab Recorder (v7.4) ──────────────────────────────────────────
+    // Prompt-driven counterparts to the sidepanel's button. Both wrap the
+    // shared orchestration in src/recorder/host.js so user-UI and agent-
+    // tool paths can't drift.
+    if (name === 'record_tab') {
+      const opts = {
+        video: args?.video !== false,
+        mic: args?.mic !== false,
+        transcribeAfter: !!args?.transcribe,
+      };
+      const r = await recorderStart(tabId, opts);
+      if (!r.ok) return { success: false, error: r.error };
+      const s = r.state;
+      return {
+        success: true,
+        state: s,
+        note: `Recording started at ${new Date(s.startedAt).toISOString()}.` +
+              (s.hasMic ? '' : ' (Microphone unavailable — recording tab audio only.)') +
+              ' Tell the user the red banner at the top of the sidebar shows the live timer and a Stop button; call `stop_recording` when they ask you to stop, or just let them click Stop themselves.',
+      };
+    }
+    if (name === 'stop_recording') {
+      const cur = recorderGetState();
+      if (!cur.active) {
+        return { success: false, error: 'No active recording to stop.' };
+      }
+      const r = await recorderStop();
+      if (!r.ok) return { success: false, error: r.error };
+      return {
+        success: true,
+        filename: r.filename,
+        downloadId: r.downloadId,
+        sizeBytes: r.sizeBytes,
+        durationMs: r.durationMs,
+        transcribeAfter: r.transcribeAfter,
+        note: r.transcribeAfter
+          ? `Recording saved as ${r.filename}. Whisper transcription is running in the background; the user will see "Transcript saved" in the sidebar when it finishes.`
+          : `Recording saved as ${r.filename}.`,
+      };
+    }
+
     // ─── PDF reader ───────────────────────────────────────────────────
     // Chrome's built-in PDF viewer is a chrome-extension:// page that our
     // content scripts cannot inject into, so click / read_page / get_ax
@@ -2992,6 +3079,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         );
         const rawUrl = `data:image/png;base64,${imageData}`;
 
+        // If the caller asked to save, do it with the RAW (uncompressed,
+        // full-resolution) PNG — that's what the user actually wants on
+        // disk, not the budget-shrunk version we feed the model.
+        let savedFile = null;
+        if (args && args.save) {
+          try {
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_');
+            let filename = (args.filename || `webbrain-fullpage-${stamp}.png`).trim();
+            filename = filename.split('/').pop().split('\\').pop();
+            if (!/\.(png|jpg|jpeg)$/i.test(filename)) filename += '.png';
+            const downloadId = await chrome.downloads.download({
+              url: rawUrl, filename, saveAs: false,
+            });
+            savedFile = { downloadId, filename, mimeType: 'image/png' };
+          } catch (e) {
+            savedFile = { error: e.message || String(e) };
+          }
+        }
+
         // Full-page captures are the worst case for size — a 1920×8000
         // document at native DPR easily blows past any provider's image
         // budget. Always shrink to the token/byte budget. Dimensions come
@@ -3011,6 +3117,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
               success: true,
               method: 'vision_describe',
               description: `[Full-page screenshot described by vision model ${desc.model}, ${shrunk.width}×${shrunk.height} after budget fit]\n${desc.text}`,
+              savedFile: savedFile || undefined,
             };
           }
         }
@@ -3019,12 +3126,21 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             success: true,
             method: 'image_attach',
             description: `Full page screenshot captured and fit to vision budget (${shrunk.width}×${shrunk.height}, ${shrunk.dataUrl.length} base64 chars)`,
+            savedFile: savedFile || undefined,
             _attachImage: shrunk.dataUrl,
+          };
+        }
+        if (savedFile && !savedFile.error) {
+          return {
+            success: true,
+            method: 'save_only',
+            description: `Full-page screenshot saved to Downloads as ${savedFile.filename}.`,
+            savedFile,
           };
         }
         return {
           success: false,
-          error: 'This model cannot see images. Enable "Model supports vision" for the active provider or configure a dedicated vision model.',
+          error: 'This model cannot see images. Enable "Model supports vision" for the active provider, configure a dedicated vision model, or pass `save:true` to just save the file.',
         };
       } catch (e) {
         return { success: false, error: `Full page screenshot failed: ${e.message}` };

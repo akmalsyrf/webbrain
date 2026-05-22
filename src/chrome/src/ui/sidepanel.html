@@ -35,6 +35,10 @@
             <line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
         </button>
+        <!-- (Recording is now entirely prompt-driven via the agent's
+             `record_tab` tool. The live recording banner below the
+             header carries its own Stop button, so there's no need for
+             a toolbar affordance — keeping both was duplicate UI.) -->
         <button id="btn-settings" data-i18n-title="sp.btn.settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -54,6 +58,18 @@
     <div id="inspection-banner" class="hidden">
       <div class="inspection-dot"></div>
       <span data-i18n="sp.inspection"></span>
+    </div>
+
+    <!-- (Recording options popover removed. Recording is now triggered by
+         the agent's `record_tab` tool — e.g. user types "record this
+         meeting and transcribe it" and the agent calls the tool with the
+         right options. Live banner below is the only post-start UI.) -->
+
+    <div id="recording-banner" class="hidden" role="status" aria-live="polite">
+      <span class="recording-dot" aria-hidden="true"></span>
+      <span class="recording-label" data-i18n="sp.record.banner_label"></span>
+      <span class="recording-timer" id="recording-timer">00:00</span>
+      <button id="btn-recording-stop" class="recording-stop" data-i18n="sp.record.stop"></button>
     </div>
 
     <!-- Chat Messages -->

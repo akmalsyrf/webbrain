@@ -119,13 +119,21 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'screenshot',
-      description: 'Capture a screenshot of the visible area of the current tab. Returns a base64-encoded PNG image. Default: native device resolution — higher visual fidelity, better for reading small text. IMPORTANT: at native resolution on HiDPI displays, image pixels are NOT CSS pixels, so you CANNOT read (X,Y) from the image and pass them to click({x,y}). If you plan to pixel-click, pass `coord_aligned: true` to force a CSS-pixel-aligned capture where image pixel (X,Y) maps exactly to click(x:X, y:Y). Better: prefer click_ax({ref_id}) after get_accessibility_tree — avoids coordinate math entirely. The result\'s `page` field reports `documentTextChars` (total visible text on the page) and `visibleTextChars` (text in the current viewport). If the screenshot LOOKS blank but `documentTextChars` is in the thousands, the page is not empty — your image is stale mid-lazy-load (ads, hero images, fonts still arriving). Wait or call read_page / get_accessibility_tree instead of declaring the page empty.',
+      description: 'Capture a screenshot of the visible area of the current tab. Returns a base64-encoded PNG image. Default: native device resolution — higher visual fidelity, better for reading small text. IMPORTANT: at native resolution on HiDPI displays, image pixels are NOT CSS pixels, so you CANNOT read (X,Y) from the image and pass them to click({x,y}). If you plan to pixel-click, pass `coord_aligned: true` to force a CSS-pixel-aligned capture where image pixel (X,Y) maps exactly to click(x:X, y:Y). Better: prefer click_ax({ref_id}) after get_accessibility_tree — avoids coordinate math entirely. The result\'s `page` field reports `documentTextChars` (total visible text on the page) and `visibleTextChars` (text in the current viewport). If the screenshot LOOKS blank but `documentTextChars` is in the thousands, the page is not empty — your image is stale mid-lazy-load (ads, hero images, fonts still arriving). Wait or call read_page / get_accessibility_tree instead of declaring the page empty. To SAVE the screenshot to the user\'s Downloads folder, pass `save:true` — this writes the PNG via chrome.downloads.download directly from the service worker, bypassing the page\'s CSP entirely (so it works on Google Meet / Stripe / banking pages where execute_js fails). Do NOT try to save via execute_js + canvas + anchor click — strict-CSP sites block it.',
       parameters: {
         type: 'object',
         properties: {
           coord_aligned: {
             type: 'boolean',
             description: 'Align the capture to CSS pixels (scale=1) so image (X,Y) == click (X,Y). Use this immediately before click({x,y}). Default false (native device resolution).',
+          },
+          save: {
+            type: 'boolean',
+            description: 'Also save the PNG to the user\'s Downloads folder. Default false. Use this when the user explicitly asks to "download", "save", or "export" the screenshot. The file is saved via chrome.downloads.download from the service worker — works even on pages with strict CSP that block in-page JS download tricks.',
+          },
+          filename: {
+            type: 'string',
+            description: 'Optional filename when `save:true`. Defaults to webbrain-screenshot-<timestamp>.png. Don\'t include directory; downloads always land in the Downloads folder.',
           },
         },
         required: [],
@@ -316,10 +324,19 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'full_page_screenshot',
-      description: 'Capture a full-page screenshot that includes all scrollable content. Pixel-perfect capture via CDP. Returns a base64-encoded PNG image. Use this instead of screenshot when you need to see the entire page.',
+      description: 'Capture a full-page screenshot that includes all scrollable content. Pixel-perfect capture via CDP. Returns a base64-encoded PNG image. Use this instead of screenshot when you need to see the entire page. To SAVE the result to Downloads, pass `save:true` (same path as `screenshot` — runs from the service worker, immune to page CSP).',
       parameters: {
         type: 'object',
-        properties: {},
+        properties: {
+          save: {
+            type: 'boolean',
+            description: 'Also save the PNG to the user\'s Downloads folder. Default false.',
+          },
+          filename: {
+            type: 'string',
+            description: 'Optional filename when `save:true`. Defaults to webbrain-fullpage-<timestamp>.png.',
+          },
+        },
         required: [],
       },
     },
@@ -637,6 +654,30 @@ export const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'record_tab',
+      description: 'Start recording the current tab to a .webm file in the user\'s Downloads folder. Captures the tab\'s video and audio plus (by default) the user\'s microphone, mixed via Web Audio so both sides of a call are present in the final file. The recording runs in an offscreen document and survives tab switches — only the user (via the in-banner Stop button) or a follow-up `stop_recording` tool call ends it. Use this when the user says "record this", "record the meeting", "start recording", or similar. Works on Google Meet and the Zoom web client. Does NOT work on the native Zoom desktop app (not in a browser tab) or on chrome:// pages. If `transcribe:true`, a Whisper transcript is produced after stop using whichever OpenAI-compatible provider (openai, groq, etc.) the user has configured — saved as a sibling .txt file. Returns `{ ok:true, state:{...} }` on success; on failure (already recording, tabCapture refused, no permission) returns `{ ok:false, error }` — relay the error to the user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          video: { type: 'boolean', description: 'Include the tab\'s video track. Default true. Set false for an audio-only recording (much smaller file, faster transcription).' },
+          mic: { type: 'boolean', description: 'Include the user\'s microphone (mixed with tab audio). Default true. Set false to record only what the tab is playing.' },
+          transcribe: { type: 'boolean', description: 'After the recording stops, run Whisper transcription and save the transcript as a .txt next to the .webm. Default false. Requires an OpenAI / Groq / local Whisper-compatible provider configured in Settings → Providers.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_recording',
+      description: 'Stop the active tab recording started with `record_tab` (or via the user clicking the in-banner Stop button). Saves the .webm to Downloads and, if `transcribe` was true at start, kicks off the Whisper run. Returns `{ ok:true, filename, downloadId, sizeBytes, durationMs }`. If there\'s no active recording, returns `{ ok:false, error }`. After this call, do not call `record_tab` again unless the user explicitly asks for another recording.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
 ];
 
 /**
@@ -802,6 +843,7 @@ Available tools:
 - verify_form: Verify form fields before submitting
 - scratchpad_write: Pin a note in context that survives summarization (use on long tasks to remember download IDs, file paths, progress, plans)
 - download_social_media: One-shot image/video download from Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, YouTube. Single call — no need to inspect the DOM yourself.
+- record_tab / stop_recording: Record the current tab (video + tab audio + mic) into a .webm in Downloads. Call \`record_tab\` when the user says "record this", "start recording", "record the meeting", "kaydet", or similar. Pass \`transcribe:true\` if they mention "transcribe", "transcript", "transkript", "write it down", "konuşulanları yaz", "metin haline getir", "summarize the call later" — basically any signal they want text out of the audio. If the user says "audio only" / "sadece ses" / "no video", pass \`video:false\`. Use \`stop_recording\` only when they explicitly say "stop recording" or similar; don't call it on your own. The active recording shows a red banner in the sidebar with a Stop button the user can click directly, so it's fine to just start it and move on without further chatter.
 
 ACCESSIBILITY TREE — read this carefully:
 - Output format is FLAT INDENTED TEXT. Each node is one line:

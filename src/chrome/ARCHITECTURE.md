@@ -1,6 +1,6 @@
 # WebBrain Chrome Extension — Architecture
 
-> Version 7.3.1 · Manifest V3 · Service Worker background
+> Version 7.3.2 · Manifest V3 · Service Worker background
 
 ## High-Level Overview
 
@@ -75,7 +75,8 @@ src/chrome/
   "permissions": [
     "sidePanel", "activeTab", "scripting", "storage",
     "webNavigation", "debugger", "downloads",
-    "unlimitedStorage", "offscreen", "privateNetworkAccess"
+    "unlimitedStorage", "offscreen", "privateNetworkAccess",
+    "tabCapture"
   ],
   "host_permissions": ["<all_urls>", "http://localhost/*", "http://127.0.0.1/*"]
 }
@@ -85,8 +86,124 @@ src/chrome/
 |---|---|
 | `debugger` | CDP access — trusted mouse/keyboard, pixel-perfect screenshots, shadow-DOM piercing. The single most important differentiator vs Firefox. |
 | `unlimitedStorage` | Optional trace recorder persists agent runs (LLM I/O + screenshots) into IndexedDB. A multi-step run can be 1–10 MB; the default ~10 MB origin cap fills after a few runs. |
-| `offscreen` | Localhost LLM servers (llama.cpp, LM Studio, Ollama) are unreachable from the MV3 service worker due to CORS / Private Network Access restrictions. An offscreen document is created on demand as a fetch proxy. |
+| `offscreen` | Localhost LLM servers (llama.cpp, LM Studio, Ollama) are unreachable from the MV3 service worker due to CORS / Private Network Access restrictions. An offscreen document hosts the fetch proxy AND the tab recorder. |
 | `privateNetworkAccess` | Same motivation — allow calling `http://localhost:8080` from the extension. |
+| `tabCapture` | Optional "Record this tab" feature in the sidepanel. Pulls a MediaStream of the active tab's video+audio via `chrome.tabCapture.getMediaStreamId()`, hands it to the offscreen document which runs the MediaRecorder. |
+
+---
+
+## Tab Recorder (v7.4+)
+
+Optional opt-in feature in the sidepanel toolbar. Captures the active tab's
+video + audio + (optionally) microphone into a single webm file, with
+optional Whisper transcription after stop.
+
+### Flow
+
+```
+sidepanel.js  [Record button → popover → Start]
+      │
+      │ runtime.sendMessage {action:'start_tab_recording', tabId, options}
+      ▼
+background.js
+      ├─ chrome.tabCapture.getMediaStreamId({targetTabId})    → streamId
+      ├─ ensureOffscreen()  (shared with localhost fetch proxy)
+      └─ runtime.sendMessage to offscreen {type:'recorder-start', streamId, options}
+                      │
+                      ▼
+offscreen/recorder.js
+      ├─ navigator.mediaDevices.getUserMedia(chromeMediaSource:'tab', streamId)
+      ├─ navigator.mediaDevices.getUserMedia({audio:true})       (mic, best-effort)
+      ├─ AudioContext:
+      │     tab audio ─→ mixDestination
+      │     mic       ─→ mixDestination
+      │     tab audio ─→ audioContext.destination   (passthrough so user hears the call)
+      ├─ MediaStream(video tracks ∪ mixDestination audio tracks)
+      └─ MediaRecorder(mimeType: 'video/webm;codecs=vp9,opus')
+              └─ ondataavailable → chunks[]
+                                  → on stop, Blob → dataURL → background
+
+background.js (on recorder-stop)
+      ├─ chrome.downloads.download(dataURL → webbrain-recording-<ts>.webm)
+      └─ if transcribeAfter → runTranscription()
+              ├─ providerManager.providers → pick first OpenAI-compatible
+              │   (openai → whisper-1, groq → whisper-large-v3, …)
+              ├─ POST /v1/audio/transcriptions (multipart: file + model + response_format)
+              └─ chrome.downloads.download(.txt sibling)
+
+sidepanel listens for recording_update broadcast events:
+   started        → red banner appears, mm:ss timer starts
+   stopped        → banner hides, "saved to Downloads" toast
+   transcribing   → "Transcribing audio with Whisper…"
+   transcribed    → "Transcript saved" + Summarize button (Phase 3)
+```
+
+### Audio passthrough — the gotcha
+
+By default, when `chrome.tabCapture` is active, Chrome reroutes the tab's
+audio into the capture stream — the user can no longer hear what's playing
+in the tab. For a meeting recorder this is catastrophic (you can't follow
+the call). `offscreen/recorder.js` works around this with Web Audio:
+
+```js
+const tabAudioSource = audioContext.createMediaStreamSource(tabStream);
+tabAudioSource.connect(mixDestination);          // into the recording
+tabAudioSource.connect(audioContext.destination); // back to the user's speaker
+```
+
+Mic, by contrast, is only piped into the recording (NOT to the speaker —
+that would feed back).
+
+### Why a shared offscreen document
+
+Chrome MV3 allows exactly one offscreen document per extension. The
+localhost-fetch proxy already needs one for Private Network Access
+workarounds. Rather than fight over it, `offscreen/offscreen.html` loads
+both `offscreen.js` (fetch proxy) and `recorder.js` (tab recorder).
+`src/offscreen/ensure.js` is the single creation helper, declaring all
+reasons up front: `LOCAL_STORAGE` (fetch), `DISPLAY_MEDIA` (tabCapture),
+`USER_MEDIA` (mic). Each script binds its own `runtime.onMessage` filter
+(`offscreen-fetch` vs `recorder-*`) so they don't collide.
+
+### Transcription provider selection
+
+There is intentionally no separate "Whisper provider" settings tab. The
+existing OpenAI-compatible provider configs already cover everything we
+need. `src/agent/transcribe.js` picks the first usable one in priority
+order:
+
+| Priority | Provider id | Default model |
+|---|---|---|
+| 1 | `openai` | `whisper-1` |
+| 2 | `groq`   | `whisper-large-v3` |
+| 3 | `lmstudio` | user-configured local whisper model |
+| 4 | `llamacpp` | user-configured local whisper model |
+| 5 | Any other `type:'openai'` provider not on the blocklist |
+
+The blocklist (`anthropic`, `gemini`, `mistral`, `deepseek`, `xai`, `nvidia`)
+covers providers that don't host Whisper despite being OpenAI-compatible
+for chat. If none of the eligible providers is configured, transcription
+is skipped with a clear "configure OpenAI or Groq" error — the .webm is
+still saved.
+
+### Hard limits
+
+| | Works |
+|---|---|
+| Google Meet (browser) | ✓ |
+| Zoom web client (`zoom.us/wc/...`) | ✓ |
+| **Native Zoom desktop app** | ✗ — not in a tab; tabCapture cannot reach it. Would need `desktopCapture` (window picker) — deferred. |
+| DRM-protected video (Netflix, Disney+) | ✗ — Chrome blocks the encoder at the platform level. |
+| chrome:// / chrome-extension:// pages | ✗ — tabCapture is not allowed there. |
+| Background tabs at start time | ⚠ — `getMediaStreamId` requires the target tab to be active; we briefly activate it before capture. The user can switch away after capture starts. |
+
+### Firefox
+
+Not yet — Firefox MV2 has no `chrome.tabCapture` equivalent; `browser.tabCapture`
+doesn't exist. Only `getDisplayMedia` is available, which always shows the
+system picker. That's a different UX (and matches "desktop capture only" —
+the user's explicit "tab only" requirement can't be honoured there). Tracked
+as a separate follow-up.
 
 ---
 
