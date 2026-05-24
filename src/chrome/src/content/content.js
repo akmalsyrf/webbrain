@@ -1731,6 +1731,69 @@
           return { success: false, error: e && e.message || String(e) };
         }
       },
+      // Resolve TWO ref_ids in a single round-trip and measure both
+      // rects in the SAME post-scroll viewport snapshot. drag_drop needs
+      // this because the previous "resolve-source, then resolve-dest,
+      // then re-resolve-source" dance scrolled the viewport back to
+      // source after dest was measured — invalidating the dest coords.
+      // Doing both scrolls then both measurements here means both
+      // x/y pairs are in the same coordinate frame the CDP drag will
+      // dispatch into.
+      'ax_resolve_two_rects': () => {
+        try {
+          const { fromRefId, toRefId } = msg.params || {};
+          if (typeof fromRefId !== 'string' || typeof toRefId !== 'string') {
+            return { success: false, error: 'fromRefId and toRefId (both strings, e.g. "ref_42") are required' };
+          }
+          if (typeof window.__wb_ax_lookup !== 'function') {
+            return { success: false, error: 'accessibility-tree.js not injected' };
+          }
+          const fromEl = window.__wb_ax_lookup(fromRefId);
+          const toEl = window.__wb_ax_lookup(toRefId);
+          if (!fromEl) return { success: false, error: `fromRefId ${fromRefId} not found` };
+          if (!toEl) return { success: false, error: `toRefId ${toRefId} not found` };
+
+          // Scroll source first, then destination. After both scrolls the
+          // viewport is settled at the dest-centered position; measuring
+          // BOTH rects against that frame is what drag_drop wants.
+          // Source may end up partly off-screen if the two are far
+          // apart vertically — flagged via inViewport on the return.
+          try { fromEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+          try { toEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+
+          const fr = fromEl.getBoundingClientRect();
+          const tr = toEl.getBoundingClientRect();
+          const vw = window.innerWidth, vh = window.innerHeight;
+
+          const measure = (el, r, refId) => {
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const inViewport = r.width > 0 && r.height > 0 && cx >= 0 && cy >= 0 && cx <= vw && cy <= vh;
+            let name = '';
+            try {
+              name = (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))
+                || (el.innerText && el.innerText.trim().slice(0, 80))
+                || '';
+            } catch {}
+            return {
+              ref_id: refId,
+              tag: el.tagName ? el.tagName.toLowerCase() : '',
+              name,
+              x: Math.round(cx),
+              y: Math.round(cy),
+              rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+              inViewport,
+            };
+          };
+          return {
+            success: true,
+            from: measure(fromEl, fr, fromRefId),
+            to: measure(toEl, tr, toRefId),
+          };
+        } catch (e) {
+          return { success: false, error: e && e.message || String(e) };
+        }
+      },
       // ── wait_for_stable ──────────────────────────────────────────────────
       // Resolve when N consecutive milliseconds pass with no DOM mutations
       // AND no in-flight fetch/XHR. wait_for_element answers "did X appear";

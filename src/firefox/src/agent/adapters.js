@@ -358,24 +358,14 @@ const ADAPTERS = [
 - Subscription edits often have proration prompts ("Charge prorated amount immediately" vs "On next invoice") — read which is selected.
 - PRODUCT CATALOG — CRITICAL: The product catalog page has CONFUSABLE buttons near each other. "Export prices" and "Export products" are NOT for creating products — NEVER click them when the task is to create a product. To create a product: (1) click the green "+ Create product" button, (2) the "Add a product" overlay form appears, (3) use get_interactive_elements to find the Name input field INSIDE THE FORM — it will be an input element near the top, (4) click that input, then type_text with no selector to enter the name, (5) scroll down to the "Pricing" section for price/interval, (6) click "Add product" to submit. IMPORTANT: after the form overlay opens, ONLY interact with elements inside the form. Do NOT click anything on the page behind the form.`,
   },
-  {
-    name: 'finance-generic',
-    category: 'finance',
-    // Match common bank, crypto exchange, and payment patterns by domain.
-    match: (url) => /^https?:\/\/[^\/]*(bank|banking|chase|wellsfargo|bankofamerica|citibank|hsbc|barclays|santander|bnp|deutsche|ubs|coinbase|binance|kraken|gemini\.com|bitstamp|bitfinex|crypto\.com|metamask|paypal|venmo|wise\.com|revolut|n26|monzo|robinhood|fidelity|schwab|vanguard|etrade|interactivebrokers|nordnet|degiro)\b/i.test(url),
-    notes: `
-- ⚠️ HIGH-STAKES SITE (financial / banking / crypto). Real money is at stake and many actions are irreversible.
-- DO NOT initiate transfers, trades, payments, withdrawals, or balance changes without an EXPLICIT, SPECIFIC instruction from the user that names the destination and amount in this conversation. Vague instructions like "send some" or "buy a bit" are NOT sufficient.
-- Always read confirmation modals carefully and read them back to the user before clicking the final confirm.
-- If the user asks you to "check balance" or "show transactions", do that and stop. Don't proactively click action buttons.
-- Wallet connect prompts, signature requests, and 2FA codes should be surfaced to the user — never auto-approve.`,
-  },
+  // Site-specific finance adapters come BEFORE finance-generic.
+  // getActiveAdapter returns the first match; finance-generic's regex
+  // includes "coinbase" and "robinhood" as substrings, so if it sat
+  // earlier it would shadow these site-specific adapters and the
+  // high-stakes per-site guidance would never reach the model.
   {
     name: 'coinbase',
     category: 'finance',
-    // Match before finance-generic — coinbase appears in finance-generic's
-    // regex too, but order in ADAPTERS controls which fires first via
-    // getActiveAdapter. The high-stakes warning here subsumes the generic.
     match: (url) => /^https?:\/\/(www\.|pro\.|exchange\.|accounts\.)?coinbase\.com\//.test(url),
     notes: `
 - ⚠️ HIGH-STAKES — real crypto, real money. Trades and withdrawals are typically irreversible.
@@ -410,6 +400,21 @@ const ADAPTERS = [
 - Buy / Sell buttons trigger broker integration (Interactive Brokers, OANDA, etc.) via a side panel — they do NOT execute orders on TradingView itself. If the user said "buy", confirm which broker is connected and treat it as a high-stakes finance action (read order back).
 - Alerts and indicators added to a chart persist per-layout; saving requires sign-in.
 - Heavy keyboard culture: Alt+S save layout, Ctrl+, settings. If the model can't find a button, hint at the shortcut rather than searching forever.`,
+  },
+  {
+    name: 'finance-generic',
+    category: 'finance',
+    // Catch-all for finance/banking/crypto domains we don't have a
+    // site-specific adapter for. MUST be ordered AFTER the specific
+    // finance adapters (stripe, coinbase, robinhood, tradingview) so
+    // those win when both this regex and a specific match() return true.
+    match: (url) => /^https?:\/\/[^\/]*(bank|banking|chase|wellsfargo|bankofamerica|citibank|hsbc|barclays|santander|bnp|deutsche|ubs|coinbase|binance|kraken|gemini\.com|bitstamp|bitfinex|crypto\.com|metamask|paypal|venmo|wise\.com|revolut|n26|monzo|robinhood|fidelity|schwab|vanguard|etrade|interactivebrokers|nordnet|degiro)\b/i.test(url),
+    notes: `
+- ⚠️ HIGH-STAKES SITE (financial / banking / crypto). Real money is at stake and many actions are irreversible.
+- DO NOT initiate transfers, trades, payments, withdrawals, or balance changes without an EXPLICIT, SPECIFIC instruction from the user that names the destination and amount in this conversation. Vague instructions like "send some" or "buy a bit" are NOT sufficient.
+- Always read confirmation modals carefully and read them back to the user before clicking the final confirm.
+- If the user asks you to "check balance" or "show transactions", do that and stop. Don't proactively click action buttons.
+- Wallet connect prompts, signature requests, and 2FA codes should be surfaced to the user — never auto-approve.`,
   },
 
   // ─── Travel ───────────────────────────────────────────────────────────

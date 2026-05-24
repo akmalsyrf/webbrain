@@ -4828,28 +4828,35 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const stepsRaw = Number(args.steps ?? 10);
       const steps = Math.max(2, Math.min(40, Number.isFinite(stepsRaw) ? Math.floor(stepsRaw) : 10));
       try {
-        const fromResp = await chrome.tabs.sendMessage(tabId, {
-          target: 'content', action: 'ax_resolve_rect', params: { ref_id: fromRef },
+        // Single round-trip: content.js scrolls source-then-dest and
+        // measures BOTH rects in the same viewport snapshot. The previous
+        // three-call dance (resolve fromRef → resolve toRef → re-resolve
+        // fromRef) had a scroll race: the re-resolve scrolled source back
+        // into view and invalidated the dest coords we'd just measured.
+        const rectsResp = await chrome.tabs.sendMessage(tabId, {
+          target: 'content',
+          action: 'ax_resolve_two_rects',
+          params: { fromRefId: fromRef, toRefId: toRef },
         });
-        if (!fromResp || !fromResp.success) {
-          return { success: false, error: `drag_drop: fromRefId — ${fromResp?.error || 'resolve failed'}` };
+        if (!rectsResp || !rectsResp.success) {
+          return { success: false, error: `drag_drop: ${rectsResp?.error || 'resolve failed'}` };
         }
-        // Resolve the destination AFTER source scroll has settled; otherwise
-        // toRef's coords may be stale if source-scroll shifted the viewport.
-        await new Promise(r => setTimeout(r, 60));
-        const toResp = await chrome.tabs.sendMessage(tabId, {
-          target: 'content', action: 'ax_resolve_rect', params: { ref_id: toRef },
-        });
-        if (!toResp || !toResp.success) {
-          return { success: false, error: `drag_drop: toRefId — ${toResp?.error || 'resolve failed'}` };
+        const from = rectsResp.from;
+        const toResp = rectsResp.to;
+
+        // Both elements scrolled into view but if source and dest are far
+        // apart vertically the final viewport (centered on dest) may have
+        // pushed source off-screen. CDP mouse events at off-screen coords
+        // don't hit anything, so the drag silently no-ops. Surface a clear
+        // error in that case rather than going through the motions.
+        if (!from.inViewport || !toResp.inViewport) {
+          return {
+            success: false,
+            error: `drag_drop: source and destination are too far apart to fit in the viewport simultaneously (from inViewport=${from.inViewport}, to inViewport=${toResp.inViewport}). CDP mouse events at off-screen coordinates don't land. Workaround: scroll the page so both elements fit, OR use keyboard-based reordering if the site exposes it (Tab + arrow keys on many drag handles).`,
+            from: { ref_id: fromRef, ...from },
+            to: { ref_id: toRef, ...toResp },
+          };
         }
-        // If the destination scroll moved the viewport, the source coords are
-        // now stale — re-resolve source one more time. This is the failure
-        // mode that broke long-list Trello drags on the first iteration.
-        const fromResp2 = await chrome.tabs.sendMessage(tabId, {
-          target: 'content', action: 'ax_resolve_rect', params: { ref_id: fromRef },
-        });
-        const from = (fromResp2 && fromResp2.success) ? fromResp2 : fromResp;
 
         await cdpClient.attach(tabId);
         const x1 = from.x, y1 = from.y, x2 = toResp.x, y2 = toResp.y;
