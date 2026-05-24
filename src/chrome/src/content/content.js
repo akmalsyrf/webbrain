@@ -1671,23 +1671,41 @@
         }
       },
       // execute_js — model-supplied JS body, evaluated in the content
-      // script's isolated world. `new Function()` requires `unsafe-eval`
-      // in the extension's `extension_pages` CSP (the MV3 directive that
-      // also governs content-script eval). That's been granted in
-      // manifest.json since v8.0.x — before then this handler silently
-      // failed on every strict-CSP host with "'unsafe-eval' is not an
-      // allowed source of script: script-src 'self' 'wasm-unsafe-eval'",
-      // and the agent burned tool calls thrashing through fallbacks.
-      // Trade-off (and why we accept it): this extension's whole job is
-      // to evaluate model-generated code in the user's browser —
-      // `unsafe-eval` is not an incremental risk on top of the
-      // `<all_urls>` host_permissions + `scripting` we already have.
+      // script's isolated world via `new Function()`.
+      //
+      // CSP CONSTRAINT (known, not fixable): `new Function()` requires
+      // `'unsafe-eval'` in the executing context's CSP. For content
+      // scripts in MV3 that's the extension's `extension_pages` CSP —
+      // and MV3 forbids `'unsafe-eval'` in extension_pages (Chrome's
+      // minimum-policy enforcement is strict; adding it makes the
+      // extension fail to install). There's no manifest-side workaround.
+      //
+      // Net effect: execute_js fails on every host with the same CSP
+      // error. Detected below and reported with an actionable hint so
+      // the agent stops thrashing through execute_js variants and uses
+      // the finite-verb tools instead.
       'execute_js': () => {
         try {
           const fn = new Function(msg.params.code);
           return { success: true, result: fn() };
         } catch (e) {
-          return { success: false, error: e.message };
+          const errMsg = (e && e.message) || String(e);
+          // Chrome reports CSP eval blocks as EvalError with a message
+          // citing "'unsafe-eval' is not an allowed source of script".
+          // Detect both the name and the message so we catch the case
+          // across Chrome and Firefox.
+          const isCspBlock =
+            (e && e.name === 'EvalError') ||
+            /unsafe-eval|Content Security Policy/i.test(errMsg);
+          if (isCspBlock) {
+            return {
+              success: false,
+              cspBlocked: true,
+              error:
+                'execute_js is blocked by the extension\'s MV3 Content Security Policy — `new Function()` requires `unsafe-eval`, which MV3 forbids in extension_pages. This is a hard browser-level limitation; do NOT retry execute_js with different code, the result is the same. Use the finite tools instead: get_accessibility_tree (read the page), click_ax / type_ax / set_field (interact via ref_id), scroll, navigate, get_selection, iframe_read / iframe_click / iframe_type. If you need a value that has no dedicated tool, read the tree and quote what you see.',
+            };
+          }
+          return { success: false, error: errMsg };
         }
       },
     };

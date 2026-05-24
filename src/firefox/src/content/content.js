@@ -1248,19 +1248,35 @@
       'wait_for_element': () => waitForElement(msg.params || {}),
       'get_selection': () => ({ text: window.getSelection()?.toString() || '' }),
       // execute_js — model-supplied JS body, evaluated in the content
-      // script's isolated world. `new Function()` requires `unsafe-eval`
-      // in the extension's CSP. That's been granted in manifest.json
-      // since v8.0.x — before then this handler silently failed on every
-      // strict-CSP host. Trade-off: this extension's whole job is to
-      // evaluate model-generated code in the user's browser; `unsafe-
-      // eval` is not an incremental risk on top of the `<all_urls>` host
-      // permissions we already have.
+      // script's isolated world via `new Function()`.
+      //
+      // CSP CONSTRAINT (known, not fixable): `new Function()` requires
+      // `'unsafe-eval'` in the executing context's CSP. Firefox MV2
+      // technically allows adding it to the extension CSP, but Chrome
+      // MV3 forbids the same change (extension_pages minimum policy is
+      // strictly enforced). To keep the cross-browser story consistent
+      // — and to avoid quietly papering over a real limitation —
+      // execute_js fails the same way on both browsers when the eval
+      // hits CSP. Detected below; the error guides the agent to the
+      // finite-verb tools instead of more execute_js attempts.
       'execute_js': () => {
         try {
           const fn = new Function(msg.params.code);
           return { success: true, result: fn() };
         } catch (e) {
-          return { success: false, error: e.message };
+          const errMsg = (e && e.message) || String(e);
+          const isCspBlock =
+            (e && e.name === 'EvalError') ||
+            /unsafe-eval|Content Security Policy/i.test(errMsg);
+          if (isCspBlock) {
+            return {
+              success: false,
+              cspBlocked: true,
+              error:
+                'execute_js is blocked by the extension\'s Content Security Policy — `new Function()` requires `unsafe-eval`, which is intentionally not granted. This is a hard browser-level limitation; do NOT retry execute_js with different code. Use the finite tools instead: get_accessibility_tree (read the page), click_ax / type_ax / set_field (interact via ref_id), scroll, navigate, get_selection, iframe_read / iframe_click / iframe_type.',
+            };
+          }
+          return { success: false, error: errMsg };
         }
       },
       'get_shadow_dom': () => getShadowDOM(),
