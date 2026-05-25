@@ -826,25 +826,27 @@ window.SocialMediaDownloader = (() => {
     return candidates[0];
   };
 
-  // mode mirrors collect()'s resolution so saveMse() doesn't break the
-  // documented `auto` semantics:
-  //   'main'  → keep only the primary stream
-  //   'all'   → keep every captured stream
-  //   'auto'  → main on a single-content URL (e.g. /reel/<id>),
-  //             all on a feed/timeline page (profile.isSingle()).
-  // Without auto resolving via the active profile, a feed page that
-  // captured several MSE streams would silently drop most of them on
-  // the default call. Default 'all' preserves the pre-v4 contract for
-  // any external caller of saveMse() directly (no profile assumed).
+  // mode resolution intentionally diverges from collect()'s here. For
+  // URL extraction, `auto` on a feed page means "every item the page
+  // shows" — that's correct, because the captured URLs ARE distinct
+  // gallery items. For MSE captures, the captured groups are temporal
+  // player state (preload side-effects), not page content: an Instagram
+  // /home feed will MSE-capture ≈5 reels because the player preloads
+  // vertically-adjacent reels in the background, but the user only
+  // ever sees one. Resolving `auto` via profile.isSingle() here would
+  // dump every preloaded neighbour on every feed page, which is the
+  // bug this PR fixes in the first place. So saveMse() treats auto
+  // and main identically — primary group only — and reserves explicit
+  // `mode: 'all'` for callers who genuinely want every captured stream
+  // (e.g. they scrolled through 10 reels and want them all).
+  //   'main'  → primary group only
+  //   'auto'  → primary group only (same as main; see above)
+  //   'all'   → every captured group
+  // Default 'all' preserves the pre-v4 contract for direct console
+  // callers of saveMse() — only download_social_media plumbs the mode.
   const saveMse = async ({ prefix = 'mse', minBytes = 1, mode = 'all' } = {}) => {
     const groups = _groupMseBuffers(minBytes);
-    let primaryOnly;
-    if (mode === 'main') primaryOnly = true;
-    else if (mode === 'all') primaryOnly = false;
-    else { // 'auto' or anything unrecognised → follow the profile
-      try { primaryOnly = !!activeProfile().isSingle(); }
-      catch (_) { primaryOnly = false; }
-    }
+    const primaryOnly = mode === 'main' || mode === 'auto';
     const toSave = (primaryOnly && groups.length > 1)
       ? [_pickPrimaryMseGroup(groups)]
       : groups;
