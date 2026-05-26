@@ -542,11 +542,11 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'read_downloaded_file',
-      description: 'Read the content of a previously downloaded file. Returns text for text-y files (txt, csv, json, html, xml, code, log, etc.) up to ~16k chars. Returns base64 for small binary files. For large binaries, returns the on-disk path. Pass the downloadId from list_downloads or download_file.',
+      description: 'Read the content of a previously downloaded file. Returns text for text-y files (txt, csv, json, html, xml, code, log, etc.) up to ~16k chars. Returns base64 for small binary files. For large binaries, returns the on-disk path. Pass the downloadId from list_downloads or download_files.',
       parameters: {
         type: 'object',
         properties: {
-          downloadId: { type: 'number', description: 'Download ID from list_downloads or download_file' },
+          downloadId: { type: 'number', description: 'Download ID from list_downloads or download_files' },
         },
         required: ['downloadId'],
       },
@@ -571,28 +571,14 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'download_files',
-      description: 'Download multiple files in parallel (max 3 concurrent, max 50 total). Returns per-URL results with downloadIds. Use list_downloads after to verify completion.',
+      description: 'Download one or more files. Pass a single url string or an array of urls (max 3 concurrent, max 50 total). Returns per-URL results with downloadIds. Use list_downloads after to verify completion.',
       parameters: {
         type: 'object',
         properties: {
+          url: { type: 'string', description: 'Single file URL to download' },
           urls: { type: 'array', items: { type: 'string' }, description: 'Array of file URLs to download' },
+          filename: { type: 'string', description: 'Name to save as (only for single url)' },
         },
-        required: ['urls'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'download_file',
-      description: 'Download a single file from a URL. The file will be saved to the downloads folder.',
-      parameters: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'URL of the file to download' },
-          filename: { type: 'string', description: 'Name to save the file as' },
-        },
-        required: ['url'],
       },
     },
   },
@@ -647,7 +633,7 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'download_social_media',
-      description: 'One-shot media downloader for major social sites: Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, YouTube (thumbnails only). Auto-detects the active site, picks the main photo/video on single-content pages (/photo/, /p/, /reel/, /status/.../photo/, /pin/, /comments/), or every media item on feeds when scroll:true. Handles per-site DOM quirks, upgrades to max resolution (X name=orig, Pinterest /originals/), pairs Reddit DASH video+audio, stitches HLS (incl. AES-128 encrypted), and falls back to opening in a new tab when a CDN blocks CORS. PREFER this over execute_js / download_file / download_resource_from_page whenever the user asks to "download this image/video", "save this photo", "grab the media" on a supported site — it is a single call instead of figuring DOM selectors out manually. Files land in the browser Downloads folder; call list_downloads afterwards to confirm. RESULT SHAPE: `count` is total URLs found; `triggeredCount` is how many we tried to download; `completedCount` is how many were successfully fetched-and-saved; `openedInTabCount` are URLs the browser blocked from direct fetch (we opened them in a new tab — popup-blocking usually kills these AFTER the first one, so a count > 1 here means most did NOT actually save); `failedCount` are hard errors. ALWAYS report honestly: if `completedCount` is much smaller than `count`, say so — do not claim "downloads in progress in the background"; the run is fully synchronous and what is not in `completedCount` is not coming. May also include a `recommendation` object ({kind, message}) when the in-browser path cannot fully handle the request (YouTube DRM video, MSE blob with nothing buffered yet, unsupported site, empty result). When present, relay `recommendation.message` verbatim to the user — it names the right external CLI tool (yt-dlp or gallery-dl) and includes a copy-pasteable command.',
+      description: 'One-shot media downloader for major social sites: Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, YouTube (thumbnails only). Auto-detects the active site, picks the main photo/video on single-content pages (/photo/, /p/, /reel/, /status/.../photo/, /pin/, /comments/), or every media item on feeds when scroll:true. Handles per-site DOM quirks, upgrades to max resolution (X name=orig, Pinterest /originals/), pairs Reddit DASH video+audio, stitches HLS (incl. AES-128 encrypted), and falls back to opening in a new tab when a CDN blocks CORS. PREFER this over execute_js / download_files / download_resource_from_page whenever the user asks to "download this image/video", "save this photo", "grab the media" on a supported site — it is a single call instead of figuring DOM selectors out manually. Files land in the browser Downloads folder; call list_downloads afterwards to confirm. RESULT SHAPE: `count` is total URLs found; `triggeredCount` is how many we tried to download; `completedCount` is how many were successfully fetched-and-saved; `openedInTabCount` are URLs the browser blocked from direct fetch (we opened them in a new tab — popup-blocking usually kills these AFTER the first one, so a count > 1 here means most did NOT actually save); `failedCount` are hard errors. ALWAYS report honestly: if `completedCount` is much smaller than `count`, say so — do not claim "downloads in progress in the background"; the run is fully synchronous and what is not in `completedCount` is not coming. May also include a `recommendation` object ({kind, message}) when the in-browser path cannot fully handle the request (YouTube DRM video, MSE blob with nothing buffered yet, unsupported site, empty result). When present, relay `recommendation.message` verbatim to the user — it names the right external CLI tool (yt-dlp or gallery-dl) and includes a copy-pasteable command.',
       parameters: {
         type: 'object',
         properties: {
@@ -774,12 +760,15 @@ const DONE_TOOL_STRICT = {
  * DONE_TOOL_STRICT above). All other tool definitions are mode-invariant.
  */
 export function getToolsForMode(mode, opts = {}) {
-  const base = (mode === 'ask')
-    ? AGENT_TOOLS.filter(t => ASK_ONLY_TOOLS.includes(t.function.name))
-    : AGENT_TOOLS;
+  let base;
+  if (mode === 'ask') {
+    base = AGENT_TOOLS.filter(t => ASK_ONLY_TOOLS.includes(t.function.name));
+  } else if (opts.compact) {
+    base = AGENT_TOOLS.filter(t => COMPACT_TOOL_NAMES.has(t.function.name));
+  } else {
+    base = AGENT_TOOLS;
+  }
   if (!opts.strictSecretMode) return base;
-  // Strict mode: shallow-copy the array and swap the `done` entry. Cheap —
-  // called once per turn at prompt-build time.
   return base.map(t => (t.function.name === 'done' ? DONE_TOOL_STRICT : t));
 }
 
@@ -950,14 +939,14 @@ SCRATCHPAD — use this for long tasks:
   (b) Whenever you finalize a plan — "Plan: (1) download all pages (DONE), (2) read each, (3) regex <tr> rows, (4) emit CSV."
   (c) When you finish a chunk of iterative work — "Processed pages 1-10. Next: 11."
   (d) When you discover a non-obvious fact you'll need later — "API endpoint /api/investors 404s, use HTML scrape." "Download path: /Users/me/Downloads/page{N}.html."
-  (e) IMMEDIATELY after \`download_file\` / \`download_files\` returns success: pin the local path(s) and downloadId(s). The next tool that needs them (\`upload_file\`, \`read_downloaded_file\`) needs exact paths, and after a few screenshots the original tool result will not be reliably attended to. Format: \`Downloaded: chrome.zip → /Users/.../Downloads/webbrain-chrome-5.1.0.zip (id 800), firefox.zip → /Users/.../Downloads/webbrain-firefox-5.1.0.zip (id 801).\`
+  (e) IMMEDIATELY after \`download_files\` returns success: pin the local path(s) and downloadId(s). The next tool that needs them (\`upload_file\`, \`read_downloaded_file\`) needs exact paths, and after a few screenshots the original tool result will not be reliably attended to. Format: \`Downloaded: chrome.zip → /Users/.../Downloads/webbrain-chrome-5.1.0.zip (id 800), firefox.zip → /Users/.../Downloads/webbrain-firefox-5.1.0.zip (id 801).\`
 - Keep entries SHORT and FACTUAL. One line per fact. The pad is visible on every future turn — scan it before picking your next action, especially if you're about to restart something.
 - Don't use the scratchpad for short tasks (< 5 tool calls) or for prose reasoning. It's working memory, not a journal.
 
 DON'T REDO WORK YOU'VE ALREADY DONE — read this:
 - If a tool returned \`success: true\` earlier this conversation, the work is done. Don't navigate back to the source and re-do it "to be safe". Re-doing wastes tens of seconds, doubles disk/server cost, and tells the user you don't trust your own state.
 - Before navigating back to a previously-used file source (a downloads-list page, a search results page, a repo's /tree/.../dist folder), check: (a) does the scratchpad already record the resource I need? (b) is the resource still on disk from an earlier \`download_files\`? (c) is this URL one I've already \`fetch_url\`-ed this turn? If yes to any, skip the navigate and use the existing handle.
-- DOWNLOADS specifically: if \`download_file\` / \`download_files\` succeeded for a file this conversation, the file is at the path that tool returned. Use that path directly in \`upload_file({filePath: "...", selector: "..."})\`. Do NOT navigate back to the source folder and re-download. The most common failure mode that produces this loop: an auto-screenshot replaces the recent text context, you can no longer "see" the download paths, you decide to fetch them again — instead, scan your scratchpad and tool-call history before navigating.
+- DOWNLOADS specifically: if \`download_files\` succeeded for a file this conversation, the file is at the path that tool returned. Use that path directly in \`upload_file({filePath: "...", selector: "..."})\`. Do NOT navigate back to the source folder and re-download. The most common failure mode that produces this loop: an auto-screenshot replaces the recent text context, you can no longer "see" the download paths, you decide to fetch them again — instead, scan your scratchpad and tool-call history before navigating.
 - FETCHES specifically: if \`fetch_url\` / \`research_url\` already returned content for a URL this conversation, don't re-fetch — the content is in your context. If the result was truncated, scroll/extract within the existing result rather than hitting the URL again.
 - VISITS specifically: if you already read \`/foo/bar\`'s accessibility tree and got ref_ids, ref_ids are stable across calls. To re-read a subtree, call \`get_accessibility_tree({ref_id: "ref_N"})\` instead of re-navigating.
 - "Verification" of a previous step is a screenshot of the destination, not a redo of the origin step. If a click_ax navigated you somewhere and you're not sure it landed, take a screenshot of the current page; do not navigate back and click again.
@@ -1054,7 +1043,7 @@ SCROLLING — read this:
 - After filling visible fields, always scroll down to check for more fields before submitting.
 
 SOCIAL MEDIA DOWNLOADS — read this:
-- When the user asks to download images or videos from Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, or YouTube (thumbnails), call \`download_social_media\` — it is a SINGLE tool call that handles the per-site DOM, picks the right resolution, and saves to the Downloads folder. Do NOT inspect the page with \`get_accessibility_tree\` + \`download_file\` to figure it out yourself; the tool already knows.
+- When the user asks to download images or videos from Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, or YouTube (thumbnails), call \`download_social_media\` — it is a SINGLE tool call that handles the per-site DOM, picks the right resolution, and saves to the Downloads folder. Do NOT inspect the page with \`get_accessibility_tree\` + \`download_files\` to figure it out yourself; the tool already knows.
 - Defaults: on single-content pages (e.g. /photo/, /p/, /reel/, /status/.../photo/, /pin/, /comments/) it grabs the main item; pass \`scroll:true\` to walk a feed/profile/timeline and capture everything that lazy-loads.
 - After it returns, optionally call \`list_downloads\` to surface the saved filenames for the user. Some CDNs (notably media.licdn.com) block CORS and the tool will open the media in a new tab as fallback — that is expected behavior, not a failure.
 - The tool may return a \`recommendation\` field with shape \`{ kind, message }\`. This means SMD knowingly cannot handle the request well — most often YouTube full video (Widevine DRM + signatureCipher), an MSE blob the player hasn't loaded yet, or a site outside SMD's supported list. When it appears, RELAY \`recommendation.message\` to the user verbatim in your reply — it points them at the right external CLI tool (\`yt-dlp\` for video, \`gallery-dl\` for images) with a copy-pasteable command. Do NOT try to work around it with \`get_accessibility_tree\` or repeated tool calls — the recommendation exists precisely because those paths cannot help.
@@ -1072,30 +1061,57 @@ LISTINGS & PAGINATION — read this:
  * examples, edge-case paragraphs, and the iframe/API-mutation sections that
  * eat tokens without helping on most tasks.
  */
-export const SYSTEM_PROMPT_ACT_COMPACT = `You are WebBrain, an AI browser agent. You interact with web pages through tools.
+/**
+ * Compact tool set for small models (2B–8B). Keeps only the core tools
+ * to reduce decision surface and hallucination. The full schema has 40+
+ * tools — small models pick wrong tools or invent parameters when they
+ * see that many options.
+ */
+export const COMPACT_TOOL_NAMES = new Set([
+  'get_accessibility_tree', 'read_page', 'screenshot', 'scroll',
+  'extract_data', 'get_selection',
+  'click_ax', 'type_ax', 'set_field',
+  'click', 'type_text', 'press_keys',
+  'navigate', 'new_tab', 'wait_for_element',
+  'fetch_url', 'download_social_media',
+  'scratchpad_write', 'clarify', 'solve_captcha', 'done',
+]);
+
+export const SYSTEM_PROMPT_ACT_COMPACT = `You are WebBrain, an AI browser agent. You control web pages through tools.
 
 RULES:
-1. You run inside the user's browser with their full login session. Never refuse by saying "I can't access" or "I don't have permission". Just do it through the UI.
-2. ALWAYS start by reading the current page. The user is on this page for a reason.
-3. After every action (click, type), verify the result with a screenshot or read_page before the next step.
-4. Fill forms ONE FIELD AT A TIME: click field → type value → click next field → type next value. Never type into a field without clicking it first.
-5. Parse the user's request into separate values BEFORE starting. E.g. "product X at $Y/month" → name="X", price="Y", interval="month".
-6. Click by visible text when possible: click({text: "Submit"}). Prefer this over index or coordinates.
-7. Do NOT click "Export" buttons when the task is to "Create" something. Read button text carefully.
-8. When done, call done({summary: "..."}). Verify success first — check for confirmation messages.
-9. If stuck, try a different approach. Don't repeat the same failing action.
-10. Interact through the visible UI. Do not call APIs directly.
-11. For long tasks, call scratchpad_write({text: "..."}) to remember facts (file paths, download IDs, progress) — older tool results get summarized and their details disappear. AFTER any download_file/download_files succeeds, IMMEDIATELY scratchpad the local paths so they survive screenshots.
-12. If a tool returned success earlier this conversation, the work is done — don't re-do it "to be safe". Specifically: if download_files succeeded, the files are on disk at the paths it returned; use those paths in upload_file. Do NOT navigate back to the source folder and re-download. If you're about to navigate to a URL you've already used, stop and read your scratchpad first. "Verification" is a screenshot of the destination, not a redo of the origin.
-13. You CANNOT schedule or check back later. No timers, no cron, no "come back in a few minutes". If you need to wait for an external event (build finishing, email arriving, deploy completing), call done with what you have and tell the user to re-invoke. Never claim you'll check back — it's a capability you don't have.
-14. To download images/videos from Facebook, Instagram, X/Twitter, LinkedIn, Reddit, Pinterest, or YouTube, call \`download_social_media\` (single tool call). Don't scrape selectors yourself.
+1. You run inside the user's browser with their login session. Never refuse — just do it through the UI.
+2. Start by reading the current page: get_accessibility_tree({filter:"visible"}).
+3. After every action, verify with screenshot or get_accessibility_tree before the next step.
+4. Fill forms ONE FIELD AT A TIME. Use set_field({ref_id, text}) — it focuses, clears, and types in one call.
+5. Click by ref_id: click_ax({ref_id:"ref_N"}). Fallback: click({text:"Submit"}).
+6. When done, call done({summary:"..."}). Verify success first.
+7. If stuck after 2 attempts, try a different approach. Never repeat the same failing action 3 times.
+8. Interact through the visible UI. Do not call APIs directly.
+9. For long tasks, use scratchpad_write to remember facts between steps.
 
-LISTINGS & PAGINATION — read this:
-- On listing/search pages (?page=, ?p=, ?sd=, ?offset=, Next/Sonraki controls): extract item title + price + link from the current page and reply to the user with a partial bullet list, THEN paginate. Don't queue multiple pages and answer at the end.
-- Don't refetch a URL you already fetched. Don't retry get_accessibility_tree with a larger maxChars after it errored — switch tool (use filter:"visible" with maxDepth:8, or read_page, or extract_data).
-- For "give me the list" tasks, call done({summary}) as soon as you have a usable answer; don't chase completeness.
+TOOLS — use ONLY these:
+- get_accessibility_tree: Read the page. Returns roles, names, and ref_ids. Use filter:"visible" by default.
+- read_page: Prose fallback for articles.
+- screenshot: See the page visually.
+- scroll: Scroll up/down.
+- extract_data: Get tables, headings, images.
+- click_ax({ref_id}): Click by ref_id from the tree. PREFERRED.
+- type_ax({ref_id, text}): Type into a field by ref_id.
+- set_field({ref_id, text}): Focus + clear + type in one call. PREFERRED for forms.
+- click({text}): Click by visible text. Fallback when no ref_id.
+- type_text({text}): Type into the focused element. Click the field first.
+- press_keys({key}): Press Escape, Tab, or Enter.
+- navigate({url}): Go to a URL.
+- new_tab({url}): Open a URL in a new tab.
+- wait_for_element({selector}): Wait for an element to appear.
+- fetch_url({url}): Fetch a URL for its content.
+- download_social_media: Download images/videos from social sites.
+- scratchpad_write({text}): Save notes that persist across steps.
+- done({summary}): Signal completion.
 
-TYPING: Click the field first, then call type_text({text: "..."}) with NO selector. This is the most reliable method.
-
-CLICKING: Prefer click({text: "..."}) > click({index: N}) > click({selector: "..."}) > click({x, y}).
-Indices from get_interactive_elements are only valid in the SAME turn they were retrieved.`;
+PATTERN:
+1. get_accessibility_tree({filter:"visible"}) → find ref_ids
+2. click_ax or set_field with ref_id
+3. Verify with screenshot or re-read tree
+4. Repeat until done`;

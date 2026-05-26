@@ -31,12 +31,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
   }
 
   get useCompactPrompt() {
-    // Explicit user setting always wins.
-    if (this.config.useCompactPrompt != null) return !!this.config.useCompactPrompt;
-    // Default to compact for local providers (Ollama, LM Studio) since they
-    // typically run smaller models with limited context windows.
-    const p = (this.config.providerName || '').toLowerCase();
-    return p === 'ollama' || p === 'lmstudio';
+    return !!this.config.useCompactPrompt;
   }
 
   _headers() {

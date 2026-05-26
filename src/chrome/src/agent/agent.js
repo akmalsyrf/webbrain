@@ -1,4 +1,4 @@
-import { AGENT_TOOLS, AGENT_TOOL_NAMES, getToolsForMode, SYSTEM_PROMPT_ASK, SYSTEM_PROMPT_ACT, SYSTEM_PROMPT_ACT_COMPACT } from './tools.js';
+import { AGENT_TOOLS, AGENT_TOOL_NAMES, COMPACT_TOOL_NAMES, getToolsForMode, SYSTEM_PROMPT_ASK, SYSTEM_PROMPT_ACT, SYSTEM_PROMPT_ACT_COMPACT } from './tools.js';
 import { URL_FAMILY_TOOLS, resourceBucket, bucketArgsKey } from './loop-bucket.js';
 import { isCredentialField, CREDENTIAL_NOTE_STRICT } from './credential-fields.js';
 import { cdpClient } from '../cdp/cdp-client.js';
@@ -1832,13 +1832,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    * Small/local models get a compact prompt to save context budget.
    */
   _getActPrompt() {
-    // Compact prompt temporarily disabled — all providers get the full
-    // prompt. The UI checkbox and provider config are preserved so it
-    // can be re-enabled later by uncommenting the block below.
-    // try {
-    //   const provider = this.providerManager.getActive();
-    //   if (provider.useCompactPrompt) return SYSTEM_PROMPT_ACT_COMPACT;
-    // } catch { /* provider not ready yet — use full prompt */ }
+    try {
+      const provider = this.providerManager.getActive();
+      if (provider.useCompactPrompt) return SYSTEM_PROMPT_ACT_COMPACT;
+    } catch { /* provider not ready yet — use full prompt */ }
     return SYSTEM_PROMPT_ACT;
   }
 
@@ -2211,12 +2208,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
         break;
       }
-      case 'download_file': {
-        if (parsed.downloadId != null) {
-          return `downloaded id=${parsed.downloadId}${parsed.filename ? `, file=${this._truncate(parsed.filename, 80)}` : ''}`;
-        }
-        break;
-      }
+      case 'download_file':
       case 'download_files': {
         if (Array.isArray(parsed.results)) {
           const ok = parsed.results.filter(r => r?.success).length;
@@ -2872,7 +2864,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (name === 'download_resource_from_page') {
       return await downloadResourceFromPage(tabId, args);
     }
-    if (name === 'download_files') {
+    if (name === 'download_files' || name === 'download_file') {
+      if (args.url && !args.urls) args.urls = [args.url];
       return await downloadFiles(args);
     }
 
@@ -3536,14 +3529,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
     }
 
-    if (name === 'download_file') {
-      try {
-        const result = await cdpClient.downloadFile(tabId, args.url, args.filename);
-        return result;
-      } catch (e) {
-        return { success: false, error: `Download failed: ${e.message}` };
-      }
-    }
+    // download_file is now handled by download_files (normalized above)
 
     if (name === 'upload_file') {
       try {
@@ -5116,9 +5102,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    *   - call:toolName{key:<|"|>value<|"|>}  (custom quote-token format)
    *   - Bare JSON objects with a known tool name
    * Returns an array of tool call objects in OpenAI format, or [] if nothing
-   * was found. Only tool names present in AGENT_TOOL_NAMES are accepted.
+   * was found. Only tool names present in the allowlist are accepted.
+   * @param {Set} [allowedNames] — defaults to AGENT_TOOL_NAMES; pass a
+   *   smaller set (e.g. COMPACT_TOOL_NAMES) to restrict in compact mode.
    */
-  _tryParseToolCallsFromText(text) {
+  _tryParseToolCallsFromText(text, allowedNames = AGENT_TOOL_NAMES) {
     if (!text || text.length > 10000) return [];
 
     const results = [];
@@ -5139,7 +5127,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         // Try JSON first (most common).
         try {
           const obj = JSON.parse(inner);
-          if (obj && obj.name && AGENT_TOOL_NAMES.has(obj.name)) {
+          if (obj && obj.name && allowedNames.has(obj.name)) {
             results.push(obj);
             continue;
           }
@@ -5149,7 +5137,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         // Some local models use <|"|> as quote tokens and call:name as the
         // invocation syntax.  Normalize to JSON and parse.
         const callMatch = /^call:(\w+)\s*\{([\s\S]*)\}$/.exec(inner);
-        if (callMatch && AGENT_TOOL_NAMES.has(callMatch[1])) {
+        if (callMatch && allowedNames.has(callMatch[1])) {
           const toolName = callMatch[1];
           let argsBody = callMatch[2]
             .replace(/<\|"\|>/g, '"')  // replace quote tokens with real quotes
@@ -5176,10 +5164,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const bareRe = /\{[^{}]*"name"\s*:\s*"(\w+)"[^{}]*\}/g;
       let m;
       while ((m = bareRe.exec(text)) !== null) {
-        if (!AGENT_TOOL_NAMES.has(m[1])) continue;
+        if (!allowedNames.has(m[1])) continue;
         try {
           const obj = JSON.parse(m[0]);
-          if (obj && obj.name && AGENT_TOOL_NAMES.has(obj.name)) {
+          if (obj && obj.name && allowedNames.has(obj.name)) {
             results.push(obj);
           }
         } catch { /* skip */ }
@@ -5191,7 +5179,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const callRe = /call:(\w+)\s*\{([\s\S]*?)\}/g;
       let m;
       while ((m = callRe.exec(text)) !== null) {
-        if (!AGENT_TOOL_NAMES.has(m[1])) continue;
+        if (!allowedNames.has(m[1])) continue;
         const toolName = m[1];
         let argsBody = m[2]
           .replace(/<\|"\|>/g, '"')
@@ -5232,7 +5220,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._persist(tabId);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode });
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     let finalResponse = '';
@@ -5349,7 +5337,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // Fallback: if the LLM emitted tool calls as raw text instead of
       // using the structured tool_calls field, try to parse them out.
       if ((!result.toolCalls || result.toolCalls.length === 0) && result.content) {
-        const fallback = this._tryParseToolCallsFromText(result.content);
+        const fallback = this._tryParseToolCallsFromText(result.content, (mode === 'act' && provider.useCompactPrompt) ? COMPACT_TOOL_NAMES : undefined);
         if (fallback.length > 0) {
           this._logDebug({ type: 'llm_text_fallback_parse', step: steps, parsed: fallback.map(tc => tc.function.name) });
           result.toolCalls = fallback;
@@ -5450,7 +5438,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._persist(tabId);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode });
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     // See processMessage — used to break the empty-response→nudge cycle.
@@ -5515,7 +5503,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
         // Fallback: parse tool calls from streamed text if structured calls are missing.
         if (!hasToolCalls && fullText) {
-          const fallback = this._tryParseToolCallsFromText(fullText);
+          const fallback = this._tryParseToolCallsFromText(fullText, (mode === 'act' && provider.useCompactPrompt) ? COMPACT_TOOL_NAMES : undefined);
           if (fallback.length > 0) {
             this._logDebug({ type: 'llm_text_fallback_parse', step: steps, parsed: fallback.map(tc => tc.function.name) });
             hasToolCalls = true;

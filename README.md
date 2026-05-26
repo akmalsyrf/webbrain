@@ -118,50 +118,49 @@ Key difference: Chrome uses Manifest V3 (service worker, `chrome.scripting`, `si
 
 ## Agent Tools
 
-| Tool | Ask | Act | Description |
-|------|-----|-----|-------------|
-| `get_accessibility_tree` | Yes | Yes | Flat indented text of the page's accessibility tree with persistent ref_ids |
-| `read_page` | Yes | Yes | Extract page text, links, forms (legacy prose fallback) |
-| `read_pdf` | Yes | Yes | Extract text from PDF documents via vendored pdfjs-dist |
-| `screenshot` | Yes | Yes | Capture visible tab (with optional `save:true` to Downloads) |
-| `full_page_screenshot` | Yes | Yes | Capture full scrollable page (Chrome only) |
-| `get_interactive_elements` | Yes | Yes | List all clickable/interactive elements (legacy) |
-| `get_frames` | Yes | Yes | List all iframes on the page |
-| `get_shadow_dom` | Yes | Yes | Read shadow DOM trees |
-| `scroll` | Yes | Yes | Scroll the page |
-| `extract_data` | Yes | Yes | Extract tables, headings, images |
-| `get_selection` | Yes | Yes | Get highlighted text |
-| `click_ax` | No | Yes | Click an element by accessibility tree ref_id (preferred) |
-| `type_ax` | No | Yes | Type into a field by ref_id. Supports `lang: "tr-deasciify"` for Turkish deasciification |
-| `set_field` | No | Yes | One-shot focus + clear + type + verify by ref_id. Supports `lang: "tr-deasciify"` |
-| `click` | No | Yes | Click elements by selector, index, or coordinates (legacy) |
-| `type_text` | No | Yes | Type into input fields. Supports `lang: "tr-deasciify"` |
-| `press_keys` | No | Yes | Press Escape, Tab, or Enter |
-| `hover` | No | Yes | CDP-trusted hover for reveal-on-hover menus (Chrome only) |
-| `drag_drop` | No | Yes | Drag-and-drop via CDP pointer events (Chrome only) |
-| `navigate` | No | Yes | Go to a URL |
-| `new_tab` | No | Yes | Open a new tab |
-| `wait_for_element` | No | Yes | Wait for a selector to appear |
-| `wait_for_stable` | No | Yes | Wait until page is idle (no DOM mutations + no network) |
-| `upload_file` | No | Yes | Upload a file to a file input (Chrome only) |
-| `execute_js` | No | Yes | Run custom JavaScript (**Firefox only** — blocked by MV3 CSP on Chrome) |
-| `fetch_url` | Yes | Yes | Fetch a URL from the background with the user's cookies |
-| `research_url` | Yes | Yes | Open a URL in a hidden tab, wait for JS rendering, return content |
-| `download_file` | No | Yes | Download a single file from a URL (Chrome only) |
-| `download_files` | No | Yes | Download multiple files in parallel |
-| `download_resource_from_page` | No | Yes | Download an `<img>`/`<video>`/blob URL from the current page |
-| `download_social_media` | No | Yes | One-shot media download from Facebook, Instagram, X, LinkedIn, Reddit, Pinterest, YouTube |
-| `list_downloads` | Yes | Yes | List recent downloads with status and source URLs |
-| `read_downloaded_file` | No | Yes | Re-fetch a downloaded file's content (text or base64) |
-| `iframe_read` / `iframe_click` / `iframe_type` | No | Yes | Read/click/type inside cross-origin iframes |
-| `record_tab` / `stop_recording` | No | Yes | Record tab video+audio into .webm with optional Whisper transcription (Chrome only) |
-| `scratchpad_write` | Yes | Yes | Pin a note in context that survives summarization |
-| `clarify` | Yes | Yes | Pause and ask the user a question |
-| `verify_form` | No | Yes | Verify form fields before submitting |
-| `solve_captcha` | No | Yes | Solve CAPTCHAs via CapSolver API (optional, requires API key) |
-| `done` | Yes | Yes | Signal task completion |
+| Tool | Ask | Act | Compact | Description |
+|------|-----|-----|---------|-------------|
+| `get_accessibility_tree` | Yes | Yes | Yes | Flat indented text of the page's accessibility tree with persistent ref_ids |
+| `read_page` | Yes | Yes | Yes | Extract page text, links, forms (legacy prose fallback) |
+| `read_pdf` | Yes | Yes | -- | Extract text from PDF documents via vendored pdfjs-dist |
+| `screenshot` | Yes | Yes | Yes | Capture visible tab (with optional `save:true` to Downloads) |
+| `full_page_screenshot` | Yes | Yes | -- | Capture full scrollable page (Chrome only) |
+| `get_interactive_elements` | Yes | Yes | -- | List all clickable/interactive elements (legacy, pierces shadow DOM) |
+| `get_frames` | Yes | Yes | -- | List all iframes on the page |
+| `get_shadow_dom` | Yes | Yes | -- | Read shadow DOM trees |
+| `scroll` | Yes | Yes | Yes | Scroll the page |
+| `extract_data` | Yes | Yes | Yes | Extract tables, headings, images |
+| `get_selection` | Yes | Yes | Yes | Get highlighted text |
+| `click_ax` | -- | Yes | Yes | Click an element by accessibility tree ref_id (preferred) |
+| `type_ax` | -- | Yes | Yes | Type into a field by ref_id. Supports `lang: "tr-deasciify"` |
+| `set_field` | -- | Yes | Yes | One-shot focus + clear + type + verify by ref_id. Supports `lang: "tr-deasciify"` |
+| `click` | -- | Yes | Yes | Click elements by selector, index, or coordinates (legacy fallback) |
+| `type_text` | -- | Yes | Yes | Type into input fields. Supports `lang: "tr-deasciify"` |
+| `press_keys` | -- | Yes | Yes | Press Escape, Tab, or Enter |
+| `hover` | -- | Yes | -- | CDP-trusted hover for reveal-on-hover menus (Chrome only) |
+| `drag_drop` | -- | Yes | -- | Drag-and-drop via CDP pointer events (Chrome only) |
+| `navigate` | -- | Yes | Yes | Go to a URL |
+| `new_tab` | -- | Yes | Yes | Open a new tab |
+| `wait_for_element` | -- | Yes | Yes | Wait for a selector to appear |
+| `wait_for_stable` | -- | Yes | -- | Wait until page is idle (no DOM mutations + no network) |
+| `upload_file` | -- | Yes | -- | Upload a file to a file input (Chrome only) |
+| `execute_js` | -- | Yes | -- | Run custom JavaScript (**Firefox only** — blocked by MV3 CSP on Chrome) |
+| `fetch_url` | Yes | Yes | Yes | Fetch a URL from the background with the user's cookies |
+| `research_url` | Yes | Yes | -- | Open a URL in a hidden tab, wait for JS rendering, return content |
+| `download_files` | -- | Yes | -- | Download one or more files (single url or array, max 3 concurrent) |
+| `download_resource_from_page` | -- | Yes | -- | Download an `<img>`/`<video>`/blob URL from the current page |
+| `download_social_media` | -- | Yes | Yes | One-shot media download from Facebook, Instagram, X, LinkedIn, Reddit, Pinterest, YouTube |
+| `list_downloads` | Yes | Yes | -- | List recent downloads with status and source URLs |
+| `read_downloaded_file` | -- | Yes | -- | Re-fetch a downloaded file's content (text or base64) |
+| `iframe_read` / `iframe_click` / `iframe_type` | -- | Yes | -- | Read/click/type inside cross-origin iframes |
+| `record_tab` / `stop_recording` | -- | Yes | -- | Record tab video+audio into .webm with optional Whisper transcription (Chrome only) |
+| `scratchpad_write` | Yes | Yes | Yes | Pin a note in context that survives summarization |
+| `clarify` | Yes | Yes | Yes | Pause and ask the user a question |
+| `verify_form` | -- | Yes | -- | Verify form fields before submitting |
+| `solve_captcha` | -- | Yes | Yes | Solve CAPTCHAs via CapSolver API (optional, requires API key) |
+| `done` | Yes | Yes | Yes | Signal task completion |
 
-All tools use the same schema in both modes — Ask mode simply filters to the read-only subset. A **compact system prompt** for small local models (under 8B) exists but is currently disabled; all providers receive the full prompt.
+**Compact mode** is a reduced tool set + shorter system prompt designed for small local models (2B–8B). It cuts the schema from 40+ tools to 20, reducing decision surface and hallucination. Enable it per-provider in Settings (checkbox on llama.cpp, Ollama, LM Studio — off by default).
 
 > **Shadow DOM note:** The accessibility tree only traverses light DOM. On Web Component-heavy pages (Stripe, Salesforce, Shopify), use `get_interactive_elements` (pierces open shadow roots) or `get_shadow_dom` / `shadow_dom_query` for targeted reads.
 
