@@ -44,7 +44,12 @@ async function getPdfjs() {
  * stack on multi-MB PDFs. fromCharCode.apply has a per-call argument
  * limit (~64k in V8), so we chunk.
  */
+const BASE64_MAX_INPUT_BYTES = 32 * 1024 * 1024; // 32 MB safety cap
+
 function bytesToBase64(bytes) {
+  if (bytes.length > BASE64_MAX_INPUT_BYTES) {
+    throw new Error(`PDF too large for base64 conversion (${bytes.length} bytes, cap ${BASE64_MAX_INPUT_BYTES}).`);
+  }
   let bin = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -90,7 +95,10 @@ export async function fetchPdfBytes(url) {
     // extension's fetch is anonymous and a signed-in PDF returns a
     // login page or 403. Same posture as the Chrome build.
     // No-op for file:// URLs.
-    res = await fetch(url, { credentials: 'include' });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    res = await fetch(url, { credentials: 'include', signal: controller.signal });
+    clearTimeout(timeout);
   } catch (e) {
     if (typeof url === 'string' && url.startsWith('file://')) {
       throw new Error(
