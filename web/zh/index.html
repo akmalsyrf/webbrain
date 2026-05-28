@@ -226,6 +226,13 @@
        ================================================================ */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+    /* ----- Theme tokens -----
+       Dark is the original palette. Light is a warm cream / coffee scheme.
+       Pick by setting `data-theme="light"` or `data-theme="dark"` on <html>.
+       The early-paint script in <head> handles initial selection from
+       localStorage > prefers-color-scheme. The whole site (including the
+       hero browser mockup) reads from these vars; hardcoded rgba(255,255,255,*)
+       values were swapped for --tint-* tokens that invert per theme. */
     :root {
       --bg: #0b0e17;
       --bg-card: #111827;
@@ -239,9 +246,61 @@
       --accent2: #a78bfa;
       --success: #34d399;
       --warning: #fbbf24;
+      /* Subtle tints that ride on top of the bg/card — used for
+         placeholder bars, language dropdown chrome, etc. */
+      --tint-soft: rgba(255,255,255,0.05);
+      --tint-soft-2: rgba(255,255,255,0.04);
+      --tint-medium: rgba(255,255,255,0.08);
+      --tint-strong: rgba(255,255,255,0.10);
+      --tint-stronger: rgba(255,255,255,0.22);
+      --shadow-card: rgba(0,0,0,0.30);
+      --shadow-strong: rgba(0,0,0,0.40);
+      --nav-bg: rgba(11,14,23,0.80);
+      --url-bg: rgba(0,0,0,0.30);
+      /* Browser mockup interior: in dark mode the side panel keeps its
+         original near-black blues so it reads as the WebBrain plugin UI.
+         In light mode (override below) these become warm cream tones. */
+      --sp-bg: #1a1a2e;
+      --sp-msg-assistant-bg: #16213e;
+      --sp-msg-assistant-border: rgba(255,255,255,0.06);
+      --sp-input-bg: #1e2746;
+      /* Hero gradient text accent — keeps the same pink pop in both themes. */
+      --hero-gradient-3: #e879f9;
       --radius: 16px;
       --radius-sm: 10px;
       --max-w: 1100px;
+      color-scheme: dark;
+    }
+
+    :root[data-theme="light"] {
+      --bg: #f7f1e6;
+      --bg-card: #fffdf8;
+      --bg-card-hover: #f2e9d4;
+      --surface: #ede2cb;
+      --border: rgba(89,55,25,0.15);
+      --text: #2c1810;
+      --text-dim: #6b5b47;
+      --accent: #5b52e8;
+      --accent-glow: rgba(91,82,232,0.20);
+      --accent2: #7c6ce6;
+      --success: #2d8866;
+      --warning: #b97a00;
+      --tint-soft: rgba(89,55,25,0.05);
+      --tint-soft-2: rgba(89,55,25,0.07);
+      --tint-medium: rgba(89,55,25,0.10);
+      --tint-strong: rgba(89,55,25,0.14);
+      --tint-stronger: rgba(89,55,25,0.22);
+      --shadow-card: rgba(89,55,25,0.10);
+      --shadow-strong: rgba(89,55,25,0.18);
+      --nav-bg: rgba(247,241,230,0.85);
+      --url-bg: rgba(89,55,25,0.07);
+      /* Light-mode mockup interior — cream variant of the WebBrain panel. */
+      --sp-bg: #f5e9d0;
+      --sp-msg-assistant-bg: #fff7e1;
+      --sp-msg-assistant-border: rgba(89,55,25,0.10);
+      --sp-input-bg: #fdf3dc;
+      --hero-gradient-3: #b94db3;
+      color-scheme: light;
     }
 
     html { scroll-behavior: smooth; }
@@ -292,7 +351,7 @@
       top: 0;
       z-index: 100;
       backdrop-filter: blur(20px);
-      background: rgba(11,14,23,0.8);
+      background: var(--nav-bg);
       border-bottom: 1px solid var(--border);
     }
     .nav-inner {
@@ -323,7 +382,7 @@
     }
     .nav-links a:hover { color: var(--text); text-decoration: none; }
     .lang-dropdown {
-      background: rgba(255,255,255,0.05);
+      background: var(--tint-soft);
       color: var(--text);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -335,7 +394,7 @@
        dropdown panel comes up white-on-white and the items are invisible.
        macOS/Safari ignore option styling, so this is a no-op there. */
     .lang-dropdown option {
-      background-color: #1a2233;
+      background-color: var(--bg-card-hover);
       color: var(--text);
     }
     .lang-dropdown option:checked,
@@ -361,7 +420,7 @@
       align-items: center;
       gap: 6px;
       padding: 5px 10px 5px 8px;
-      background: rgba(255,255,255,0.04);
+      background: var(--tint-soft-2);
       border: 1px solid var(--border);
       border-radius: 999px;
       color: var(--text);
@@ -372,7 +431,7 @@
       transition: background 0.2s, border-color 0.2s, transform 0.1s;
     }
     .gh-stars:hover {
-      background: rgba(255,255,255,0.08);
+      background: var(--tint-medium);
       border-color: var(--accent);
       text-decoration: none;
       transform: translateY(-1px);
@@ -386,6 +445,42 @@
       min-width: 1ch;
     }
     .gh-stars[data-loading="1"] .gh-count { color: var(--text-dim); }
+
+    /* Theme toggle — sun in light mode, moon in dark mode. JS just flips
+       the data-theme attribute on <html>; the CSS swap is purely visual. */
+    .theme-toggle {
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--tint-soft-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-dim);
+      transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s;
+    }
+    .theme-toggle:hover {
+      background: var(--tint-medium);
+      border-color: var(--accent);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--accent2);
+      outline-offset: 2px;
+    }
+    .theme-toggle svg { width: 16px; height: 16px; display: block; }
+    /* Show the icon for the theme the button will switch TO: in dark mode
+       show the sun (click → light); in light mode show the moon. */
+    .theme-toggle .icon-sun { display: block; }
+    .theme-toggle .icon-moon { display: none; }
+    :root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+    :root[data-theme="light"] .theme-toggle .icon-moon { display: block; }
 
     /* ================================================================
        HERO
@@ -406,7 +501,7 @@
       letter-spacing: -1.5px;
     }
     .hero h1 .gradient {
-      background: linear-gradient(135deg, var(--accent), var(--accent2), #e879f9);
+      background: linear-gradient(135deg, var(--accent), var(--accent2), var(--hero-gradient-3));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -461,7 +556,7 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+      box-shadow: 0 24px 80px var(--shadow-strong);
     }
     .browser-bar {
       display: flex;
@@ -482,7 +577,7 @@
     .browser-url {
       flex: 1;
       margin-inline-start: 12px;
-      background: rgba(0,0,0,0.3);
+      background: var(--url-bg);
       border-radius: 6px;
       padding: 5px 12px;
       font-size: 12px;
@@ -502,7 +597,7 @@
     .browser-page h3 { color: var(--text); margin-bottom: 8px; font-size: 16px; }
     .browser-page .placeholder-line {
       height: 10px;
-      background: rgba(255,255,255,0.04);
+      background: var(--tint-soft-2);
       border-radius: 4px;
       margin-bottom: 8px;
     }
@@ -513,7 +608,7 @@
     .side-panel {
       width: 300px;
       border-inline-start: 1px solid var(--border);
-      background: #1a1a2e;
+      background: var(--sp-bg);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
@@ -569,8 +664,8 @@
       align-self: flex-end;
     }
     .sp-msg.assistant {
-      background: #16213e;
-      border: 1px solid rgba(255,255,255,0.06);
+      background: var(--sp-msg-assistant-bg);
+      border: 1px solid var(--sp-msg-assistant-border);
       align-self: flex-start;
     }
     /* Messages animate only inside the active scene. Toggling .is-active on the
@@ -597,7 +692,7 @@
     .sp-input-box {
       display: flex;
       align-items: center;
-      background: #1e2746;
+      background: var(--sp-input-bg);
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 8px 12px;
@@ -647,7 +742,7 @@
     .scene-dot {
       appearance: none;
       -webkit-appearance: none;
-      background: rgba(255,255,255,0.1);
+      background: var(--tint-strong);
       border: 1px solid var(--border);
       border-radius: 999px;
       width: 9px;
@@ -656,7 +751,7 @@
       cursor: pointer;
       transition: background 0.2s, width 0.3s, box-shadow 0.2s;
     }
-    .scene-dot:hover { background: rgba(255,255,255,0.22); }
+    .scene-dot:hover { background: var(--tint-stronger); }
     .scene-dot.is-active {
       background: var(--accent);
       width: 26px;
@@ -710,7 +805,7 @@
       height: 22px;
       width: 70px;
       border-radius: 6px;
-      background: rgba(255,255,255,0.08);
+      background: var(--tint-medium);
     }
     .pl-btn.primary { background: var(--accent); width: 86px; }
     .pl-grid {
@@ -731,7 +826,7 @@
       height: 11px;
       border-radius: 50%;
       display: inline-block;
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+      box-shadow: 0 0 0 1px var(--tint-strong);
     }
 
     /* ----- v3 — short-form video player ----- */
@@ -884,7 +979,7 @@
       background: var(--bg-card-hover);
       border-color: rgba(108,99,255,0.2);
       transform: translateY(-4px);
-      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+      box-shadow: 0 12px 40px var(--shadow-card);
     }
     .feature-icon {
       width: 44px; height: 44px;
@@ -1038,7 +1133,10 @@
     .pn-bubble.openrouter { background: rgba(108,99,255,0.12); color: var(--accent2); border-color: rgba(108,99,255,0.3); }
     .pn-bubble.studiolm { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.25); }
     .pn-bubble.vllm { background: rgba(99,102,241,0.12); color: #6366f1; border-color: rgba(99,102,241,0.25); }
+    /* Grok is a white-on-black brand. In dark mode the bubble is near-white
+       on dark; light mode inverts to dark glyph on cream. */
     .pn-bubble.grok { background: rgba(255,255,255,0.06); color: #e5e5e5; border-color: rgba(255,255,255,0.2); }
+    :root[data-theme="light"] .pn-bubble.grok { background: rgba(0,0,0,0.06); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
     .pn-bubble.gemini { background: rgba(66,133,244,0.12); color: #4285f4; border-color: rgba(66,133,244,0.25); }
     .pn-bubble.deepseek { background: rgba(72,191,255,0.12); color: #48bfff; border-color: rgba(72,191,255,0.25); }
     .pn-bubble.mistral { background: rgba(255,127,80,0.12); color: #ff7f50; border-color: rgba(255,127,80,0.25); }
@@ -1070,7 +1168,7 @@
     }
     .mode-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+      box-shadow: 0 12px 40px var(--shadow-card);
     }
     .mode-card.ask { border-top: 3px solid var(--accent); }
     .mode-card.act { border-top: 3px solid var(--warning); }
@@ -1111,7 +1209,7 @@
     .download-card:hover {
       border-color: var(--accent);
       transform: translateY(-4px);
-      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+      box-shadow: 0 12px 40px var(--shadow-card);
     }
     .download-card .browser-icon { font-size: 38px; margin-bottom: 14px; }
     .download-card h3 { font-size: 18px; margin-bottom: 6px; }
@@ -1169,7 +1267,7 @@
       color: var(--text-dim);
       transition: color 0.15s, background 0.15s;
     }
-    .footer-icon:hover { color: var(--text); background: rgba(255,255,255,0.05); text-decoration: none; }
+    .footer-icon:hover { color: var(--text); background: var(--tint-soft); text-decoration: none; }
     .footer-icon svg { display: block; }
 
     /* ================================================================
@@ -1336,7 +1434,7 @@
       overflow: hidden;
       border: 1px solid var(--border);
       background: #000;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      box-shadow: 0 20px 40px var(--shadow-strong);
     }
     .video-frame iframe {
       position: absolute;
@@ -1355,6 +1453,10 @@
       .modes-grid { grid-template-columns: 1fr; }
       .nav-links a:not(.nav-cta) { display: none; }
       .gh-stars { display: none; }
+      /* The theme toggle would overflow the 24px-padded header at phone
+         widths. prefers-color-scheme still auto-picks the right theme
+         on mobile, so visitors aren't stranded — just no manual flip. */
+      .theme-toggle { display: none; }
       .provider-constellation { aspect-ratio: 4 / 5; max-width: 420px; }
       .pn-bubble { width: 46px; height: 46px; font-size: 18px; }
       .pn-label { font-size: 11px; }
@@ -1375,6 +1477,25 @@
       .btn { width: 100%; justify-content: center; }
     }
   </style>
+
+  <!-- Theme bootstrap — runs synchronously before first paint so the page
+       opens in the visitor's chosen theme without a dark-flash. Order of
+       precedence: previously saved choice in localStorage > prefers-color-
+       scheme > dark fallback. Wrapped in try/catch because localStorage
+       can throw in private-mode Safari and some sandboxed iframes. -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('webbrain-theme');
+        var theme = (saved === 'light' || saved === 'dark')
+          ? saved
+          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (_) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 
   <!-- Privacy-friendly analytics by Plausible -->
   <script async src="https://plausible.io/js/pa-yWGfwxkkKSVs-eTuaKYpy.js"></script>
@@ -1415,6 +1536,15 @@
         <option value="ms">Bahasa Melayu</option>
         <option value="tl">Filipino</option>
       </select>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle light / dark theme" title="Toggle light / dark theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
       <a href="https://github.com/esokullu/webbrain/stargazers" class="gh-stars" target="_blank" rel="noopener" id="gh-stars" data-loading="1" aria-label="在 GitHub 上为 WebBrain 加星">
         <svg class="gh-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
         <svg class="gh-star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.99 6.36L22 9.4l-5 4.96L18.18 22 12 18.5 5.82 22 7 14.36 2 9.4l7.01-1.04L12 2z"/></svg>
@@ -2195,6 +2325,42 @@
       node.addEventListener('focus', on);
       node.addEventListener('blur', off);
     });
+  })();
+</script>
+
+<!-- Theme toggle handler — flips data-theme on <html> and persists the
+     choice in localStorage. Also reacts to OS-level theme changes if the
+     user hasn't made an explicit choice yet, so the page stays in sync
+     when they flip system settings. -->
+<script>
+  (function () {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const root = document.documentElement;
+
+    function setTheme(theme, persist) {
+      root.setAttribute('data-theme', theme);
+      if (persist) {
+        try { localStorage.setItem('webbrain-theme', theme); } catch (_) {}
+      }
+    }
+
+    btn.addEventListener('click', function () {
+      const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      setTheme(next, true);
+    });
+
+    // Track OS theme changes — but only honor them when the user hasn't
+    // picked a theme manually (localStorage empty).
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    function onMQ(e) {
+      try {
+        if (localStorage.getItem('webbrain-theme')) return;
+      } catch (_) { /* fall through and apply OS pref */ }
+      setTheme(e.matches ? 'light' : 'dark', false);
+    }
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onMQ);
+    else if (typeof mq.addListener === 'function') mq.addListener(onMQ);
   })();
 </script>
 
