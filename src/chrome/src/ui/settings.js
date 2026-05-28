@@ -73,6 +73,19 @@ if (themeSelect) {
     applyMode(mode);
   });
   watch(() => currentThemeMode);
+  // If another Settings tab or the side panel flips the theme, watch()
+  // already re-paints this page — but the closure variable and the select
+  // value won't update on their own. Without this, the picker drifts out
+  // of sync and a later OS-theme flip can re-apply the stale 'system'.
+  if (globalThis.chrome?.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes.themeMode) return;
+      const next = changes.themeMode.newValue;
+      if (!THEME_MODES.includes(next)) return;
+      currentThemeMode = next;
+      if (themeSelect.value !== next) themeSelect.value = next;
+    });
+  }
 }
 
 function renderSubtitle() {
