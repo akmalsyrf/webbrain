@@ -33,7 +33,6 @@
   "demo.label": "演示",
   "demo.title": "观看 WebBrain 实战",
   "demo.subtitle": "看看 WebBrain 如何阅读页面、提取数据并自动化浏览器任务。",
-  "demo.iframe_title": "WebBrain 演示视频",
   "features.label": "功能",
   "features.title": "浏览器 AI 所需的一切",
   "features.subtitle": "一个功能齐全的 AI 代理,驻扎在浏览器侧边栏,能理解任何网页。",

@@ -33,7 +33,6 @@
   "demo.label": "เดโม",
   "demo.title": "ดู WebBrain ทำงานจริง",
   "demo.subtitle": "ดูว่า WebBrain อ่านหน้า สกัดข้อมูล และทำให้งานในเบราว์เซอร์เป็นอัตโนมัติได้อย่างไร",
-  "demo.iframe_title": "วิดีโอเดโมของ WebBrain",
   "features.label": "คุณสมบัติ",
   "features.title": "ทุกอย่างที่ AI ในเบราว์เซอร์ควรมี",
   "features.subtitle": "AI agent เต็มรูปแบบที่อยู่ในแถบด้านข้างของเบราว์เซอร์และเข้าใจหน้าเว็บใด ๆ",

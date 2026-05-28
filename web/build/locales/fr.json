@@ -33,7 +33,6 @@
   "demo.label": "Démo",
   "demo.title": "WebBrain en action",
   "demo.subtitle": "Découvrez comment WebBrain lit les pages, extrait des données et automatise les tâches du navigateur.",
-  "demo.iframe_title": "Vidéo de démonstration de WebBrain",
   "features.label": "Fonctionnalités",
   "features.title": "Tout ce qu'il faut pour une IA dans le navigateur",
   "features.subtitle": "Un agent IA complet qui vit dans la barre latérale du navigateur et comprend n'importe quelle page web.",

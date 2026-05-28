@@ -33,7 +33,6 @@
   "demo.label": "デモ",
   "demo.title": "WebBrain の動作を見る",
   "demo.subtitle": "WebBrain がページを読み、データを抽出し、ブラウザのタスクを自動化する様子をご覧ください。",
-  "demo.iframe_title": "WebBrain デモ動画",
   "features.label": "機能",
   "features.title": "ブラウザ AI に必要なものすべて",
   "features.subtitle": "ブラウザのサイドパネルに常駐し、あらゆる Web ページを理解する、フル機能の AI エージェント。",
