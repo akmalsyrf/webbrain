@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'Ожидание «{selector}»',
 
   'st.title': 'Настройки WebBrain',
-  'st.subtitle': 'Настройте провайдеров LLM и параметры отображения · v{version}',
+  'st.subtitle': 'Настройте провайдеров LLM и параметры · v{version}',
   'st.tab.display': 'Общие',
   'st.tab.providers': 'Провайдеры',
   'st.tab.vision': 'Зрение',

@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': '"{selector}" 대기',
 
   'st.title': 'WebBrain 설정',
-  'st.subtitle': 'LLM 제공자와 표시 설정을 구성합니다 · v{version}',
+  'st.subtitle': 'LLM 제공자와 설정을 구성합니다 · v{version}',
   'st.tab.display': '일반',
   'st.tab.providers': '제공자',
   'st.tab.vision': '비전',

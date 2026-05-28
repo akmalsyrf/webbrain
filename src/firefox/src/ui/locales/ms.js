@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'Menunggu "{selector}"',
 
   'st.title': 'Tetapan WebBrain',
-  'st.subtitle': 'Konfigurasi pembekal LLM dan keutamaan paparan anda · v{version}',
+  'st.subtitle': 'Konfigurasi pembekal LLM dan keutamaan anda · v{version}',
   'st.tab.display': 'Umum',
   'st.tab.providers': 'Pembekal',
   'st.tab.vision': 'Penglihatan',

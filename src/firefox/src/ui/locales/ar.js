@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'انتظار «{selector}»',
 
   'st.title': 'إعدادات WebBrain',
-  'st.subtitle': 'اضبط مزوّدي LLM وتفضيلات العرض · v{version}',
+  'st.subtitle': 'اضبط مزوّدي LLM والتفضيلات · v{version}',
   'st.tab.display': 'عام',
   'st.tab.providers': 'المزوّدون',
   'st.tab.vision': 'الرؤية',

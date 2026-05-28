@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'Очікування «{selector}»',
 
   'st.title': 'Налаштування WebBrain',
-  'st.subtitle': 'Налаштуйте провайдерів LLM та параметри відображення · v{version}',
+  'st.subtitle': 'Налаштуйте провайдерів LLM та параметри · v{version}',
   'st.tab.display': 'Загальні',
   'st.tab.providers': 'Провайдери',
   'st.tab.vision': 'Зір',

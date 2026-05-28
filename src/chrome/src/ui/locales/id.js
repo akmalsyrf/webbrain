@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'Menunggu "{selector}"',
 
   'st.title': 'Pengaturan WebBrain',
-  'st.subtitle': 'Konfigurasikan penyedia LLM dan preferensi tampilan · v{version}',
+  'st.subtitle': 'Konfigurasikan penyedia LLM dan preferensi · v{version}',
   'st.tab.display': 'Umum',
   'st.tab.providers': 'Penyedia',
   'st.tab.vision': 'Visi',

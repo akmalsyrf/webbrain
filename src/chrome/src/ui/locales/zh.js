@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': '等待「{selector}」',
 
   'st.title': 'WebBrain 设置',
-  'st.subtitle': '配置你的 LLM 提供商和显示偏好 · v{version}',
+  'st.subtitle': '配置你的 LLM 提供商和偏好 · v{version}',
   'st.tab.display': '通用',
   'st.tab.providers': '提供商',
   'st.tab.vision': '视觉',

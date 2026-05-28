@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'รอ “{selector}”',
 
   'st.title': 'การตั้งค่า WebBrain',
-  'st.subtitle': 'ตั้งค่าผู้ให้บริการ LLM และการแสดงผล · v{version}',
+  'st.subtitle': 'ตั้งค่าผู้ให้บริการ LLM และการตั้งค่า · v{version}',
   'st.tab.display': 'ทั่วไป',
   'st.tab.providers': 'ผู้ให้บริการ',
   'st.tab.vision': 'การมองเห็น',

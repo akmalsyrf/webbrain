@@ -77,7 +77,7 @@ export default {
   'tool.wait_for_element.selector': 'Esperando «{selector}»',
 
   'st.title': 'Ajustes de WebBrain',
-  'st.subtitle': 'Configura tus proveedores de LLM y preferencias de visualización · v{version}',
+  'st.subtitle': 'Configura tus proveedores de LLM y preferencias · v{version}',
   'st.tab.display': 'General',
   'st.tab.providers': 'Proveedores',
   'st.tab.vision': 'Visión',
