@@ -1890,6 +1890,27 @@ test('press_keys: Enter is a submit (CLICK); Tab/Escape are benign (null)', () =
   assert.equal(capabilityFor('press_keys', {}), Capability.CLICK); // unknown → gate, fail safe
 });
 
+test('record_tab (tab + microphone capture) is gated', () => {
+  assert.equal(capabilityFor('record_tab', {}), Capability.RECORD);
+  assert.equal(capabilityForCh('record_tab', {}), Capability.RECORD);
+});
+
+test('navigation host resolves relative / protocol-relative against current page', () => {
+  const base = 'https://trusted.com/page';
+  // protocol-relative → the host the browser will actually load, NOT current
+  assert.equal(
+    hostForCapability(Capability.NAVIGATE, { url: '//attacker.example/x?leak=1' }, base),
+    'attacker.example'
+  );
+  // relative path stays same-origin
+  assert.equal(hostForCapability(Capability.NAVIGATE, { url: '/dashboard' }, base), 'trusted.com');
+  assert.equal(hostForCapability(Capability.NAVIGATE, { url: 'sub/page' }, base), 'trusted.com');
+  // absolute is unaffected
+  assert.equal(hostForCapability(Capability.NAVIGATE, { url: 'https://dest.com/y' }, base), 'dest.com');
+  // normalizeHost also handles bare protocol-relative input
+  assert.equal(normalizeHost('//evil.example/x'), 'evil.example');
+});
+
 test('normalizeHost strips scheme/www/port/path', () => {
   assert.equal(normalizeHost('https://www.GitHub.com/foo/bar'), 'github.com');
   assert.equal(normalizeHost('http://example.com:8080/x'), 'example.com');

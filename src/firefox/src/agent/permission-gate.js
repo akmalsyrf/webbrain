@@ -29,6 +29,7 @@ export const Capability = {
   NETWORK: 'network_write',      // fetch_url / research_url with a write method
   DOWNLOAD: 'download',          // download_* tools
   UPLOAD: 'upload',              // upload_file (selects a local file)
+  RECORD: 'record',              // record_tab (captures the tab + microphone)
 };
 
 // Human-readable verb for the permission prompt: "WebBrain wants to <label> <host>".
@@ -40,6 +41,7 @@ export const CAPABILITY_LABEL = {
   [Capability.NETWORK]: 'send a write request to',
   [Capability.DOWNLOAD]: 'download files from',
   [Capability.UPLOAD]: 'upload a file to',
+  [Capability.RECORD]: 'record the tab (and microphone) on',
 };
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -60,6 +62,7 @@ const TOOL_CAPABILITY = {
   iframe_type: Capability.TYPE,
   execute_js: Capability.EXECUTE_JS,
   upload_file: Capability.UPLOAD,
+  record_tab: Capability.RECORD,
   download_file: Capability.DOWNLOAD,
   download_files: Capability.DOWNLOAD,
   download_resource_from_page: Capability.DOWNLOAD,
@@ -97,12 +100,14 @@ export function capabilityFor(name, args) {
 /** Normalize a URL or bare host to a comparable registrable-ish host. */
 export function normalizeHost(input) {
   if (typeof input !== 'string' || !input) return '';
+  let s = input.trim();
+  if (s.startsWith('//')) s = 'https:' + s; // protocol-relative → resolvable URL
   try {
-    if (/^https?:\/\//i.test(input)) {
-      return new URL(input).hostname.toLowerCase().replace(/^www\./, '');
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
+      return new URL(s).hostname.toLowerCase().replace(/^www\./, '');
     }
   } catch { /* fall through to bare-host parsing */ }
-  let h = input.toLowerCase().replace(/^www\./, '').split('/')[0];
+  let h = s.toLowerCase().replace(/^www\./, '').split('/')[0];
   // strip a :port (but leave IPv6 bracket forms alone)
   if (!h.startsWith('[')) {
     const c = h.indexOf(':');
@@ -113,11 +118,28 @@ export function normalizeHost(input) {
 
 /**
  * Which host does this capability act on? Navigate/network target the
- * destination URL; click/type/execute/download target the current page.
+ * destination URL; click/type/execute/download/record target the current page.
+ *
+ * The destination is resolved against the current page URL (new URL(raw, base))
+ * — exactly what the navigate handler does — so a relative ("/x"), protocol-
+ * relative ("//attacker.example/x") or absolute URL all resolve to the host
+ * the browser will actually load. Without this, "//attacker.example" parsed to
+ * empty and fell back to the current host, letting a current-site grant
+ * authorize a cross-origin navigation / exfiltration.
  */
 export function hostForCapability(capability, args, currentUrlOrHost) {
   if (capability === Capability.NAVIGATE || capability === Capability.NETWORK) {
-    return normalizeHost((args && args.url)) || normalizeHost(currentUrlOrHost);
+    const raw = args && args.url;
+    if (typeof raw === 'string' && raw) {
+      try {
+        const base = (typeof currentUrlOrHost === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(currentUrlOrHost))
+          ? currentUrlOrHost : undefined;
+        return new URL(raw, base).hostname.toLowerCase().replace(/^www\./, '');
+      } catch { /* not resolvable against base → try bare parse */ }
+      const h = normalizeHost(raw);
+      if (h) return h;
+    }
+    return normalizeHost(currentUrlOrHost);
   }
   return normalizeHost(currentUrlOrHost);
 }
