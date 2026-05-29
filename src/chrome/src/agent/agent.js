@@ -25,35 +25,7 @@ import {
   stopTabRecording as recorderStop,
   getRecordingState as recorderGetState,
 } from '../recorder/host.js';
-import { Capability, CAPABILITY_LABEL, capabilityFor, hostForCapability, PermissionManager } from './permission-gate.js';
-
-/**
- * Tools whose results carry content lifted from the web page / fetched docs —
- * i.e. attacker-controllable bytes. Their tool results are wrapped in
- * <untrusted_page_content> markers (see _wrapUntrusted) so the model treats
- * the bytes as DATA, never as instructions. Control/status tools (click,
- * navigate, type_text, …) and the user-authored `clarify` reply are NOT in
- * this set — their results are extension- or user-authored, hence trusted.
- */
-const UNTRUSTED_CONTENT_TOOLS = new Set([
-  'read_page',
-  'get_accessibility_tree',
-  'get_interactive_elements',
-  'get_shadow_dom',
-  'shadow_dom_query',
-  'extract_data',
-  'get_selection',
-  'iframe_read',
-  'fetch_url',
-  'research_url',
-  'read_pdf',
-  'read_downloaded_file',
-  'execute_js',
-  'scroll',
-  'wait_for_element',
-  'verify_form',
-  'download_social_media',
-]);
+import { Capability, CAPABILITY_LABEL, capabilityFor, hostForCapability, PermissionManager, UNTRUSTED_CONTENT_TOOLS } from './permission-gate.js';
 
 /**
  * The WebBrain Agent — orchestrates multi-step LLM + tool-use loops.

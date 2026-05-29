@@ -43,7 +43,7 @@ const { sanitizeMarkdownLinks: sanitizeMarkdownLinksFx } = await import(
 );
 
 // permission-gate.js is pure JS (deterministic capability × origin gate).
-const { Capability, capabilityFor, normalizeHost, hostForCapability, PermissionManager } = await import(
+const { Capability, capabilityFor, normalizeHost, hostForCapability, PermissionManager, UNTRUSTED_CONTENT_TOOLS } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/agent/permission-gate.js').replace(/\\/g, '/')
 );
 const {
@@ -1983,6 +1983,52 @@ test('parity: chrome & firefox permission-gate behave identically', async () => 
   await a.record('x.com', 'click', 'allow', 'always');
   await b.record('x.com', 'click', 'allow', 'always');
   assert.equal(a.check('x.com', 'click').allowed, b.check('x.com', 'click').allowed);
+});
+
+// EXHAUSTIVENESS GUARD — the whole capability/untrusted model is only as
+// complete as its registries. This fails CI when a tool the model can call is
+// neither gated (capabilityFor), nor an untrusted-content reader
+// (UNTRUSTED_CONTENT_TOOLS), nor on the reviewed known-safe allowlist below.
+// Adding a new tool then forces a deliberate categorization instead of a
+// silent gate/Layer-1 bypass (the failure mode behind several PR findings).
+//
+// KNOWN_SAFE: tools that neither cause a gated side effect nor return
+// page-derived content. Each is a reviewed, deliberate exception — adding to
+// this list is a security decision, so keep the justification next to it.
+const KNOWN_SAFE_TOOLS = new Set([
+  'clarify',              // relays a question to the user (trusted user input)
+  'done',                 // signals task completion
+  'scratchpad_write',     // writes an internal agent note, not the page
+  'list_downloads',       // lists local downloads (local state, not page content)
+  'screenshot',           // image is framed untrusted at attach time, not via the set
+  'full_page_screenshot', // (same)
+  'hover',                // reveals menus/tooltips; cannot submit/delete/navigate
+  'wait_for_stable',      // waits for the page to settle; returns status only
+  'stop_recording',       // stops capture (starting it is gated via record_tab)
+  'solve_captcha',        // injects a challenge token; the actual submit stays gated
+]);
+
+test('exhaustiveness: every model-exposed tool is classified', () => {
+  for (const [label, getTools, capFor] of [
+    ['firefox', getToolsForModeFx, capabilityFor],
+    ['chrome', getToolsForModeCh, capabilityForCh],
+  ]) {
+    const tools = getTools('act');
+    // Guard against a vacuous pass (e.g. getTools returning []).
+    assert.ok(tools.length >= 15, `[${label}] expected the act toolset, got ${tools.length} tools`);
+    for (const t of tools) {
+      const name = t.function?.name;
+      if (!name) continue;
+      const gated = capFor(name, {}) !== null;       // has a (possible) side effect
+      const untrustedRead = UNTRUSTED_CONTENT_TOOLS.has(name); // result is page-derived
+      const knownSafe = KNOWN_SAFE_TOOLS.has(name);
+      assert.ok(
+        gated || untrustedRead || knownSafe,
+        `[${label}] tool "${name}" is unclassified. Add it to capabilityFor() if it has a side effect, ` +
+        `UNTRUSTED_CONTENT_TOOLS if its result is page-derived, or the KNOWN_SAFE_TOOLS allowlist (with justification).`
+      );
+    }
+  }
 });
 
 await run();

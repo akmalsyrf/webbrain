@@ -44,6 +44,34 @@ export const CAPABILITY_LABEL = {
   [Capability.RECORD]: 'record the tab (and microphone) on',
 };
 
+/**
+ * Tool names whose RESULTS carry page-/document-derived bytes (attacker-
+ * controllable) and must be wrapped in <untrusted_page_content> before they
+ * reach the model (see agent.js _wrapUntrusted). Co-located with the
+ * capability map so the exhaustiveness test can verify every model-exposed
+ * tool is classified as gated, untrusted-read, or explicitly known-safe.
+ */
+export const UNTRUSTED_CONTENT_TOOLS = new Set([
+  'read_page',
+  'get_accessibility_tree',
+  'get_interactive_elements',
+  'get_shadow_dom',
+  'shadow_dom_query',
+  'get_frames',
+  'extract_data',
+  'get_selection',
+  'iframe_read',
+  'fetch_url',
+  'research_url',
+  'read_pdf',
+  'read_downloaded_file',
+  'execute_js',
+  'scroll',
+  'wait_for_element',
+  'verify_form',
+  'download_social_media',
+]);
+
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Tool name -> capability. EVERY side-effecting tool must be here (or handled
