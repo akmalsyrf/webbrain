@@ -1990,12 +1990,18 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     if (response && response.cancelled) return null;
     const ans = String(response?.answer || '').trim().toLowerCase();
-    // Fail safe: any negative phrasing → deny, even if it contains "always" /
-    // "allow" (e.g. "not always", "don't allow"). Only the exact option text or
-    // an affirmative-leading phrase grants.
+    // Exact option clicks FIRST — the button sends the exact label, so honor
+    // it regardless of negative-looking tokens in the host (e.g. a ".no" TLD,
+    // "cancel.com"), which would otherwise trip the free-text negation scan.
+    if (ans === ALWAYS.toLowerCase()) return 'always';
+    if (ans === ONCE.toLowerCase()) return 'once';
+    if (ans === DENY.toLowerCase()) return 'deny';
+    // Free-text answers: negative phrasing → deny (fail safe), even if it
+    // contains "always"/"allow" ("not always", "don't allow"); else an
+    // affirmative-leading phrase grants.
     if (/\bno\b|\bnot\b|\bnever\b|\bcancel\b|\bdeny\b|\bstop\b|\bskip\b|n'?t\b/.test(ans)) return 'deny';
-    if (ans === ALWAYS.toLowerCase() || /^(always allow|always)\b/.test(ans)) return 'always';
-    if (ans === ONCE.toLowerCase() || /^(allow once|once|yes|allow|ok|okay|sure|proceed|go ahead|do it)\b/.test(ans)) return 'once';
+    if (/^(always allow|always)\b/.test(ans)) return 'always';
+    if (/^(allow once|once|yes|allow|ok|okay|sure|proceed|go ahead|do it)\b/.test(ans)) return 'once';
     return 'deny';
   }
 
