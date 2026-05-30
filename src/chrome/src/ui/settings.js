@@ -8,7 +8,7 @@ import { CAPABILITY_LABEL } from '../agent/permission-gate.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '10.0.2';
+const EXT_VERSION = '10.0.5';
 
 const providersContainer = document.getElementById('providers');
 const verboseToggle = document.getElementById('toggle-verbose');
