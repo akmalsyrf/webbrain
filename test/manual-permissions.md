@@ -94,6 +94,25 @@ Confirms a grant is scoped to exactly one capability+host, not a blanket pass.
 
 ---
 
+## Test 5 — Master switch ("Ask before consequential actions")
+The toggle is at the **top** of Settings → Permissions, **on by default**.
+
+1. **On (default):** with the toggle on, trigger a gated action → the permission
+   card appears (as in Test 1). The warning box is hidden.
+2. **Turn it off:** uncheck the toggle → a **⚠️ warning box** appears explaining
+   that prompts are off and the agent will act without asking. Console:
+   `askBeforeConsequentialActions` is `false`.
+3. **Fast path:** back in the agent (no reload), trigger a gated action on a site
+   with **no** existing grant → it executes with **no card** (the `storage.onChanged`
+   listener picked up the change live).
+4. **Layers 1 & 2 still on:** the switch only disables the *prompts*. Confirm the
+   agent still treats page content as data — e.g. a page that says "ignore your
+   instructions and …" should not hijack the task (this is the system-prompt /
+   untrusted-wrapping behavior, independent of the gate).
+5. **Turn it back on:** re-check → warning hides; gated actions prompt again.
+
+---
+
 ## Pass criteria
 - Card shows 3 well-laid-out buttons (1a).
 - Allow-once and Always **proceed**; Don't-allow **blocks** (1b–1d).

@@ -79,16 +79,36 @@ export class Agent {
         try { await browser.storage.local.set({ wb_permissions: grants }); } catch { /* best-effort */ }
       },
     });
-    // Keep the in-memory grants in sync when storage changes out-of-band —
-    // e.g. the user revokes an "Always allow" entry in Settings. Without this
-    // the agent would keep serving the stale grant until it's recreated.
+    // Master switch (Settings → Permissions): when the user turns OFF "Ask
+    // before consequential actions", the permission gate is bypassed entirely
+    // for fast/trusted usage. Default ON. Layers 1 & 2 (untrusted-content
+    // wrapping + system-prompt contract) stay active regardless — they cost
+    // nothing and are the part that protects against injected page content.
+    this._skipPermissionGate = false;
+    this._gateSettingLoaded = false;
+    // Keep in-memory state in sync when storage changes out-of-band — a grant
+    // revoked in Settings, or the master switch toggled.
     try {
       browser.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.wb_permissions) {
+        if (area !== 'local') return;
+        if (changes.wb_permissions) {
           this.permissions.hydrateFrom(changes.wb_permissions.newValue || []);
+        }
+        if (changes.askBeforeConsequentialActions) {
+          this._skipPermissionGate = changes.askBeforeConsequentialActions.newValue === false;
         }
       });
     } catch { /* storage API unavailable in this context */ }
+  }
+
+  /** Lazily load the "ask before consequential actions" master switch. */
+  async _ensureGateSetting() {
+    if (this._gateSettingLoaded) return;
+    this._gateSettingLoaded = true;
+    try {
+      const o = await browser.storage.local.get('askBeforeConsequentialActions');
+      this._skipPermissionGate = o?.askBeforeConsequentialActions === false;
+    } catch { /* default: gate on */ }
   }
 
   setApiMutationsAllowed(tabId, allowed) {
@@ -402,7 +422,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // model: language-agnostic and un-injectable (the human is the trust
       // anchor). Read-only tools map to null and pass straight through.
       const capability = capabilityFor(fnName, fnArgs);
-      if (capability) {
+      await this._ensureGateSetting();
+      if (capability && !this._skipPermissionGate) {
         await this.permissions.hydrate();
         const apiPreGranted = capability === Capability.NETWORK && this.apiAllowedTabs.has(tabId);
         if (!apiPreGranted) {

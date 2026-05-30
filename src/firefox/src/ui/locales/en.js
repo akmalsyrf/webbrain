@@ -128,6 +128,9 @@ export default {
   'st.tab.captcha': 'CAPTCHA',
   'st.tab.permissions': 'Permissions',
 
+  'st.perms.gate.label': 'Ask before consequential actions',
+  'st.perms.gate.desc': 'Recommended. When on, WebBrain asks permission the first time it clicks, types, navigates, runs JavaScript, uploads, downloads, or records on a site (then remembers your choice). Turn off for fast, prompt-free use on sites you fully trust.',
+  'st.perms.gate.warning': '⚠️ Permission prompts are OFF. WebBrain will click, type, navigate, run JavaScript, upload, download, and record on any site WITHOUT asking — including on pages whose content may be attacker-controlled. Page content is still treated as untrusted internally, but nothing will stop an injected instruction from triggering an action. Only leave this off if you fully trust every site you use the assistant on.',
   'st.perms.desc': 'Sites you have allowed WebBrain to act on. Each entry is one capability (click, type, navigate, run JavaScript, etc.) granted to a specific site. Remove any you no longer want — WebBrain will ask again next time it needs it.',
   'st.perms.empty': 'No site permissions granted yet. WebBrain asks before it clicks, types, navigates, uploads, downloads, records, or runs code on a site, and remembers your choice here when you pick “Always allow”.',
   'st.perms.allowed': 'Allowed to {verb}',

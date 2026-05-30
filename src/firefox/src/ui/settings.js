@@ -181,7 +181,8 @@ async function init() {
   if (captchaEnabledToggle) captchaEnabledToggle.checked = !!captchaStored.captchaSolverEnabled;
   if (captchaApiKeyInput) captchaApiKeyInput.value = captchaStored.capsolverApiKey || '';
 
-  // Load site permissions (capability × origin grants)
+  // Load site permissions (capability × origin grants) + the master switch
+  await initPermissionGateToggle();
   await renderPermissions();
 
   // Load providers
@@ -194,6 +195,21 @@ async function init() {
 // --- Site permissions (capability × origin grants) ---
 
 const PERMISSIONS_KEY = 'wb_permissions';
+const GATE_KEY = 'askBeforeConsequentialActions';
+
+async function initPermissionGateToggle() {
+  const toggle = document.getElementById('toggle-permission-gate');
+  const warning = document.getElementById('permission-gate-warning');
+  if (!toggle) return;
+  const stored = await browser.storage.local.get(GATE_KEY);
+  const askBefore = stored[GATE_KEY] ?? true; // gate ON by default
+  toggle.checked = askBefore;
+  if (warning) warning.style.display = askBefore ? 'none' : '';
+  toggle.addEventListener('change', async () => {
+    await browser.storage.local.set({ [GATE_KEY]: toggle.checked });
+    if (warning) warning.style.display = toggle.checked ? 'none' : '';
+  });
+}
 
 async function renderPermissions() {
   const listEl = document.getElementById('permissions-list');
