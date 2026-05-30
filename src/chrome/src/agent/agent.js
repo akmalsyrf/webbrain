@@ -2334,7 +2334,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
       } else if (msg.role === 'tool') {
         const toolName = toolNameById.get(msg.tool_call_id) || 'tool';
-        const digest = this._digestToolResult(toolName, msg.content);
+        // Sanitize: digests can echo short page-derived fields (a url, a
+        // filename) — strip chars that could break out of the [..] trim
+        // message or inject a newline into the summarizer input.
+        const digest = String(this._digestToolResult(toolName, msg.content))
+          .replace(/[[\]`\r\n]/g, ' ');
         summaryText += `- ${toolName} → ${digest}\n`;
       }
     }
@@ -2387,10 +2391,18 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    */
   _digestToolResult(name, content) {
     if (!content) return '(empty)';
+    // Unwrap the untrusted-content markers first so the inner JSON parses —
+    // otherwise the parse fails and the fallback would dump raw (attacker-
+    // controlled) page text into the trusted trim summary / summarizer input.
+    const raw = this._unwrapUntrusted(content);
     let parsed = null;
-    try { parsed = JSON.parse(content); } catch { /* not JSON */ }
+    try { parsed = JSON.parse(raw); } catch { /* not JSON / truncated */ }
     if (!parsed || typeof parsed !== 'object') {
-      return this._truncate(String(content).replace(/\s+/g, ' '), 140);
+      // Never echo raw bytes from a page-derived tool into the trusted summary.
+      if (UNTRUSTED_CONTENT_TOOLS.has(name)) {
+        return `${name}: untrusted page content (${String(raw).length} chars)`;
+      }
+      return this._truncate(String(raw).replace(/\s+/g, ' '), 140);
     }
     if (parsed.error) {
       return `error: ${this._truncate(String(parsed.error), 120)}`;
@@ -2440,9 +2452,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
       case 'fetch_url':
       case 'research_url': {
+        // Don't echo parsed.title — it's page-derived. Status + char count only.
         const len = parsed.originalLength ?? (typeof parsed.text === 'string' ? parsed.text.length : '?');
-        const title = parsed.title ? ` - ${this._truncate(parsed.title, 60)}` : '';
-        return `${parsed.status ?? 200}${title} (${len} chars)`;
+        return `${parsed.status ?? 200} (${len} chars)`;
       }
       case 'get_accessibility_tree':
       case 'read_page': {
@@ -2469,11 +2481,17 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
     }
 
-    // Generic fallback — compact stringified JSON, bounded.
+    // Generic fallback. For a page-derived tool, NEVER stringify the parsed
+    // object — it holds page content (element labels, selection, frame text,
+    // PDF text, execute_js output, …) that would land in the trusted trim
+    // summary. Emit a content-free digest instead.
+    if (UNTRUSTED_CONTENT_TOOLS.has(name)) {
+      return `${name} ok (untrusted page content)`;
+    }
     try {
       return this._truncate(JSON.stringify(parsed), 140);
     } catch {
-      return this._truncate(String(content), 140);
+      return this._truncate(String(raw), 140);
     }
   }
 
@@ -2514,6 +2532,18 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const nonce = Math.random().toString(36).slice(2, 10);
     const safe = String(content).replace(/<\/?untrusted_page_content\b[^>]*>/gi, '[markup stripped]');
     return `<untrusted_page_content id="${nonce}">\n${safe}\n</untrusted_page_content id="${nonce}">`;
+  }
+
+  /**
+   * Strip the <untrusted_page_content> wrapper, returning the inner payload.
+   * Used by digest/summarization so a wrapped tool result can still be parsed
+   * and reduced to SAFE metadata ("read page (N chars)") instead of falling
+   * back to dumping raw page text into the trusted trim summary.
+   */
+  _unwrapUntrusted(content) {
+    if (typeof content !== 'string') return content;
+    const m = content.match(/<untrusted_page_content\b[^>]*>\n?([\s\S]*?)\n?<\/untrusted_page_content\b[^>]*>/);
+    return m ? m[1] : content;
   }
 
   /**
