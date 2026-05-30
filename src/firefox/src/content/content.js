@@ -1416,7 +1416,7 @@
     let target = originEl ? findScrollableAncestor(originEl, direction, !windowScrollable) : null;
     let targetSource = target ? 'origin-ancestor' : 'none';
 
-    if (!target && (originEl || !windowScrollable)) {
+    if (!target && !windowScrollable) {
       let best = null;
       let bestArea = 0;
       const candidates = document.querySelectorAll('div, section, main, article, aside, [role="main"], [role="dialog"], [role="region"], [role="listbox"], [role="menu"]');
