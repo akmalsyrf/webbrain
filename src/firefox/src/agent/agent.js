@@ -1115,8 +1115,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       title = tab?.title || '';
     } catch (e) { /* ignore */ }
 
+    // url and title are page-controlled (document.title especially). Neutralize
+    // characters that could break out of this bracketed, trusted note and
+    // inject planner-level instructions; bound length. (Raw `url` is kept for
+    // downstream adapter matching below — only the displayed copy is sanitized.)
+    const safeField = (s) => String(s || '')
+      .replace(/[[\]<>`"\r\n]/g, ' ')
+      .replace(/untrusted_page_content/gi, 'untrusted-content')
+      .slice(0, 300);
     let contextLine = url
-      ? `[Current page context — applies to this user message and supersedes older page context for phrases like "this page". URL: ${url}${title ? ` — Title: ${title}` : ''}]\n\n`
+      ? `[Current page context — applies to this user message and supersedes older page context for phrases like "this page". URL: ${safeField(url)}${title ? ` — Title: ${safeField(title)}` : ''}]\n\n`
       : '';
 
     if (this.apiAllowedTabs.has(tabId) && !this.apiAllowedInjected.has(tabId)) {
