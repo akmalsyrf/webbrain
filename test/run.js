@@ -2050,8 +2050,6 @@ const KNOWN_SAFE_TOOLS = new Set([
   'done',                 // signals task completion
   'scratchpad_write',     // writes an internal agent note, not the page
   'list_downloads',       // lists local downloads (local state, not page content)
-  'screenshot',           // image is framed untrusted at attach time, not via the set
-  'full_page_screenshot', // (same)
   'hover',                // reveals menus/tooltips; cannot submit/delete/navigate
   'wait_for_stable',      // waits for the page to settle; returns status only
   'stop_recording',       // stops capture (starting it is gated via record_tab)

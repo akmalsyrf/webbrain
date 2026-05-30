@@ -70,6 +70,12 @@ export const UNTRUSTED_CONTENT_TOOLS = new Set([
   'wait_for_element',
   'verify_form',
   'download_social_media',
+  // screenshot / full_page_screenshot: when a vision model is configured these
+  // return `description` = a transcription of the page (OCR/visual text). The
+  // image itself is stripped to _attachImage (and framed there) before this
+  // wrap, so only the page-derived text fields get wrapped here.
+  'screenshot',
+  'full_page_screenshot',
 ]);
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
