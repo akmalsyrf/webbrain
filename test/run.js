@@ -2065,7 +2065,6 @@ test('parity: chrome & firefox permission-gate behave identically', async () => 
 // this list is a security decision, so keep the justification next to it.
 const KNOWN_SAFE_TOOLS = new Set([
   'clarify',              // relays a question to the user (trusted user input)
-  'done',                 // signals task completion
   'scratchpad_write',     // writes an internal agent note, not the page
   'list_downloads',       // lists local downloads (local state, not page content)
   'hover',                // reveals menus/tooltips; cannot submit/delete/navigate

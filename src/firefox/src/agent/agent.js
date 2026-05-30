@@ -514,7 +514,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: this._limitToolResult(toolResult),
+          // Wrap: the done result's verification fields (pageTitle/pageState)
+          // are page-derived and get persisted as history for the next turn.
+          content: this._wrapUntrusted(fnName, this._limitToolResult(toolResult)),
         });
         return { action: 'return', value: finalResponse };
       }
