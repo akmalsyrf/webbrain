@@ -238,7 +238,7 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'scroll',
-      description: 'Scroll the page in a given direction.',
+      description: 'Scroll in a given direction. By default, targets the nearest scrollable pane around the last interaction/focus when available, then falls back to the window. For split panes, sticky filters, dropdowns, or virtualized lists, pass ref_id from get_accessibility_tree or CSS-pixel x/y inside the pane so the correct container scrolls. The result reports movedWindow/movedContainer plus warnings when no movement or an almost-blank viewport suggests the wrong scroll surface.',
       parameters: {
         type: 'object',
         properties: {
@@ -248,6 +248,10 @@ export const AGENT_TOOLS = [
             description: 'Scroll direction',
           },
           amount: { type: 'number', description: 'Pixels to scroll (default: 500)' },
+          ref_id: { type: 'string', description: 'Optional ref_id for an element inside the pane/dropdown/list you intend to scroll.' },
+          x: { type: 'number', description: 'Optional CSS-pixel x coordinate inside the pane/dropdown/list you intend to scroll.' },
+          y: { type: 'number', description: 'Optional CSS-pixel y coordinate inside the pane/dropdown/list you intend to scroll.' },
+          alsoWindow: { type: 'boolean', description: 'If true, scroll the window too even when a nested container moved. Default false.' },
         },
       },
     },

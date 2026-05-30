@@ -125,6 +125,31 @@
     return false;
   }
 
+  let _lastInteractionPoint = null;
+
+  function rememberInteractionPoint(el, source = 'interaction') {
+    try {
+      if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+      const r = el.getBoundingClientRect();
+      if (!Number.isFinite(r.left) || !Number.isFinite(r.top) || r.width < 1 || r.height < 1) return null;
+      const rect = {
+        x: Math.round(r.left),
+        y: Math.round(r.top),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+      _lastInteractionPoint = {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        source,
+        ts: Date.now(),
+      };
+      return rect;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Detect the topmost modal/overlay/dialog on the page. If one is found,
    * only elements inside it (and the backdrop) are "reachable" — everything
@@ -681,6 +706,7 @@
       } catch {}
     }
 
+    const clickedRect = rememberInteractionPoint(el, 'click');
     el.click();
 
     // Post-click SELECT detection: the click may have activated a <select>
@@ -709,7 +735,13 @@
       warning = 'Same element clicked again with no page change. Try click({x, y}) with coordinates from a screenshot, or click({index: N}) from get_interactive_elements.';
     }
     _lastClickIdent = ident;
-    return { success: true, tag: el.tagName, text: el.innerText?.slice(0, 50), ...(warning ? { warning } : {}) };
+    return {
+      success: true,
+      tag: el.tagName,
+      text: el.innerText?.slice(0, 50),
+      ...(clickedRect ? { rect: clickedRect } : {}),
+      ...(warning ? { warning } : {}),
+    };
   }
 
   let _lastTypeFieldIdent = null;
@@ -985,7 +1017,7 @@
   /**
    * Scroll the page.
    */
-  function scrollPage(params) {
+  function legacyScrollPage(params) {
     const amount = params.amount || 500;
     const direction = params.direction || 'down';
 
@@ -1072,6 +1104,231 @@
       viewportHeight: window.innerHeight,
       ...(target ? { scrolledContainer: true, containerScrollY: target.scrollTop, containerScrollHeight: target.scrollHeight } : {}),
     };
+  }
+
+  function smartScrollPage(params) {
+    params = params || {};
+    const rawAmount = Number(params.amount);
+    const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : 500;
+    const direction = params.direction || 'down';
+    const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+    const beforeWindowY = window.scrollY;
+
+    function docScrollHeight() {
+      return Math.max(
+        document.body?.scrollHeight || 0,
+        document.documentElement?.scrollHeight || 0,
+        scrollingElement?.scrollHeight || 0
+      );
+    }
+
+    function canMove(start, max, dir) {
+      if (dir === 'down' || dir === 'bottom') return start < max - 1;
+      if (dir === 'up' || dir === 'top') return start > 1;
+      return false;
+    }
+
+    function canScrollWindow(dir) {
+      const max = Math.max(0, docScrollHeight() - window.innerHeight);
+      return canMove(window.scrollY, max, dir);
+    }
+
+    function canScrollElement(el, dir) {
+      if (!el || el === document.body || el === document.documentElement) return false;
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      return max > 1 && canMove(el.scrollTop, max, dir);
+    }
+
+    function scrollElementInstant(el, dir, px) {
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (dir === 'down') el.scrollTop = Math.min(max, el.scrollTop + px);
+      else if (dir === 'up') el.scrollTop = Math.max(0, el.scrollTop - px);
+      else if (dir === 'top') el.scrollTop = 0;
+      else if (dir === 'bottom') el.scrollTop = max;
+    }
+
+    function isScrollableElement(el, allowHidden = false) {
+      if (!el || el === document.body || el === document.documentElement) return false;
+      if (el.scrollHeight <= el.clientHeight + 10) return false;
+      const ov = window.getComputedStyle(el).overflowY;
+      return ov === 'auto' || ov === 'scroll' || ov === 'overlay' || (allowHidden && ov === 'hidden');
+    }
+
+    function elementSummary(el) {
+      if (!el) return null;
+      let rect = null;
+      try {
+        const r = el.getBoundingClientRect();
+        rect = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      } catch {}
+      return {
+        tag: el.tagName ? el.tagName.toLowerCase() : '',
+        role: el.getAttribute?.('role') || '',
+        text: (el.innerText || el.getAttribute?.('aria-label') || '').trim().slice(0, 80),
+        rect,
+      };
+    }
+
+    function findScrollableAncestor(origin, dir, allowHidden = false) {
+      const tag = origin?.tagName || '';
+      const skipOrigin = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || origin?.isContentEditable;
+      let el = skipOrigin ? origin.parentElement : origin;
+      while (el && el !== document.body && el !== document.documentElement) {
+        if (isScrollableElement(el, allowHidden) && canScrollElement(el, dir)) return el;
+        el = el.parentElement;
+      }
+      return null;
+    }
+
+    function visibleTextChars(limit = 2000) {
+      try {
+        if (!document.body) return 0;
+        let total = 0;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const text = (node.nodeValue || '').trim();
+            if (!text) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            const style = window.getComputedStyle(parent);
+            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity || '1') === 0) return NodeFilter.FILTER_REJECT;
+            const r = parent.getBoundingClientRect();
+            if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        let node;
+        while ((node = walker.nextNode())) {
+          total += (node.nodeValue || '').trim().length;
+          if (total >= limit) return total;
+        }
+        return total;
+      } catch {
+        return null;
+      }
+    }
+
+    let originEl = null;
+    let origin = 'none';
+    if (typeof params.ref_id === 'string' && typeof window.__wb_ax_lookup === 'function') {
+      originEl = window.__wb_ax_lookup(params.ref_id);
+      origin = originEl ? `ref_id:${params.ref_id}` : `missing-ref_id:${params.ref_id}`;
+    }
+    if (!originEl && params.x != null && params.y != null) {
+      const x = Number(params.x);
+      const y = Number(params.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        originEl = document.elementFromPoint(x, y);
+        origin = params.origin === 'last_interaction' ? 'last_interaction' : 'point';
+      }
+    }
+    if (!originEl) {
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== document.documentElement) {
+        originEl = active;
+        origin = 'activeElement';
+      }
+    }
+    if (!originEl && _lastInteractionPoint && Date.now() - _lastInteractionPoint.ts < 60000) {
+      originEl = document.elementFromPoint(_lastInteractionPoint.x, _lastInteractionPoint.y);
+      origin = `last_interaction:${_lastInteractionPoint.source}`;
+    }
+
+    const windowScrollable = docScrollHeight() > window.innerHeight + 10;
+    const windowCanMove = canScrollWindow(direction);
+    let target = originEl ? findScrollableAncestor(originEl, direction, !windowScrollable) : null;
+    let targetSource = target ? 'origin-ancestor' : 'none';
+
+    if (!target && !windowCanMove) {
+      let best = null;
+      let bestArea = 0;
+      const candidates = document.querySelectorAll('div, section, main, article, aside, [role="main"], [role="dialog"], [role="region"], [role="listbox"], [role="menu"]');
+      for (const el of candidates) {
+        if (!isScrollableElement(el, !windowScrollable) || !canScrollElement(el, direction)) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1 || rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) continue;
+        const area = rect.width * rect.height;
+        if (area > bestArea) {
+          bestArea = area;
+          best = el;
+        }
+      }
+      if (best && bestArea > window.innerWidth * window.innerHeight * 0.15) {
+        target = best;
+        targetSource = 'largest-visible-container';
+      }
+    }
+
+    let containerBefore = null;
+    let containerAfter = null;
+    if (target) {
+      containerBefore = target.scrollTop;
+      scrollElementInstant(target, direction, amount);
+      containerAfter = target.scrollTop;
+    }
+
+    const movedContainer = target && Math.abs((containerAfter || 0) - (containerBefore || 0)) > 0.5;
+    const shouldScrollWindow = params.alsoWindow === true || !movedContainer;
+    if (shouldScrollWindow && windowCanMove) {
+      if (direction === 'down') window.scrollBy(0, amount);
+      else if (direction === 'up') window.scrollBy(0, -amount);
+      else if (direction === 'top') window.scrollTo(0, 0);
+      else if (direction === 'bottom') window.scrollTo(0, docScrollHeight());
+    }
+
+    const afterWindowY = window.scrollY;
+    const movedWindow = Math.abs(afterWindowY - beforeWindowY) > 0.5;
+    const textChars = visibleTextChars();
+    const totalTextChars = (document.body?.innerText || '').trim().length;
+    const warningParts = [];
+    if (!movedContainer && !movedWindow) {
+      warningParts.push('No scroll movement occurred; the current target may already be at its limit. Try the opposite direction, top/bottom, or pass ref_id/x/y for a different pane.');
+    }
+    if (movedContainer && !movedWindow && params.alsoWindow !== true) {
+      warningParts.push('Scrolled the nearest scrollable container only; the window was left in place to avoid split-pane/listing pages drifting away from the intended area.');
+    }
+    if (textChars !== null && textChars < 20 && totalTextChars > 200) {
+      warningParts.push('The viewport has almost no visible text after scrolling even though the document has text. The page may be lazy-rendered or between scroll panes; use get_accessibility_tree({filter:"visible"}) or scroll with ref_id/x/y instead of assuming the page is empty.');
+    }
+
+    return {
+      success: true,
+      scrollY: afterWindowY,
+      scrollHeight: docScrollHeight(),
+      viewportHeight: window.innerHeight,
+      moved: movedContainer || movedWindow,
+      movedWindow,
+      movedContainer: !!movedContainer,
+      origin,
+      ...(originEl ? { originElement: elementSummary(originEl) } : {}),
+      ...(target ? {
+        scrolledContainer: true,
+        targetSource,
+        targetElement: elementSummary(target),
+        containerScrollY: containerAfter,
+        containerScrollYBefore: containerBefore,
+        containerScrollHeight: target.scrollHeight,
+        containerClientHeight: target.clientHeight,
+      } : {}),
+      scrollYBefore: beforeWindowY,
+      visibleTextChars: textChars,
+      documentTextChars: totalTextChars,
+      ...(warningParts.length ? { warning: warningParts.join(' ') } : {}),
+    };
+  }
+
+  function scrollPage(params) {
+    try {
+      return smartScrollPage(params);
+    } catch (e) {
+      const fallback = legacyScrollPage(params || {});
+      return {
+        ...fallback,
+        warning: `Smart scroll targeting failed (${e && e.message || e}); fell back to legacy window/container scroll.`,
+      };
+    }
   }
 
   /**
@@ -1446,6 +1703,7 @@
           try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
           try { el.focus({ preventScroll: true }); } catch {}
           const rect = el.getBoundingClientRect();
+          rememberInteractionPoint(el, 'click_ax');
           el.click();
           // If the model just clicked a text-entry element, its next call must
           // be type_ax on the same ref_id. Putting the directive in the tool
