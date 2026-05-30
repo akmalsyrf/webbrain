@@ -1050,7 +1050,7 @@
     const windowScrollable = document.documentElement.scrollHeight > window.innerHeight + 10;
 
     // Strategy 2: find the largest scrollable container on the page.
-    if (!target && (originEl || !windowScrollable)) {
+    if (!target) {
       let best = null;
       let bestArea = 0;
       const candidates = document.querySelectorAll('div, section, main, article, [role="main"], [role="dialog"]');
