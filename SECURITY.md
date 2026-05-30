@@ -4,12 +4,12 @@
 
 WebBrain operates with extensive browser permissions (`<all_urls>`, `debugger`, `downloads`, `tabCapture`) and drives authenticated sessions. If you discover a security vulnerability, please handle it responsibly.
 
-**Do NOT file a public GitHub issue.** Instead, use GitHub's private vulnerability reporting:
+**Do NOT file a public GitHub issue.** Instead, email the maintainer directly:
 
+**emre@webbrain.one**
+
+You can also use GitHub's private vulnerability reporting:
 **[Report a vulnerability →](https://github.com/esokullu/webbrain/security/advisories/new)**
-
-(If private advisories are disabled on the repo, contact the maintainer
-[Emre Sokullu](https://emresokullu.com) and ask for a private channel.)
 
 ### What to include
 
