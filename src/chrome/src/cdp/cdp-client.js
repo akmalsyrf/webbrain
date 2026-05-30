@@ -334,6 +334,31 @@ export class CDPClient {
   }
 
   /**
+   * Read back the FileList attached to an <input type=file> so callers can
+   * confirm a setFileInputFiles actually took effect. CDP's
+   * DOM.setFileInputFiles does NOT throw on a non-existent path — it silently
+   * attaches a 0-byte entry — so a successful command is not proof the file
+   * landed. Returns an array of {name, size, type}, or null if the element is
+   * not a file input / could not be resolved.
+   */
+  async getFileInputFiles(tabId, nodeId) {
+    await this.sendCommand(tabId, 'DOM.enable');
+    await this.sendCommand(tabId, 'Runtime.enable');
+    const resolved = await this.sendCommand(tabId, 'DOM.resolveNode', { nodeId });
+    const objectId = resolved?.object?.objectId;
+    if (!objectId) return null;
+    const res = await this.sendCommand(tabId, 'Runtime.callFunctionOn', {
+      functionDeclaration: `function () {
+        if (!this.files) return null;
+        return Array.from(this.files).map(f => ({ name: f.name, size: f.size, type: f.type }));
+      }`,
+      objectId,
+      returnByValue: true,
+    });
+    return res?.result?.value ?? null;
+  }
+
+  /**
    * Dispatch mouse event.
    */
   async dispatchMouseEvent(tabId, type, x, y, button = 'left') {

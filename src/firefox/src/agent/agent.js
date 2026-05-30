@@ -1767,6 +1767,43 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     // Tools handled by the background/service worker
     if (name === 'navigate') {
+      // Guard against discarding unsaved work. Re-navigating (even to the
+      // same URL) resets forms like GitHub's "New release" page, silently
+      // dropping the tag, title, and any attached binaries. A model that
+      // can't tell its uploads landed will renavigate and destroy its own
+      // progress. Detect meaningful unsaved state and block unless forced.
+      if (!args.force) {
+        try {
+          const probeCode = `
+            (() => {
+              let attachedFiles = 0;
+              for (const inp of document.querySelectorAll('input[type=file]')) {
+                if (inp.files && inp.files.length) attachedFiles += inp.files.length;
+              }
+              let dirtyFields = 0;
+              for (const el of document.querySelectorAll('input, textarea')) {
+                const t = (el.type || '').toLowerCase();
+                if (['file','hidden','submit','button','reset','search','checkbox','radio'].includes(t)) continue;
+                if (el.value && el.value !== el.defaultValue) dirtyFields++;
+              }
+              return { attachedFiles, dirtyFields };
+            })()
+          `;
+          const probeResults = await browser.tabs.executeScript(tabId, { code: probeCode });
+          const d = (probeResults && probeResults[0]) || {};
+          if (d.attachedFiles > 0 || d.dirtyFields >= 2) {
+            const parts = [];
+            if (d.attachedFiles > 0) parts.push(`${d.attachedFiles} attached file(s)`);
+            if (d.dirtyFields > 0) parts.push(`${d.dirtyFields} filled field(s)`);
+            return {
+              success: false,
+              blockedUnsavedChanges: true,
+              error: `Navigation blocked: the current page has unsaved changes (${parts.join(', ')}) that leaving will discard. Re-navigating resets forms like GitHub's "New release" page — you would lose the tag, title, and attached binaries, then have to start over. Finish the current action first (e.g. click "Publish release"). If discarding is genuinely intended, call navigate again with force:true.`,
+            };
+          }
+        } catch { /* probe failed (e.g. privileged page) — allow navigation */ }
+      }
+
       await browser.tabs.update(tabId, { url: args.url });
       // Wait a moment for navigation
       await new Promise(r => setTimeout(r, 2000));
@@ -2767,7 +2804,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     messages.push(enriched);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
+    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt, visionAvailable });
     const allowedToolNames = new Set(tools.map(t => t.function.name));
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
@@ -2986,7 +3024,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     messages.push(enriched);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
+    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt, visionAvailable });
     const allowedToolNames = new Set(tools.map(t => t.function.name));
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;

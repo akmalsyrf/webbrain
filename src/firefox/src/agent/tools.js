@@ -247,11 +247,12 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'navigate',
-      description: 'Navigate the current tab to a URL.',
+      description: 'Navigate the current tab to a URL. NOTE: leaving a page discards unsaved form state — re-navigating to a page like GitHub\'s "New release" resets the tag, title, and any attached files. If the current page has attached files or filled fields, this is blocked and returns blockedUnsavedChanges; finish the current action first, or pass force:true to discard the changes intentionally.',
       parameters: {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'URL to navigate to' },
+          force: { type: 'boolean', description: 'Set true to navigate even when the current page has unsaved changes (attached files / filled form fields). Default false: navigation is blocked to protect in-progress work.' },
         },
         required: ['url'],
       },
@@ -688,7 +689,12 @@ const DONE_TOOL_STRICT = {
  *
  * `opts.compact` shrinks Act mode to COMPACT_TOOL_NAMES.
  * `opts.strictSecretMode` swaps in the strict `done` description.
+ * `opts.visionAvailable` (default true): when false — the active model has no
+ * vision and no dedicated vision sidecar is configured — the screenshot tools
+ * are dropped, so a blind model doesn't burn a step on a dead-end error.
  */
+const VISION_ONLY_TOOLS = new Set(['screenshot', 'full_page_screenshot']);
+
 export function getToolsForMode(mode, opts = {}) {
   let base;
   if (mode === 'ask') {
@@ -697,6 +703,9 @@ export function getToolsForMode(mode, opts = {}) {
     base = AGENT_TOOLS.filter(t => COMPACT_TOOL_NAMES.has(t.function.name));
   } else {
     base = AGENT_TOOLS;
+  }
+  if (opts.visionAvailable === false) {
+    base = base.filter(t => !VISION_ONLY_TOOLS.has(t.function.name));
   }
   if (!opts.strictSecretMode) return base;
   return base.map(t => (t.function.name === 'done' ? DONE_TOOL_STRICT : t));

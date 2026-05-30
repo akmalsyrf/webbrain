@@ -2442,8 +2442,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         break;
       }
       case 'navigate': {
+        if (parsed.blockedUnsavedChanges) return `navigation blocked: unsaved changes on current page (use force:true to discard)`;
         if (parsed.url) return `now on ${this._truncate(parsed.url, 110)}`;
         break;
+      }
+      case 'upload_file': {
+        if (parsed.success === false) return `upload failed: ${this._truncate(parsed.error || '', 110)}`;
+        if (parsed.attached) return `uploaded ${this._truncate(parsed.attached.name || '', 60)} (${parsed.attached.size} bytes)`;
+        return parsed.verified === false ? `upload sent (unverified)` : `uploaded ${this._truncate(parsed.file || '', 70)}`;
       }
       case 'new_tab': {
         if (parsed.url) return `opened tab ${this._truncate(parsed.url, 100)}`;
@@ -2743,6 +2749,42 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           return { success: false, error: `navigate: cannot resolve relative URL "${args.url}" — no current tab URL available. Pass an absolute URL starting with https://.` };
         }
       }
+      // Guard against discarding unsaved work. Re-navigating (even to the
+      // same URL) resets forms like GitHub's "New release" page, silently
+      // dropping the tag, title, and any attached binaries. A model that
+      // can't tell its uploads landed will renavigate and destroy its own
+      // progress. Detect meaningful unsaved state and block unless forced.
+      if (!args.force) {
+        try {
+          const probe = await cdpClient.evaluate(tabId, `
+            (() => {
+              let attachedFiles = 0;
+              for (const inp of document.querySelectorAll('input[type=file]')) {
+                if (inp.files && inp.files.length) attachedFiles += inp.files.length;
+              }
+              let dirtyFields = 0;
+              for (const el of document.querySelectorAll('input, textarea')) {
+                const t = (el.type || '').toLowerCase();
+                if (['file','hidden','submit','button','reset','search','checkbox','radio'].includes(t)) continue;
+                if (el.value && el.value !== el.defaultValue) dirtyFields++;
+              }
+              return { attachedFiles, dirtyFields };
+            })()
+          `);
+          const d = probe?.result?.value || {};
+          if (d.attachedFiles > 0 || d.dirtyFields >= 2) {
+            const parts = [];
+            if (d.attachedFiles > 0) parts.push(`${d.attachedFiles} attached file(s)`);
+            if (d.dirtyFields > 0) parts.push(`${d.dirtyFields} filled field(s)`);
+            return {
+              success: false,
+              blockedUnsavedChanges: true,
+              error: `Navigation blocked: the current page has unsaved changes (${parts.join(', ')}) that leaving will discard. Re-navigating resets forms like GitHub's "New release" page — you would lose the tag, title, and attached binaries, then have to start over. Finish the current action first (e.g. click "Publish release"). If discarding is genuinely intended, call navigate again with force:true.`,
+            };
+          }
+        } catch { /* probe failed (e.g. chrome:// page) — allow navigation */ }
+      }
+
       await chrome.tabs.update(tabId, { url: rawUrl });
       // Wait for navigation to commit so we can report the real final URL
       // (which may differ from rawUrl after redirects or auth walls).
@@ -3811,10 +3853,39 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         await cdpClient.attach(tabId);
         const nodeIds = await cdpClient.querySelectorPierce(tabId, args.selector);
         if (!nodeIds || nodeIds.length === 0) {
-          return { success: false, error: 'File input not found' };
+          return { success: false, error: `File input not found for selector "${args.selector}". Re-inspect the page with get_interactive_elements or get_accessibility_tree to find the real <input type=file> (some upload widgets hide it until you click their "add files" button first).` };
         }
         await cdpClient.setFileInputFiles(tabId, nodeIds[0], [args.filePath]);
-        return { success: true, file: args.filePath };
+
+        // Verify the file actually attached. CDP's DOM.setFileInputFiles does
+        // NOT throw on a non-existent path — it silently attaches a 0-byte
+        // entry — so the bare command succeeding is not proof. Read the input's
+        // FileList back and check the file is present and non-empty. Without
+        // this, a wrong filePath (e.g. the wrong home dir) reports success and
+        // the model loops believing the upload worked.
+        const basename = String(args.filePath).split(/[\\/]/).pop();
+        let files = null;
+        let readOk = false;
+        try {
+          files = await cdpClient.getFileInputFiles(tabId, nodeIds[0]);
+          readOk = Array.isArray(files);
+        } catch { readOk = false; }
+
+        if (readOk) {
+          const attached = files.find(f => f.name === basename) || files[files.length - 1] || null;
+          if (!attached) {
+            return { success: false, error: `Upload did not apply: the file input is still empty after setting "${args.filePath}". The selector likely points at the wrong element — re-inspect with get_interactive_elements.` };
+          }
+          if (attached.size === 0) {
+            return { success: false, error: `File "${attached.name}" attached as 0 bytes — "${args.filePath}" almost certainly does not exist at that path. Confirm the absolute path (use list_downloads to see where files were actually saved) and retry.` };
+          }
+          return { success: true, file: args.filePath, attached: { name: attached.name, size: attached.size } };
+        }
+
+        // Could not read the FileList back. Don't fabricate a success, but
+        // don't turn a possibly-good upload into a hard failure either —
+        // report it as unverified so the model knows to double-check.
+        return { success: true, file: args.filePath, verified: false, note: 'Attachment could not be verified (the input.files list was unreadable). If the file does not appear attached, re-check the file path and selector.' };
       } catch (e) {
         return { success: false, error: `Upload failed: ${e.message}` };
       }
@@ -5575,7 +5646,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._persist(tabId);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
+    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt, visionAvailable });
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     let finalResponse = '';
@@ -5807,7 +5879,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._persist(tabId);
 
     const provider = this.providerManager.getActive();
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt });
+    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, compact: provider.useCompactPrompt, visionAvailable });
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     // See processMessage — used to break the empty-response→nudge cycle.
