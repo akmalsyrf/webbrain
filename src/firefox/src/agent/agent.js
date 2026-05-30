@@ -1956,16 +1956,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             const results = await browser.tabs.executeScript(tabId, { code: probeCode });
             const pageState = (results && results[0]) || {};
 
-            // Only capture a verification screenshot when the model (or a
-            // vision sidecar) can actually see it. For a blind model the
-            // capture is wasted work and the giant base64 data URL just gets
-            // truncated to garbage in the tool-result history. The text-based
-            // verification below (URL/title/pageState/completionWarning) is
-            // vision-independent and runs regardless.
+            // done() short-circuits the tool loop, so a verification screenshot
+            // can only be useful when the active planner provider itself
+            // supports image inputs. A dedicated vision sidecar is not called
+            // from this path. The text-based verification below
+            // (URL/title/pageState/completionWarning) is vision-independent and
+            // runs regardless.
             const provider = this.providerManager.getActive();
-            const visionProvider = await this.providerManager.getVisionProvider();
-            const visionAvailable = !!(provider?.supportsVision) || !!visionProvider;
-            const dataUrl = visionAvailable
+            const plannerCanSeeImages = !!provider?.supportsVision;
+            const dataUrl = plannerCanSeeImages
               ? await this._withIndicatorsHidden(tabId, () =>
                   browser.tabs.captureVisibleTab(tab.windowId, { format: 'png', quality: 80 })
                 )
@@ -2021,7 +2020,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                 completionWarning,
                 note: (dataUrl
                   ? 'Review this screenshot carefully. Does it confirm the task was completed successfully? If the page shows an existing item from the past (check dates), you may NOT have actually created anything new.'
-                  : 'No screenshot was captured (the active model has no vision). Verify completion from the text signals: pageUrl/pageTitle and pageState (open dialogs/forms, live-region messages). If a form or dialog is still visible, the submit likely did not happen and the task is NOT complete.') + (completionWarning ? ' ' + completionWarning : ''),
+                  : 'No screenshot was captured (the active planning model has no vision; done verification does not call the dedicated vision sidecar). Verify completion from the text signals: pageUrl/pageTitle and pageState (open dialogs/forms, live-region messages). If a form or dialog is still visible, the submit likely did not happen and the task is NOT complete.') + (completionWarning ? ' ' + completionWarning : ''),
               },
             };
           }
