@@ -62,6 +62,21 @@ export default {
   'sp.clarify.input_placeholder_with_options': 'Or type a different answer…',
   'sp.clarify.your_answer': 'Your answer:',
 
+  // Permission prompt (structured; returns once/always/deny — no free text)
+  'sp.perm.question': 'WebBrain wants to {verb} {host}. Allow it?',
+  'sp.perm.reason': 'Permission check — WebBrain only takes consequential actions on sites you allow.',
+  'sp.perm.allow_once': 'Allow once',
+  'sp.perm.always_allow': 'Always allow on {host}',
+  'sp.perm.dont_allow': "Don't allow",
+  'sp.perm.verb.navigate': 'navigate to',
+  'sp.perm.verb.click': 'click / submit on',
+  'sp.perm.verb.type': 'type into',
+  'sp.perm.verb.execute_js': 'run JavaScript on',
+  'sp.perm.verb.network_write': 'make a network request to',
+  'sp.perm.verb.download': 'download files from',
+  'sp.perm.verb.upload': 'upload a file to',
+  'sp.perm.verb.record': 'record the tab (and microphone) on',
+
   'sp.step.details': 'details',
   'sp.step.input_label': 'Input',
   'sp.step.result_label': 'Result',

@@ -944,6 +944,41 @@ function renderClarifyCard(data) {
   qEl.textContent = String(data.question || '').slice(0, 600);
   card.appendChild(qEl);
 
+  // Permission-prompt mode: localized question + three fixed choices that
+  // return a stable VALUE ('once'/'always'/'deny'), and NO free-text input —
+  // so there's nothing to parse and no English/locale dependency.
+  if (data.permission && data.permission.capability) {
+    const host = String(data.permission.host || '');
+    const cap = String(data.permission.capability || '');
+    const verb = t('sp.perm.verb.' + cap);
+    qEl.textContent = t('sp.perm.question', { verb, host });
+
+    const reasonEl = document.createElement('div');
+    reasonEl.className = 'clarify-reason';
+    reasonEl.textContent = t('sp.perm.reason');
+    card.appendChild(reasonEl);
+
+    const optionsEl = document.createElement('div');
+    optionsEl.className = 'clarify-options';
+    const choices = [
+      ['once', t('sp.perm.allow_once')],
+      ['always', t('sp.perm.always_allow', { host })],
+      ['deny', t('sp.perm.dont_allow')],
+    ];
+    for (const [value, label] of choices) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'clarify-option';
+      b.textContent = String(label).slice(0, 200);
+      b.addEventListener('click', () => submitClarify(card, tabId, clarifyId, value, 'option'));
+      optionsEl.appendChild(b);
+    }
+    card.appendChild(optionsEl);
+    content.appendChild(card);
+    scrollToBottom();
+    return;
+  }
+
   if (data.reason) {
     const reasonEl = document.createElement('div');
     reasonEl.className = 'clarify-reason';

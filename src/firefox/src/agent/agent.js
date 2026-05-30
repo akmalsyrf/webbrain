@@ -1234,11 +1234,6 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    * Fails safe: anything that isn't a clear allow is treated as 'deny'.
    */
   async _promptPermission(tabId, capability, host, onUpdate) {
-    const verb = CAPABILITY_LABEL[capability] || 'act on';
-    const question = `WebBrain wants to ${verb} ${host}. Allow it?`;
-    const ONCE = 'Allow once';
-    const ALWAYS = `Always allow on ${host}`;
-    const DENY = "Don't allow";
     const clarifyId = `perm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
     const tabPending = this._pendingClarifications.get(tabId) || new Map();
@@ -1249,11 +1244,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     if (typeof onUpdate === 'function') {
       try {
+        // Structured permission prompt: the sidepanel localizes the question +
+        // the three choices and returns a stable VALUE ('once'/'always'/'deny')
+        // with NO free-text input — so there is no label parsing and no
+        // English/locale dependency. `question` is an English fallback for any
+        // generic renderer that doesn't understand `permission`.
         onUpdate('clarify', {
           clarifyId,
-          question,
-          options: [ONCE, ALWAYS, DENY],
-          reason: 'Permission check — WebBrain only takes consequential actions on sites you allow.',
+          permission: { capability, host },
+          question: `WebBrain wants to ${CAPABILITY_LABEL[capability] || 'act on'} ${host}. Allow it?`,
+          options: ['once', 'always', 'deny'],
         });
       } catch { /* UI emit must never break the run */ }
     }
@@ -1263,20 +1263,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (tabPending.size === 0) this._pendingClarifications.delete(tabId);
 
     if (response && response.cancelled) return null;
-    const ans = String(response?.answer || '').trim().toLowerCase();
-    // Exact option clicks FIRST — the button sends the exact label, so honor
-    // it regardless of negative-looking tokens in the host (e.g. a ".no" TLD,
-    // "cancel.com"), which would otherwise trip the free-text negation scan.
-    if (ans === ALWAYS.toLowerCase()) return 'always';
-    if (ans === ONCE.toLowerCase()) return 'once';
-    if (ans === DENY.toLowerCase()) return 'deny';
-    // Free-text answers: negative phrasing → deny (fail safe), even if it
-    // contains "always"/"allow" ("not always", "don't allow"); else an
-    // affirmative-leading phrase grants.
-    if (/\bno\b|\bnot\b|\bnever\b|\bcancel\b|\bdeny\b|\bstop\b|\bskip\b|n'?t\b/.test(ans)) return 'deny';
-    if (/^(always allow|always)\b/.test(ans)) return 'always';
-    if (/^(allow once|once|yes|allow|ok|okay|sure|proceed|go ahead|do it)\b/.test(ans)) return 'once';
-    return 'deny';
+    const v = String(response?.answer || '').trim().toLowerCase();
+    if (v === 'always') return 'always';
+    if (v === 'once') return 'once';
+    return 'deny'; // 'deny', or anything unexpected → fail safe
   }
 
   /**

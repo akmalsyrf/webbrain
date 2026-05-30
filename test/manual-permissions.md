@@ -27,9 +27,14 @@ simple page with a visible clickable button.
 ### 1a. Card renders correctly
 1. Tell the agent: *"click the <some visible button>"*.
 2. **Expect** a card: **"WebBrain wants to click / submit on \<host\>. Allow it?"**
-   with **three** buttons: `Allow once` · `Always allow on <host>` · `Don't allow`.
-3. **Check layout** — all three buttons visible, not clipped/overlapping/wrapping
-   badly. *(Main unknown: the card was built for 2-option clarify prompts.)*
+   with **three** buttons: `Allow once` · `Always allow on <host>` · `Don't allow`,
+   and **NO free-text input** (permission cards are structured — the buttons
+   return `once`/`always`/`deny`, not typed text).
+3. **Check layout** — all three buttons visible, not clipped/overlapping/wrapping.
+4. **Localization** — switch the language (Settings → display) to a non-English
+   locale and trigger the prompt again: the question, the verb, and the three
+   buttons should be translated (English is the fallback for unset keys), and
+   clicking still works (the returned value is locale-independent).
 
 ### 1b. "Allow once" proceeds and is turn-scoped  *(critical: must NOT act as deny)*
 1. Click **Allow once** → the click executes.
@@ -114,14 +119,18 @@ The toggle is at the **top** of Settings → Permissions, **on by default**.
 ---
 
 ## Pass criteria
-- Card shows 3 well-laid-out buttons (1a).
+- Card shows 3 well-laid-out buttons and no free-text input (1a); localized in
+  non-English locales (1a.4).
 - Allow-once and Always **proceed**; Don't-allow **blocks** (1b–1d).
 - Grants are per-capability+host (Test 2).
 - Permissions tab lists/revokes/clears correctly; a revoke causes an immediate
   re-prompt (Test 3).
 - Grants persist across reload (Test 4).
 
-**Highest-risk item:** 1a/1b. If the clarify card mis-renders 3 buttons or
-returns an unexpected value, `_promptPermission` falls through to `'deny'`
-(fail-safe), so the symptom is "every action is blocked even when I click
-Allow." If that happens, the fix is in `renderClarifyCard` (`sidepanel.js`).
+**Highest-risk item:** 1a/1b. The card now returns a structured value
+(`once`/`always`/`deny`) from the button click — there is no label parsing — so
+a mis-render would show as a missing/broken button rather than a wrong grant.
+If a button does nothing or the wrong choice is recorded, the issue is the
+`data.permission` branch of `renderClarifyCard` (`sidepanel.js`) or the value
+mapping in `_promptPermission` (`agent.js`). `_promptPermission` still maps any
+unexpected value to `'deny'` (fail-safe).
