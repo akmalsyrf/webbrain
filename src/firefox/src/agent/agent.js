@@ -1533,6 +1533,32 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return Math.floor(window * this.contextCompactRatio);
   }
 
+  /**
+   * Shrink oversized tool results / message bodies in place, capping the bloat
+   * without dropping any turns. Used as the fallback when we're over the token
+   * budget but have too few old messages to summarize (the case most likely to
+   * overflow early in a run on a small-window local model). Skips the system
+   * prompt (index 0) and the pinned scratchpad so neither is mangled. Clears
+   * the cached input-token count so the next call re-measures the smaller size.
+   */
+  _truncateOversizedMessages(tabId, messages) {
+    let trimmed = false;
+    for (let i = 1; i < messages.length; i++) {
+      const m = messages[i];
+      if (this._isScratchpadMessage(m)) continue;
+      if (typeof m.content !== 'string') continue; // image/array content handled by _pruneOldImages
+      if (m.role === 'tool' && m.content.length > 2000) {
+        m.content = m.content.slice(0, 2000) + '\n[...truncated to fit context]';
+        trimmed = true;
+      } else if (m.content.length > 5000) {
+        m.content = m.content.slice(0, 5000) + '\n[...truncated to fit context]';
+        trimmed = true;
+      }
+    }
+    if (trimmed) this._lastInputTokens.delete(tabId);
+    return trimmed;
+  }
+
   async _manageContext(tabId, messages, onUpdate = null) {
     // Calculate total char length
     let totalChars = 0;
@@ -1598,7 +1624,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       oldMessages.push(recentMessages.shift());
     }
 
-    if (oldMessages.length < 4) return; // not enough to summarize
+    if (oldMessages.length < 4) {
+      // Not enough history to summarize. But if the TOKEN budget is what
+      // tripped us (e.g. a single huge page/tool result early in a run on a
+      // small local model), returning unchanged would re-send the same
+      // over-budget request every step until the provider hard-errors. Shrink
+      // oversized tool results / messages in place instead — keeps all turns
+      // but caps the bloat — then re-measure on the next call.
+      if (tooManyTokens) this._truncateOversizedMessages(tabId, messages);
+      return;
+    }
 
     // Build tool_call_id → name map so each tool result in the summary can be
     // labelled with the tool that produced it. Without this we'd lose the

@@ -1463,7 +1463,16 @@ function addContextCompactedNote(data) {
       remaining: data.remaining,
     });
   }
-  messagesEl.appendChild(note);
+  // Insert into the active assistant bubble's steps log so the separator lands
+  // at the actual compaction point, interleaved with the tool steps. Appending
+  // to messagesEl would drop it *after* the still-open bubble — i.e. before the
+  // text/tool output that the same bubble keeps receiving post-compaction.
+  const stepsContainer = getOrCreateStepsContainer();
+  if (stepsContainer) {
+    stepsContainer.appendChild(note);
+  } else {
+    messagesEl.appendChild(note);
+  }
   scrollToBottom();
 }
 
