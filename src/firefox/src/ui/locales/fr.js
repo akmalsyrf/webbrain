@@ -1,5 +1,21 @@
 // French (fr).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Contexte compacté automatiquement",
+  'sp.context_compacted_detail': "{summarized} messages précédents résumés · {remaining} conservés",
+  'ob.tokens.context_hint': "Pour des exécutions d'agent fiables, choisissez un modèle avec une fenêtre de contexte d'au moins 16k tokens. 8k peut convenir avec le mode Compact activé ; 4k est trop petit pour l'ensemble d'outils. WebBrain compacte automatiquement la conversation à l'approche de la limite de la fenêtre.",
+  'st.display.cost_session_limit.label': "Plafond de coût cloud par session",
+  'st.display.cost_session_limit.desc': "Arrête les exécutions cloud et OpenRouter avant un nouvel appel payant au modèle une fois que cette session atteint le plafond de coût indiqué ou estimé. Par défaut : 10 $.",
+  'st.display.cost_total_limit.label': "Plafond de coût cloud total",
+  'st.display.cost_total_limit.desc': "Suit les dépenses indiquées ou estimées des modèles cloud/OpenRouter dans toute l'extension et arrête les appels payants une fois le plafond atteint. Les fournisseurs locaux ne sont pas comptés.",
+  'st.display.cost_reset': "Réinitialiser les dépenses",
+  'st.provider.field.prompt_tier': "Niveau de prompt",
+  'st.provider.field.prompt_tier.compact': "Compact — modèles minuscules (moins de 8B) : moins d'outils, règles concises",
+  'st.provider.field.prompt_tier.mid': "Intermédiaire — modèles petits/locaux (~9B–32B) : prompt allégé, outils réduits (par défaut en local)",
+  'st.provider.field.prompt_tier.full': "Complet — modèles de pointe : tous les outils et garde-fous",
+  'st.provider.field.input_cost_per_million': "Coût d'entrée estimé ($ / 1M tokens)",
+  'st.provider.field.output_cost_per_million': "Coût de sortie estimé ($ / 1M tokens)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Autoriser une fois",
   'sp.perm.always_allow': "Toujours autoriser sur {host}",

@@ -1,5 +1,21 @@
 // Korean (ko).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "컨텍스트가 자동으로 압축되었습니다",
+  'sp.context_compacted_detail': "이전 메시지 {summarized}개 요약됨 · {remaining}개 유지됨",
+  'ob.tokens.context_hint': "안정적인 에이전트 실행을 위해 최소 16k 토큰 컨텍스트 창을 가진 모델을 선택하세요. 8k는 압축 모드를 켜면 작동할 수 있으며, 4k는 도구 세트에 비해 너무 작습니다. WebBrain은 창 한계에 가까워지면 대화를 자동으로 압축합니다.",
+  'st.display.cost_session_limit.label': "클라우드 비용 세션 한도",
+  'st.display.cost_session_limit.desc': "이 세션이 보고되거나 추정된 비용 한도에 도달하면 다음 유료 모델 호출 전에 클라우드 및 OpenRouter 실행을 중지합니다. 기본값 10달러.",
+  'st.display.cost_total_limit.label': "클라우드 비용 총 한도",
+  'st.display.cost_total_limit.desc': "확장 프로그램 전반에서 보고되거나 추정된 클라우드/OpenRouter 모델 지출을 추적하고 한도에 도달하면 이후 유료 호출을 중지합니다. 로컬 제공자는 집계되지 않습니다.",
+  'st.display.cost_reset': "지출 재설정",
+  'st.provider.field.prompt_tier': "프롬프트 등급",
+  'st.provider.field.prompt_tier.compact': "컴팩트 — 초소형 모델(8B 미만): 최소 도구, 간결한 규칙",
+  'st.provider.field.prompt_tier.mid': "중간 — 소형/로컬 모델(약 9B–32B): 더 가벼운 프롬프트, 도구 축소(로컬 기본값)",
+  'st.provider.field.prompt_tier.full': "전체 — 프런티어 모델: 모든 도구와 가드레일",
+  'st.provider.field.input_cost_per_million': "예상 입력 비용($ / 100만 토큰)",
+  'st.provider.field.output_cost_per_million': "예상 출력 비용($ / 100만 토큰)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "한 번 허용",
   'sp.perm.always_allow': "{host}에서 항상 허용",

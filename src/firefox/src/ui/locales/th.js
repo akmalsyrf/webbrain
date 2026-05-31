@@ -1,5 +1,21 @@
 // Thai (th).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "บีบอัดบริบทโดยอัตโนมัติแล้ว",
+  'sp.context_compacted_detail': "สรุปข้อความก่อนหน้า {summarized} ข้อความ · เก็บไว้ {remaining} ข้อความ",
+  'ob.tokens.context_hint': "เพื่อการทำงานของเอเจนต์ที่เชื่อถือได้ ให้เลือกโมเดลที่มีหน้าต่างบริบทอย่างน้อย 16k โทเค็น โดย 8k อาจใช้งานได้เมื่อเปิดโหมดกะทัดรัด ส่วน 4k เล็กเกินไปสำหรับชุดเครื่องมือ WebBrain จะบีบอัดบทสนทนาโดยอัตโนมัติเมื่อใกล้ถึงขีดจำกัดของหน้าต่าง",
+  'st.display.cost_session_limit.label': "วงเงินค่าใช้จ่ายคลาวด์ต่อเซสชัน",
+  'st.display.cost_session_limit.desc': "หยุดการทำงานบนคลาวด์และ OpenRouter ก่อนการเรียกโมเดลแบบเสียเงินครั้งถัดไป เมื่อเซสชันนี้ถึงวงเงินค่าใช้จ่ายที่รายงานหรือประมาณการไว้ ค่าเริ่มต้น $10",
+  'st.display.cost_total_limit.label': "วงเงินค่าใช้จ่ายคลาวด์รวม",
+  'st.display.cost_total_limit.desc': "ติดตามค่าใช้จ่ายของโมเดลคลาวด์/OpenRouter ที่รายงานหรือประมาณการไว้ทั่วทั้งส่วนขยาย และหยุดการเรียกแบบเสียเงินเพิ่มเติมเมื่อถึงวงเงิน ผู้ให้บริการในเครื่องจะไม่ถูกนับรวม",
+  'st.display.cost_reset': "รีเซ็ตค่าใช้จ่าย",
+  'st.provider.field.prompt_tier': "ระดับพรอมต์",
+  'st.provider.field.prompt_tier.compact': "กะทัดรัด — โมเดลขนาดจิ๋ว (ต่ำกว่า 8B): เครื่องมือน้อยที่สุด กฎกระชับ",
+  'st.provider.field.prompt_tier.mid': "กลาง — โมเดลขนาดเล็ก/ในเครื่อง (~9B–32B): พรอมต์เบาลง เครื่องมือลดลง (ค่าเริ่มต้นสำหรับในเครื่อง)",
+  'st.provider.field.prompt_tier.full': "เต็ม — โมเดลแนวหน้า: ครบทุกเครื่องมือและตัวป้องกัน",
+  'st.provider.field.input_cost_per_million': "ค่าอินพุตโดยประมาณ ($ / 1 ล้านโทเค็น)",
+  'st.provider.field.output_cost_per_million': "ค่าเอาต์พุตโดยประมาณ ($ / 1 ล้านโทเค็น)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "อนุญาตครั้งเดียว",
   'sp.perm.always_allow': "อนุญาตเสมอบน {host}",

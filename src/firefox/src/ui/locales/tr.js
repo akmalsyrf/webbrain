@@ -1,5 +1,21 @@
 // Turkish (tr).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Bağlam otomatik olarak sıkıştırıldı",
+  'sp.context_compacted_detail': "{summarized} önceki mesaj özetlendi · {remaining} korundu",
+  'ob.tokens.context_hint': "Güvenilir aracı çalıştırmaları için en az 16k token bağlam penceresine sahip bir model seçin. 8k, Kompakt mod etkinken çalışabilir; 4k, araç seti için fazla küçüktür. WebBrain, pencere sınırına yaklaştıkça konuşmayı otomatik olarak sıkıştırır.",
+  'st.display.cost_session_limit.label': "Bulut maliyeti oturum bütçesi",
+  'st.display.cost_session_limit.desc': "Bu oturum, bildirilen veya tahmini maliyet bütçesine ulaştığında, başka bir ücretli model çağrısından önce bulut ve OpenRouter çalıştırmalarını durdurur. Varsayılan: 10 $.",
+  'st.display.cost_total_limit.label': "Bulut maliyeti toplam bütçesi",
+  'st.display.cost_total_limit.desc': "Uzantı genelinde bildirilen veya tahmini bulut/OpenRouter model harcamasını izler ve bütçeye ulaşıldığında ücretli çağrıları durdurur. Yerel sağlayıcılar sayılmaz.",
+  'st.display.cost_reset': "Harcamayı sıfırla",
+  'st.provider.field.prompt_tier': "İstem düzeyi",
+  'st.provider.field.prompt_tier.compact': "Kompakt — çok küçük modeller (8B altı): en az araç, kısa kurallar",
+  'st.provider.field.prompt_tier.mid': "Orta — küçük/yerel modeller (~9B–32B): daha yalın istem, azaltılmış araçlar (yerel için varsayılan)",
+  'st.provider.field.prompt_tier.full': "Tam — sınır modelleri: tüm araçlar ve koruma önlemleri",
+  'st.provider.field.input_cost_per_million': "Tahmini girdi maliyeti ($ / 1M token)",
+  'st.provider.field.output_cost_per_million': "Tahmini çıktı maliyeti ($ / 1M token)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Bir kez izin ver",
   'sp.perm.always_allow': "{host} için her zaman izin ver",

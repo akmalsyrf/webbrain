@@ -1,5 +1,21 @@
 // Indonesian (id).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Konteks dipadatkan secara otomatis",
+  'sp.context_compacted_detail': "{summarized} pesan sebelumnya diringkas · {remaining} dipertahankan",
+  'ob.tokens.context_hint': "Untuk menjalankan agen secara andal, pilih model dengan jendela konteks minimal 16k token. 8k dapat berfungsi dengan mode Ringkas diaktifkan; 4k terlalu kecil untuk kumpulan alat. WebBrain memadatkan percakapan secara otomatis saat mendekati batas jendela.",
+  'st.display.cost_session_limit.label': "Batas biaya cloud per sesi",
+  'st.display.cost_session_limit.desc': "Menghentikan proses cloud dan OpenRouter sebelum panggilan model berbayar berikutnya setelah sesi ini mencapai batas biaya yang dilaporkan atau diperkirakan. Default $10.",
+  'st.display.cost_total_limit.label': "Batas biaya cloud total",
+  'st.display.cost_total_limit.desc': "Melacak pengeluaran model cloud/OpenRouter yang dilaporkan atau diperkirakan di seluruh ekstensi dan menghentikan panggilan berbayar berikutnya saat mencapai batas. Penyedia lokal tidak dihitung.",
+  'st.display.cost_reset': "Atur ulang pengeluaran",
+  'st.provider.field.prompt_tier': "Tingkat prompt",
+  'st.provider.field.prompt_tier.compact': "Ringkas — model sangat kecil (di bawah 8B): paling sedikit alat, aturan ringkas",
+  'st.provider.field.prompt_tier.mid': "Menengah — model kecil/lokal (~9B–32B): prompt lebih ramping, alat dikurangi (default untuk lokal)",
+  'st.provider.field.prompt_tier.full': "Penuh — model terdepan: setiap alat dan pengaman",
+  'st.provider.field.input_cost_per_million': "Perkiraan biaya input ($ / 1 juta token)",
+  'st.provider.field.output_cost_per_million': "Perkiraan biaya output ($ / 1 juta token)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Izinkan sekali",
   'sp.perm.always_allow': "Selalu izinkan di {host}",

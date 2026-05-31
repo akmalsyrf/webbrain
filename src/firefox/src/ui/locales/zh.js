@@ -1,5 +1,21 @@
 // Simplified Chinese (zh).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "上下文已自动压缩",
+  'sp.context_compacted_detail': "已总结 {summarized} 条较早的消息 · 保留 {remaining} 条",
+  'ob.tokens.context_hint': "为了让智能体可靠运行，请选择上下文窗口至少为 16k 个 token 的模型。启用紧凑模式后 8k 也可使用；4k 对于该工具集来说太小。WebBrain 会在接近窗口上限时自动压缩对话。",
+  'st.display.cost_session_limit.label': "云端费用会话额度",
+  'st.display.cost_session_limit.desc': "当本次会话达到报告或估算的费用额度时，在下一次付费模型调用之前停止云端和 OpenRouter 运行。默认 10 美元。",
+  'st.display.cost_total_limit.label': "云端费用总额度",
+  'st.display.cost_total_limit.desc': "跟踪整个扩展中报告或估算的云端/OpenRouter 模型花费，并在达到额度时停止后续付费调用。本地提供方不计入。",
+  'st.display.cost_reset': "重置花费",
+  'st.provider.field.prompt_tier': "提示词级别",
+  'st.provider.field.prompt_tier.compact': "紧凑 — 微型模型（8B 以下）：工具最少，规则简洁",
+  'st.provider.field.prompt_tier.mid': "中等 — 小型/本地模型（约 9B–32B）：更精简的提示词，减少工具（本地默认）",
+  'st.provider.field.prompt_tier.full': "完整 — 前沿模型：全部工具和防护措施",
+  'st.provider.field.input_cost_per_million': "估算输入费用（$ / 100 万 token）",
+  'st.provider.field.output_cost_per_million': "估算输出费用（$ / 100 万 token）",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "允许一次",
   'sp.perm.always_allow': "始终允许 {host}",

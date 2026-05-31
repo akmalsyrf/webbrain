@@ -1,5 +1,21 @@
 // Japanese (ja).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "コンテキストを自動的に圧縮しました",
+  'sp.context_compacted_detail': "以前のメッセージ {summarized} 件を要約 · {remaining} 件を保持",
+  'ob.tokens.context_hint': "エージェントを安定して実行するには、少なくとも 16k トークンのコンテキストウィンドウを持つモデルを選んでください。8k はコンパクトモードを有効にすれば動作する場合があります。4k はツールセットには小さすぎます。WebBrain はウィンドウの上限に近づくと会話を自動的に圧縮します。",
+  'st.display.cost_session_limit.label': "クラウド費用のセッション上限",
+  'st.display.cost_session_limit.desc': "このセッションが報告値または推定値の費用上限に達すると、次の有料モデル呼び出しの前にクラウドおよび OpenRouter の実行を停止します。デフォルトは 10 ドル。",
+  'st.display.cost_total_limit.label': "クラウド費用の合計上限",
+  'st.display.cost_total_limit.desc': "拡張機能全体で報告値または推定値のクラウド/OpenRouter モデルの支出を追跡し、上限に達すると以降の有料呼び出しを停止します。ローカルプロバイダーはカウントされません。",
+  'st.display.cost_reset': "支出をリセット",
+  'st.provider.field.prompt_tier': "プロンプト階層",
+  'st.provider.field.prompt_tier.compact': "コンパクト — 極小モデル（8B 未満）：ツール最小限、簡潔なルール",
+  'st.provider.field.prompt_tier.mid': "ミッド — 小型/ローカルモデル（約 9B〜32B）：軽量なプロンプト、ツール削減（ローカルの既定）",
+  'st.provider.field.prompt_tier.full': "フル — フロンティアモデル：すべてのツールとガードレール",
+  'st.provider.field.input_cost_per_million': "推定入力費用（$ / 100万トークン）",
+  'st.provider.field.output_cost_per_million': "推定出力費用（$ / 100万トークン）",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "今回のみ許可",
   'sp.perm.always_allow': "{host} で常に許可",

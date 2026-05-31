@@ -1,5 +1,21 @@
 // Ukrainian (uk).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Контекст автоматично ущільнено",
+  'sp.context_compacted_detail': "{summarized} попередніх повідомлень підсумовано · {remaining} збережено",
+  'ob.tokens.context_hint': "Для надійної роботи агента виберіть модель із вікном контексту щонайменше 16k токенів. 8k може підійти з увімкненим компактним режимом; 4k замало для набору інструментів. WebBrain автоматично ущільнює розмову в міру наближення до межі вікна.",
+  'st.display.cost_session_limit.label': "Ліміт витрат на хмару за сесію",
+  'st.display.cost_session_limit.desc': "Зупиняє хмарні запуски та OpenRouter перед наступним платним викликом моделі, коли ця сесія досягає вказаного або орієнтовного ліміту витрат. За замовчуванням 10 $.",
+  'st.display.cost_total_limit.label': "Загальний ліміт витрат на хмару",
+  'st.display.cost_total_limit.desc': "Відстежує вказані або орієнтовні витрати на хмарні моделі/OpenRouter у всьому розширенні та зупиняє подальші платні виклики при досягненні ліміту. Локальні провайдери не враховуються.",
+  'st.display.cost_reset': "Скинути витрати",
+  'st.provider.field.prompt_tier': "Рівень промпту",
+  'st.provider.field.prompt_tier.compact': "Компактний — крихітні моделі (до 8B): найменше інструментів, стислі правила",
+  'st.provider.field.prompt_tier.mid': "Середній — невеликі/локальні моделі (~9B–32B): легший промпт, менше інструментів (за замовчуванням для локальних)",
+  'st.provider.field.prompt_tier.full': "Повний — передові моделі: усі інструменти та запобіжники",
+  'st.provider.field.input_cost_per_million': "Орієнтовна вартість введення ($ / 1 млн токенів)",
+  'st.provider.field.output_cost_per_million': "Орієнтовна вартість виведення ($ / 1 млн токенів)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Дозволити один раз",
   'sp.perm.always_allow': "Завжди дозволяти на {host}",

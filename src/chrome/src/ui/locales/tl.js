@@ -1,5 +1,21 @@
 // Filipino / Tagalog (tl).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Awtomatikong na-compact ang konteksto",
+  'sp.context_compacted_detail': "{summarized} naunang mensahe ang binuod · {remaining} ang itinago",
+  'ob.tokens.context_hint': "Para sa maaasahang pagpapatakbo ng agent, pumili ng modelo na may context window na hindi bababa sa 16k token. Maaaring gumana ang 8k kapag naka-enable ang Compact mode; masyadong maliit ang 4k para sa set ng mga tool. Awtomatikong kino-compact ng WebBrain ang usapan habang papalapit ito sa limitasyon ng window.",
+  'st.display.cost_session_limit.label': "Alawans sa gastos ng cloud kada session",
+  'st.display.cost_session_limit.desc': "Hihinto ang mga cloud at OpenRouter na pagpapatakbo bago ang susunod na bayad na tawag sa modelo kapag naabot ng session na ito ang iniulat o tinatayang alawans sa gastos. Default na $10.",
+  'st.display.cost_total_limit.label': "Kabuuang alawans sa gastos ng cloud",
+  'st.display.cost_total_limit.desc': "Sinusubaybayan ang iniulat o tinatayang paggastos sa cloud/OpenRouter na mga modelo sa buong extension at hihinto sa karagdagang bayad na tawag kapag naabot ang alawans. Hindi binibilang ang mga lokal na provider.",
+  'st.display.cost_reset': "I-reset ang gastos",
+  'st.provider.field.prompt_tier': "Antas ng prompt",
+  'st.provider.field.prompt_tier.compact': "Compact — napakaliit na modelo (wala pang 8B): pinakakaunting tool, maiikling tuntunin",
+  'st.provider.field.prompt_tier.mid': "Mid — maliit/lokal na modelo (~9B–32B): mas magaan na prompt, nabawasang tool (default para sa lokal)",
+  'st.provider.field.prompt_tier.full': "Full — frontier na modelo: bawat tool at guardrail",
+  'st.provider.field.input_cost_per_million': "Tinatayang gastos sa input ($ / 1M token)",
+  'st.provider.field.output_cost_per_million': "Tinatayang gastos sa output ($ / 1M token)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Payagan minsan",
   'sp.perm.always_allow': "Palaging payagan sa {host}",

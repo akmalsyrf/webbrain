@@ -1,5 +1,21 @@
 // Spanish (es).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Contexto compactado automáticamente",
+  'sp.context_compacted_detail': "{summarized} mensajes anteriores resumidos · {remaining} conservados",
+  'ob.tokens.context_hint': "Para ejecuciones fiables del agente, elige un modelo con una ventana de contexto de al menos 16k tokens. 8k puede funcionar con el modo Compacto activado; 4k es demasiado pequeño para el conjunto de herramientas. WebBrain compacta la conversación automáticamente a medida que se acerca al límite de la ventana.",
+  'st.display.cost_session_limit.label': "Límite de coste por sesión en la nube",
+  'st.display.cost_session_limit.desc': "Detiene las ejecuciones en la nube y de OpenRouter antes de otra llamada de pago al modelo cuando esta sesión alcanza el límite de coste informado o estimado. Predeterminado: 10 $.",
+  'st.display.cost_total_limit.label': "Límite de coste total en la nube",
+  'st.display.cost_total_limit.desc': "Hace un seguimiento del gasto informado o estimado de modelos en la nube/OpenRouter en toda la extensión y detiene más llamadas de pago al alcanzar el límite. Los proveedores locales no se cuentan.",
+  'st.display.cost_reset': "Restablecer gasto",
+  'st.provider.field.prompt_tier': "Nivel de prompt",
+  'st.provider.field.prompt_tier.compact': "Compacto — modelos diminutos (menos de 8B): menos herramientas, reglas concisas",
+  'st.provider.field.prompt_tier.mid': "Medio — modelos pequeños/locales (~9B–32B): prompt más ligero, menos herramientas (predeterminado para locales)",
+  'st.provider.field.prompt_tier.full': "Completo — modelos de vanguardia: todas las herramientas y salvaguardas",
+  'st.provider.field.input_cost_per_million': "Coste de entrada estimado ($ / 1M tokens)",
+  'st.provider.field.output_cost_per_million': "Coste de salida estimado ($ / 1M tokens)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Permitir una vez",
   'sp.perm.always_allow': "Permitir siempre en {host}",

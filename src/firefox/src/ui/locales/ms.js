@@ -1,5 +1,21 @@
 // Malay (ms).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "Konteks dipadatkan secara automatik",
+  'sp.context_compacted_detail': "{summarized} mesej terdahulu diringkaskan · {remaining} dikekalkan",
+  'ob.tokens.context_hint': "Untuk pelaksanaan ejen yang boleh dipercayai, pilih model dengan tetingkap konteks sekurang-kurangnya 16k token. 8k boleh berfungsi dengan mod Padat didayakan; 4k terlalu kecil untuk set alat. WebBrain memadatkan perbualan secara automatik apabila menghampiri had tetingkap.",
+  'st.display.cost_session_limit.label': "Peruntukan kos awan setiap sesi",
+  'st.display.cost_session_limit.desc': "Menghentikan pelaksanaan awan dan OpenRouter sebelum panggilan model berbayar seterusnya apabila sesi ini mencapai peruntukan kos yang dilaporkan atau dianggarkan. Lalai $10.",
+  'st.display.cost_total_limit.label': "Peruntukan kos awan keseluruhan",
+  'st.display.cost_total_limit.desc': "Menjejaki perbelanjaan model awan/OpenRouter yang dilaporkan atau dianggarkan merentas sambungan dan menghentikan panggilan berbayar selanjutnya pada peruntukan. Penyedia tempatan tidak dikira.",
+  'st.display.cost_reset': "Tetap semula perbelanjaan",
+  'st.provider.field.prompt_tier': "Tahap gesaan",
+  'st.provider.field.prompt_tier.compact': "Padat — model sangat kecil (bawah 8B): paling sedikit alat, peraturan ringkas",
+  'st.provider.field.prompt_tier.mid': "Sederhana — model kecil/tempatan (~9B–32B): gesaan lebih ringkas, alat dikurangkan (lalai untuk tempatan)",
+  'st.provider.field.prompt_tier.full': "Penuh — model termaju: setiap alat dan pelindung",
+  'st.provider.field.input_cost_per_million': "Anggaran kos input ($ / 1 juta token)",
+  'st.provider.field.output_cost_per_million': "Anggaran kos output ($ / 1 juta token)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "Benarkan sekali",
   'sp.perm.always_allow': "Sentiasa benarkan di {host}",

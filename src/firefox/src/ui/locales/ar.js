@@ -1,5 +1,21 @@
 // Arabic (ar).
 export default {
+  // Context compaction + cloud cost + prompt-tier strings
+  'sp.context_compacted': "تم ضغط السياق تلقائيًا",
+  'sp.context_compacted_detail': "تم تلخيص {summarized} من الرسائل السابقة · تم الاحتفاظ بـ {remaining}",
+  'ob.tokens.context_hint': "للحصول على تشغيل موثوق للوكيل، اختر نموذجًا بنافذة سياق لا تقل عن 16k رمز. يمكن أن يعمل 8k مع تفعيل الوضع المضغوط؛ أما 4k فهو صغير جدًا لمجموعة الأدوات. يقوم WebBrain بضغط المحادثة تلقائيًا كلما اقتربت من حد النافذة.",
+  'st.display.cost_session_limit.label': "حد تكلفة السحابة لكل جلسة",
+  'st.display.cost_session_limit.desc': "يوقف عمليات التشغيل السحابية وOpenRouter قبل أي استدعاء مدفوع آخر للنموذج بمجرد وصول هذه الجلسة إلى حد التكلفة المُبلّغ عنه أو المُقدَّر. الافتراضي 10 $.",
+  'st.display.cost_total_limit.label': "حد التكلفة الإجمالي للسحابة",
+  'st.display.cost_total_limit.desc': "يتتبع إنفاق نماذج السحابة/OpenRouter المُبلّغ عنه أو المُقدَّر عبر الامتداد ويوقف الاستدعاءات المدفوعة الإضافية عند بلوغ الحد. لا تُحتسب الموفّرات المحلية.",
+  'st.display.cost_reset': "إعادة تعيين الإنفاق",
+  'st.provider.field.prompt_tier': "مستوى المُوجِّه",
+  'st.provider.field.prompt_tier.compact': "مضغوط — نماذج صغيرة جدًا (أقل من 8B): أقل عدد من الأدوات، قواعد موجزة",
+  'st.provider.field.prompt_tier.mid': "متوسط — نماذج صغيرة/محلية (~9B–32B): مُوجِّه أخف، أدوات مُقلّصة (الافتراضي للمحلي)",
+  'st.provider.field.prompt_tier.full': "كامل — النماذج المتقدمة: كل أداة وضمانة",
+  'st.provider.field.input_cost_per_million': "تكلفة الإدخال المُقدَّرة ($ / مليون رمز)",
+  'st.provider.field.output_cost_per_million': "تكلفة الإخراج المُقدَّرة ($ / مليون رمز)",
+
   // Permission UI — standalone buttons + labels (rest falls back to English)
   'sp.perm.allow_once': "السماح مرة واحدة",
   'sp.perm.always_allow': "السماح دائمًا على {host}",
