@@ -228,8 +228,11 @@ Three independent detectors run after every tool call:
 
 ### Context Management (`agent.js`)
 
-- **Auto-trim** at >50 messages or >80,000 chars: keeps system prompt + original user task + LLM-summarized old messages + last 30 verbatim
-- **Emergency trim** on context overflow: keeps only last 6 messages
+- **Auto-compaction** (`_manageContext`) — runs both at the start of each user turn *and* at the top of every agent-loop iteration, so a long autonomous run compacts mid-flight ("when it's due"), not only between turns. Triggers on whichever fires first:
+  - **message count** > 50, or **raw chars** > 80,000, or
+  - **token budget** — the running input-token count crossing `contextCompactRatio` (0.75) of the active provider's `contextWindow` (`providers/base.js`; category-aware default of 16k for local backends and 128k for cloud/router, overridable per provider via `config.contextWindow`). The token count prefers the provider's reported `usage.prompt_tokens` (which includes the system prompt + tool schemas) and falls back to a chars/4 estimate on the streaming path.
+  - On compaction it keeps system prompt + original user task + LLM-summarized old messages + last 30 verbatim, then emits `onUpdate('context_compacted', …)`. The side panel renders an inline **"Context automatically compacted"** separator so the user knows history was summarized, not lost.
+- **Emergency trim** on context overflow: keeps only last 6 messages (the hard fallback when a provider still rejects the request after auto-compaction)
 - **Image pruning**: strips base64 images from all but the last 4 messages before each LLM call
 - **Tool result cap**: individual results truncated at 8,000 chars
 

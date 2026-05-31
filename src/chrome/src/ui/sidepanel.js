@@ -1088,6 +1088,13 @@ chrome.runtime.onMessage.addListener((msg) => {
       hideActivity();
       break;
 
+    case 'context_compacted':
+      // The agent auto-summarized older turns to stay within the model's
+      // context window. Show a subtle inline separator so the user knows
+      // earlier history was compacted (not lost to a bug).
+      addContextCompactedNote(data);
+      break;
+
     case 'clarify':
       // Agent paused to ask the user a question. Render an inline card in
       // the current assistant bubble; the user picks an option or types a
@@ -1439,6 +1446,34 @@ function addMessage(role, content) {
   scrollToBottom();
 
   return msgEl;
+}
+
+/**
+ * Render the "Context automatically compacted" notice as a centered inline
+ * separator in the conversation. Fired by the agent's onUpdate('context_compacted')
+ * when older turns were summarized to stay within the model's context window.
+ */
+function addContextCompactedNote(data) {
+  const note = document.createElement('div');
+  note.className = 'context-compacted-note';
+  note.textContent = t('sp.context_compacted');
+  if (data && data.summarized != null && data.remaining != null) {
+    note.title = t('sp.context_compacted_detail', {
+      summarized: data.summarized,
+      remaining: data.remaining,
+    });
+  }
+  // Insert into the active assistant bubble's steps log so the separator lands
+  // at the actual compaction point, interleaved with the tool steps. Appending
+  // to messagesEl would drop it *after* the still-open bubble — i.e. before the
+  // text/tool output that the same bubble keeps receiving post-compaction.
+  const stepsContainer = getOrCreateStepsContainer();
+  if (stepsContainer) {
+    stepsContainer.appendChild(note);
+  } else {
+    messagesEl.appendChild(note);
+  }
+  scrollToBottom();
 }
 
 function showContinueButton() {

@@ -1653,6 +1653,34 @@ test('Agent cost metering treats bracketed local IPv6 URLs as local', () => {
   }
 });
 
+test('Agent cost metering treats only real IPv4 literals as local', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({});
+    for (const url of [
+      'http://10.1.2.3:1234/v1',
+      'http://127.0.0.1:1234/v1',
+      'http://172.16.0.5:1234/v1',
+      'http://192.168.1.10:1234/v1',
+    ]) {
+      assert.equal(agent._isLocalBaseUrl(url), true, `${AgentClass.name} should treat ${url} as local`);
+    }
+    for (const url of [
+      'https://10.example.com/v1',
+      'https://127.example.com/v1',
+      'https://172.16.example.com/v1',
+      'https://192.168.example.com/v1',
+      'https://999.1.2.3/v1',
+    ]) {
+      assert.equal(agent._isLocalBaseUrl(url), false, `${AgentClass.name} should treat ${url} as remote`);
+      assert.equal(
+        agent._isCostMeteredProvider({ config: { type: 'openai', baseUrl: url, apiKey: 'paid-key' } }),
+        true,
+        `${AgentClass.name} should meter ${url}`
+      );
+    }
+  }
+});
+
 test('Agent cost metering still treats public IPv6 URLs as remote', () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({});

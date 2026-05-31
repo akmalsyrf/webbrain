@@ -37,6 +37,8 @@ export default {
   'sp.activity.thinking_step': 'Thinking (step {step})...',
   'sp.activity.continuing': 'Continuing...',
   'sp.activity.stopping': 'Stopping...',
+  'sp.context_compacted': 'Context automatically compacted',
+  'sp.context_compacted_detail': '{summarized} earlier messages summarized · {remaining} kept',
 
   'sp.copy': 'Copy',
   'sp.copied': 'Copied!',
@@ -125,6 +127,7 @@ export default {
   'ob.tokens.scanning': 'Checking for local models...',
   'ob.tokens.local_body': 'A local model is available on this computer. Pick one to enable it and start using WebBrain now.',
   'ob.tokens.local_models_label': 'Local model',
+  'ob.tokens.context_hint': 'For reliable agent runs, pick a model with at least a 16k-token context window. 8k can work with Compact mode enabled; 4k is too small for the tool set. WebBrain auto-compacts the conversation as it approaches the window.',
   'ob.tokens.local_note': 'You can change providers later in Settings.',
   'ob.tokens.local_status': 'Found {count} local models.',
   'ob.tokens.none_status': 'No local model server was detected.',

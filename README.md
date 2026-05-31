@@ -23,7 +23,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Side Panel UI** — Clean chat interface that lives alongside your browsing
 - **Per-Tab Conversations** — Each tab has its own chat history
 - **Streaming** — Real-time token streaming from all providers
-- **Smart Context** — Automatic context trimming, tool result limits, and emergency overflow recovery
+- **Smart Context** — Token-aware auto-compaction (summarizes older turns once the conversation nears the model's context window, with a visible "Context automatically compacted" notice), tool result limits, and emergency overflow recovery
 - **Copy Support** — Copy buttons on code blocks and full messages
 - **Page Inspection Banner** — Visual indicator when the agent is interacting with the page
 - **Stop Button** — Abort the agent mid-execution at any time
@@ -63,6 +63,8 @@ llama-server -m your-model.gguf --port 8080
 ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
 ```
+
+> **Context window:** For reliable agent runs, load a local model with **at least a 16k-token context window** (the usable minimum). 8k can work with **Compact mode** enabled (Settings → per-provider checkbox); 4k is too small to hold the system prompt + tool schemas. WebBrain auto-compacts the conversation as it nears the window — it assumes 16k for local models unless you set an explicit context size, so give the model server (e.g. `llama-server -c 16384`) enough room.
 
 ### Use it
 

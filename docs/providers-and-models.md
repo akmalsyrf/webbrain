@@ -61,6 +61,8 @@ Three local providers are enabled by default with no API key needed:
 
 All three default `supportsVision: true` since most models loaded locally in 2026 are multimodal.
 
+**Context window.** Load local models with **at least a 16k-token context window** for reliable agent runs — that's the usable minimum. 8k can work with Compact mode enabled; 4k is too small to hold the system prompt + tool schemas. The agent reads the window from `provider.contextWindow` (`providers/base.js`) to drive auto-compaction; when a provider config doesn't set `contextWindow`, local providers default to a conservative **16k** (cloud/router default to 128k). Set `config.contextWindow` explicitly to match a larger local window, and make sure the model server is actually started with that much context (e.g. `llama-server -c 16384`).
+
 Compact prompts are opt-in per provider in both Chrome and Firefox. When
 `useCompactPrompt` is enabled, Act mode uses `SYSTEM_PROMPT_ACT_COMPACT` and
 filters the exposed tools through `COMPACT_TOOL_NAMES`; Ask mode is unchanged.

@@ -55,6 +55,22 @@ export class Agent {
     this._debugLog = []; // ring buffer for deep verbose (LLM requests/responses)
     this._debugLogMax = 200; // max entries before oldest are dropped
     this.maxContextChars = 80000; // rough char budget (~20k tokens)
+    // Fraction of the model's context window at which we auto-compact. Once
+    // the running input-token count crosses this share of provider.contextWindow,
+    // _manageContext summarizes older turns ("Context automatically compacted")
+    // — leaving headroom for the next request plus the output budget.
+    this.contextCompactRatio = 0.75;
+    // tabId -> most recent provider-reported input (prompt) token count. Drives
+    // the token-aware auto-compaction trigger; updated after each LLM response,
+    // reset whenever we compact.
+    this._lastInputTokens = new Map();
+    // tabId -> our char-estimate of the conversation at the moment _lastInputTokens
+    // was recorded. Lets _manageContext project the NEXT prompt as
+    // (reported tokens + estimated growth since) instead of just the reported
+    // count — so a big tool result appended after the last usage reading still
+    // trips the budget. The fixed system+tool-schema overhead rides along in the
+    // reported number; the delta captures the new messages.
+    this._lastEstCharsAtReport = new Map();
     // Auto-screenshot mode. 'off' | 'navigation' | 'state_change' | 'every_step'.
     // Loaded from chrome.storage.local in background.js.
     this.autoScreenshot = 'state_change';
@@ -216,9 +232,13 @@ export class Agent {
   }
 
   _isLocalIpv4Host(host) {
-    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' ||
-      host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+    if (host === 'localhost') return true;
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return false;
+    const octets = host.split('.').map(part => Number(part));
+    if (octets.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+    const [a, b] = octets;
+    return host === '0.0.0.0' || a === 127 || a === 10 || (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31);
   }
 
   _ipv4FromMappedIpv6(host) {
@@ -2358,6 +2378,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.conversations.delete(tabId);
     this.conversationModes.delete(tabId);
     this.conversationIds.delete(tabId);
+    this._lastInputTokens.delete(tabId);
+    this._lastEstCharsAtReport.delete(tabId);
     this.hydratedTabs.delete(tabId);
     this.apiAllowedTabs.delete(tabId);
     this.apiAllowedInjected.delete(tabId);
@@ -2472,22 +2494,126 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   // ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Manage context window — trim and summarize when conversation gets too long.
-   * Keeps: system prompt, summary of old messages, recent messages.
+   * Token budget at which we proactively auto-compact for the active provider:
+   * a fraction (contextCompactRatio) of the model's context window. Compacting
+   * here — before the provider hard-errors on overflow — keeps the run smooth
+   * and lets us surface a clean "Context automatically compacted" notice rather
+   * than the jarring _emergencyTrim fallback.
    */
-  async _manageContext(tabId, messages, costState = null) {
-    // Calculate total char length
+  _contextTokenBudget() {
+    const provider = this.providerManager.getActive();
+    const window = (provider && Number(provider.contextWindow)) || 128000;
+    return Math.floor(window * this.contextCompactRatio);
+  }
+
+  /**
+   * Rough char count of a conversation, used as a cheap token proxy (≈ chars/4).
+   * Counts string content verbatim and JSON-stringifies structured content /
+   * tool_calls. Shared by _manageContext (current size) and the LLM call site
+   * (size at the moment usage was reported) so their delta is consistent.
+   */
+  _estimateContextChars(messages) {
     let totalChars = 0;
     for (const msg of messages) {
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
       totalChars += content.length;
       if (msg.tool_calls) totalChars += JSON.stringify(msg.tool_calls).length;
     }
+    return totalChars;
+  }
+
+  /**
+   * Index of the first real user turn — the task statement — skipping any
+   * seeded site-guidance / site-context-changed / trim-notice / scratchpad
+   * user messages. Shared by _manageContext (which pins it) and
+   * _truncateOversizedMessages (which must never truncate it) so the two can't
+   * disagree on what "the original task" is. Returns -1 if none found.
+   */
+  _findOriginalTaskIndex(messages) {
+    for (let i = 1; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role !== 'user') continue;
+      const c = typeof m.content === 'string' ? m.content : '';
+      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad')) continue;
+      return i;
+    }
+    return -1;
+  }
+
+  /**
+   * Shrink oversized tool results / message bodies in place, capping the bloat
+   * without dropping any turns. Used as the fallback when we're over the token
+   * budget but have too few old messages to summarize (the case most likely to
+   * overflow early in a run on a small-window local model). Skips the system
+   * prompt (index 0), the pinned scratchpad, AND the pinned original user task
+   * so none is mangled — the task in particular often carries the real
+   * instruction at the END of a page-enriched first turn, where head-truncation
+   * would silently drop it. Clears the cached input-token count so the next
+   * call re-measures the smaller size.
+   */
+  _truncateOversizedMessages(tabId, messages) {
+    const taskIdx = this._findOriginalTaskIndex(messages);
+    let trimmed = false;
+    for (let i = 1; i < messages.length; i++) {
+      if (i === taskIdx) continue; // never truncate the pinned original task
+      const m = messages[i];
+      if (this._isScratchpadMessage(m)) continue;
+      if (typeof m.content !== 'string') continue; // image/array content handled by _pruneOldImages
+      if (m.role === 'tool' && m.content.length > 2000) {
+        m.content = m.content.slice(0, 2000) + '\n[...truncated to fit context]';
+        trimmed = true;
+      } else if (m.content.length > 5000) {
+        m.content = m.content.slice(0, 5000) + '\n[...truncated to fit context]';
+        trimmed = true;
+      }
+    }
+    if (trimmed) this._lastInputTokens.delete(tabId);
+    return trimmed;
+  }
+
+  /**
+   * Manage context window — trim and summarize when conversation gets too long.
+   * Keeps: system prompt, summary of old messages, recent messages.
+   *
+   * Triggers on whichever fires first: message count, raw char budget, or —
+   * the token-aware "when it's due" path — the running input-token count
+   * crossing contextCompactRatio of the model's context window. The token
+   * trigger uses the provider's reported usage when available (most accurate,
+   * since it includes the system prompt + tool schemas that never live in
+   * `messages`) and falls back to a chars/4 estimate for the streaming path.
+   *
+   * When a compaction actually happens, emits onUpdate('context_compacted', …)
+   * so the side panel can show the user that context was auto-compacted.
+   */
+  async _manageContext(tabId, messages, onUpdate = null, costState = null) {
+    const totalChars = this._estimateContextChars(messages);
+
+    const tokenBudget = this._contextTokenBudget();
+    // Estimate the size of the NEXT request. A raw chars/4 estimate omits the
+    // fixed system-prompt + tool-schema overhead that the provider's reported
+    // `prompt_tokens` includes; the reported count, conversely, predates any
+    // messages appended since (e.g. a large tool result on this turn). So when
+    // we have a real prior reading, project from it: reported tokens + the
+    // estimated GROWTH in conversation bytes since that reading. The fixed
+    // overhead rides along in `lastReported`, the delta captures the new
+    // messages, and base64/image bytes cancel out of the delta. Fall back to
+    // the raw estimate (streaming path / first turn) when there's no reading.
+    const estTokens = Math.ceil(totalChars / 4);
+    const lastReported = this._lastInputTokens.get(tabId) || 0;
+    const lastEstChars = this._lastEstCharsAtReport.get(tabId);
+    let usedTokens;
+    if (lastReported > 0 && lastEstChars != null) {
+      const deltaTokens = Math.max(0, Math.ceil((totalChars - lastEstChars) / 4));
+      usedTokens = Math.max(lastReported + deltaTokens, estTokens);
+    } else {
+      usedTokens = Math.max(lastReported, estTokens);
+    }
 
     const tooManyMessages = messages.length > this.maxContextMessages;
     const tooManyChars = totalChars > this.maxContextChars;
+    const tooManyTokens = usedTokens > tokenBudget;
 
-    if (!tooManyMessages && !tooManyChars) return; // context is fine
+    if (!tooManyMessages && !tooManyChars && !tooManyTokens) return; // context is fine
 
     // Strategy: keep system prompt + ORIGINAL USER TASK (pinned) + summarize
     // old messages + keep recent messages.
@@ -2499,16 +2625,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const systemMsg = messages[0]; // always the system prompt
     // Find the first real user turn (skip any seeded site-guidance context
     // we may have prepended which uses role:'user' with a [Site guidance…]
-    // heading, and the pinned scratchpad).
-    let originalTaskIdx = -1;
-    for (let i = 1; i < messages.length; i++) {
-      const m = messages[i];
-      if (m.role !== 'user') continue;
-      const c = typeof m.content === 'string' ? m.content : '';
-      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad')) continue;
-      originalTaskIdx = i;
-      break;
-    }
+    // heading, and the pinned scratchpad). Shared with _truncateOversizedMessages.
+    const originalTaskIdx = this._findOriginalTaskIndex(messages);
     const originalTask = originalTaskIdx >= 0 ? messages[originalTaskIdx] : null;
     // Pin the scratchpad alongside the original task so the model's self-
     // written notes survive summarization.
@@ -2531,7 +2649,29 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const oldMessages = oldMessagesRaw.filter(m => !this._isScratchpadMessage(m));
     const recentMessages = recentMessagesRaw.filter(m => !this._isScratchpadMessage(m));
 
-    if (oldMessages.length < 4) return; // not enough to summarize
+    // Boundary fix: the recent slice must not begin in the middle of a
+    // tool-call group. If the cutoff lands right after an assistant
+    // `tool_calls` turn (which then gets summarized into `oldMessages`), the
+    // recent slice would start with orphaned `tool` results — and both
+    // OpenAI-compatible and Anthropic APIs reject a `tool` message that isn't
+    // preceded by the assistant turn that requested it. Mid-run compaction
+    // during tool-heavy autonomous runs makes hitting this boundary common.
+    // Move any leading `tool` results back into the summarized set (their
+    // parent assistant turn already lives there, so the digest stays intact).
+    while (recentMessages.length && recentMessages[0].role === 'tool') {
+      oldMessages.push(recentMessages.shift());
+    }
+
+    if (oldMessages.length < 4) {
+      // Not enough history to summarize. But if the TOKEN budget is what
+      // tripped us (e.g. a single huge page/tool result early in a run on a
+      // small local model), returning unchanged would re-send the same
+      // over-budget request every step until the provider hard-errors. Shrink
+      // oversized tool results / messages in place instead — keeps all turns
+      // but caps the bloat — then re-measure on the next call.
+      if (tooManyTokens) this._truncateOversizedMessages(tabId, messages);
+      return;
+    }
 
     // Build tool_call_id → name map so each tool result in the summary can be
     // labelled with the tool that produced it. Without this we'd lose the
@@ -2604,7 +2744,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (scratchpadMsg) messages.push(scratchpadMsg);
     messages.push(summaryMsg, summaryAck, ...recentMessages);
 
+    // The next LLM call will report a fresh (smaller) input-token count; clear
+    // the stale estimate so we don't immediately re-trigger on the old number.
+    this._lastInputTokens.delete(tabId);
+
     console.log(`[WebBrain] Context trimmed for tab ${tabId}: ${oldMessages.length} old messages → summary. ${messages.length} messages remain.`);
+
+    // Surface the auto-compaction to the user (side panel renders an inline
+    // "Context automatically compacted" note). Best-effort — never let a UI
+    // callback error break the agent loop.
+    if (typeof onUpdate === 'function') {
+      try {
+        onUpdate('context_compacted', {
+          summarized: oldMessages.length,
+          remaining: messages.length,
+          tokens: usedTokens || null,
+          budget: tokenBudget,
+        });
+      } catch { /* ignore */ }
+    }
   }
 
   _truncate(str, len) {
@@ -2637,6 +2795,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       return this._truncate(String(raw).replace(/\s+/g, ' '), 140);
     }
     if (parsed.error) {
+      // For page-derived tools the error string can embed attacker-controlled
+      // text (a fetched URL, a filename, a page-error snippet). Echoing it
+      // into the trusted trim summary / summarizer prompt would smuggle that
+      // text out of the untrusted wrapper, so emit a content-free note instead.
+      if (UNTRUSTED_CONTENT_TOOLS.has(name)) {
+        return `${name}: error (untrusted page content)`;
+      }
       return `error: ${this._truncate(String(parsed.error), 120)}`;
     }
 
@@ -2645,9 +2810,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         if (Array.isArray(parsed.downloads)) {
           const n = parsed.downloads.length;
           const complete = parsed.downloads.filter(d => d.state === 'complete').length;
-          const latest = parsed.downloads[0];
-          const label = latest ? (latest.filename || latest.url || '') : '';
-          return `${n} downloads listed (${complete} complete)${label ? `; latest: ${this._truncate(label, 70)}` : ''}`;
+          // Don't echo the latest filename/url — both are attacker-controllable
+          // (Content-Disposition header / page href) and would smuggle page text
+          // into the trusted trim summary.
+          return `${n} downloads listed (${complete} complete)`;
         }
         break;
       }
@@ -2663,7 +2829,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       case 'read_downloaded_file': {
         if (parsed.filename) {
           const len = parsed.originalLength ?? (typeof parsed.text === 'string' ? parsed.text.length : '?');
-          return `read ${this._truncate(parsed.filename, 80)} (${parsed.contentType || '?'}, ${len} chars)`;
+          // Don't echo the filename — it's attacker-settable via the
+          // Content-Disposition header. Keep only the safe type + size facts.
+          return `read downloaded file (${parsed.contentType || '?'}, ${len} chars)`;
         }
         break;
       }
@@ -5895,7 +6063,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.permissions.beginTurn(tabId);
 
     // Trim context if it's getting too long
-    await this._manageContext(tabId, messages, costState);
+    await this._manageContext(tabId, messages, onUpdate, costState);
 
     const enriched = await this._enrichUserMessageWithCurrentPage(tabId, messages, userMessage, costState);
     messages.push(enriched);
@@ -5948,6 +6116,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         await this._maybeReinjectAdapter(tabId, messages);
       }
 
+      // Auto-compact mid-run when the conversation outgrows the budget — not
+      // just between user turns. Uses the previous step's reported token count,
+      // so it fires "when it's due" during long autonomous loops.
+      await this._manageContext(tabId, messages, onUpdate, costState);
+
       steps++;
       onUpdate('thinking', { step: steps });
 
@@ -5960,6 +6133,12 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         if (runId) trace.recordLLMRequest(runId, steps, { providerClass: provider.constructor.name, model: provider.model, messageCount: prunedMessages.length, toolsCount: (chatOpts.tools || []).length });
         const _llmStart = Date.now();
         result = await this._chatWithCostAllowance(provider, prunedMessages, chatOpts, costState);
+        if (result?.usage?.prompt_tokens) {
+          this._lastInputTokens.set(tabId, result.usage.prompt_tokens);
+          // Snapshot the conversation size at this reading so the next
+          // _manageContext can add only the growth since (see its delta logic).
+          this._lastEstCharsAtReport.set(tabId, this._estimateContextChars(messages));
+        }
         const _llmLatency = Date.now() - _llmStart;
         this._logDebug({ type: 'llm_response', step: steps, content: result.content, toolCalls: result.toolCalls });
         if (runId) trace.recordLLMResponse(runId, steps, { content: result.content, toolCalls: result.toolCalls, usage: result.usage, latencyMs: _llmLatency, model: provider.model });
@@ -6170,7 +6349,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.permissions.beginTurn(tabId);
 
     // Trim context if it's getting too long
-    await this._manageContext(tabId, messages, costState);
+    await this._manageContext(tabId, messages, onUpdate, costState);
 
     const enriched = await this._enrichUserMessageWithCurrentPage(tabId, messages, userMessage, costState);
     messages.push(enriched);
@@ -6195,6 +6374,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       if (steps > 0) {
         await this._maybeReinjectAdapter(tabId, messages);
       }
+
+      // Auto-compact mid-run when the conversation outgrows the budget. The
+      // streaming path doesn't get a per-call token count, so this leans on
+      // the chars/4 estimate inside _manageContext.
+      await this._manageContext(tabId, messages, onUpdate, costState);
 
       steps++;
       onUpdate('thinking', { step: steps });
