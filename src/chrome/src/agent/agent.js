@@ -215,13 +215,37 @@ export class Agent {
     return '$' + (Number.isFinite(n) ? n : 0).toFixed(2);
   }
 
+  _isLocalIpv4Host(host) {
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' ||
+      host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+  }
+
+  _ipv4FromMappedIpv6(host) {
+    if (!host.startsWith('::ffff:')) return null;
+    const mapped = host.slice('::ffff:'.length);
+    if (mapped.includes('.')) return mapped;
+    const parts = mapped.split(':');
+    if (parts.length !== 2) return null;
+    const hi = Number.parseInt(parts[0], 16);
+    const lo = Number.parseInt(parts[1], 16);
+    if (!Number.isFinite(hi) || !Number.isFinite(lo) || hi < 0 || hi > 0xffff || lo < 0 || lo > 0xffff) return null;
+    return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+  }
+
+  _isLocalIpv6Host(host) {
+    if (host === '::' || host === '::1') return true;
+    const first = Number.parseInt(host.split(':')[0], 16);
+    if (!Number.isFinite(first)) return false;
+    return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+  }
+
   _isLocalBaseUrl(baseUrl) {
     try {
       const { hostname } = new URL(baseUrl || '');
-      const h = hostname.toLowerCase();
-      return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' ||
-        h.startsWith('127.') || h.startsWith('10.') || h.startsWith('192.168.') ||
-        /^172\.(1[6-9]|2\d|3[0-1])\./.test(h);
+      const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+      const mappedIpv4 = this._ipv4FromMappedIpv6(h);
+      return this._isLocalIpv4Host(mappedIpv4 || h) || this._isLocalIpv6Host(h);
     } catch {
       return false;
     }

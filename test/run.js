@@ -84,6 +84,12 @@ const { OpenAICompatibleProvider: OpenAIProviderCh } = await import(
 const { OpenAICompatibleProvider: OpenAIProviderFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/openai.js').replace(/\\/g, '/')
 );
+const { Agent: AgentCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/agent/agent.js').replace(/\\/g, '/')
+);
+const { Agent: AgentFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/agent/agent.js').replace(/\\/g, '/')
+);
 
 // tools.js — pure ESM. We import both browser builds so prompt/tool routing
 // stays in parity.
@@ -1622,6 +1628,39 @@ test('OpenAI-compatible local streams do not request usage metadata', () => {
       provider._addStreamUsageOptions(body);
       assert.equal(body.stream_options, undefined);
     }
+  }
+});
+
+test('Agent cost metering treats bracketed local IPv6 URLs as local', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({});
+    for (const url of [
+      'http://[::1]:1234/v1',
+      'http://[::]:1234/v1',
+      'http://[fc00::1]:1234/v1',
+      'http://[fd12:3456::1]:1234/v1',
+      'http://[fe80::1]:1234/v1',
+      'http://[::ffff:127.0.0.1]:1234/v1',
+      'http://[::ffff:192.168.1.1]:1234/v1',
+    ]) {
+      assert.equal(agent._isLocalBaseUrl(url), true, `${AgentClass.name} should treat ${url} as local`);
+      assert.equal(
+        agent._isCostMeteredProvider({ config: { type: 'openai', baseUrl: url, apiKey: 'local-key' } }),
+        false,
+        `${AgentClass.name} should not meter ${url}`
+      );
+    }
+  }
+});
+
+test('Agent cost metering still treats public IPv6 URLs as remote', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({});
+    assert.equal(agent._isLocalBaseUrl('https://[2606:4700:4700::1111]/v1'), false);
+    assert.equal(
+      agent._isCostMeteredProvider({ config: { type: 'openai', baseUrl: 'https://[2606:4700:4700::1111]/v1', apiKey: 'paid-key' } }),
+      true
+    );
   }
 });
 
