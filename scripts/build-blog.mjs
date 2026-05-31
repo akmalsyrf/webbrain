@@ -13,8 +13,10 @@
  * slug: my-post-title
  * date: 2026-05-31
  * readTime: 6 min read
+ * sortOrder: 10
  * description: Short SEO description.
  * excerpt: Short card summary for /blog.
+ * cardTitle: Optional title override for the /blog card.
  * keywords:
  *   - browser agent
  *   - local llm
@@ -26,7 +28,7 @@
  * The first Markdown paragraph becomes the article lede unless front matter
  * provides `lede`. Add `draft: true` to skip a post by default, or pass
  * --drafts to include it. Add `html: true` only for trusted posts that need
- * raw inline HTML such as <span class="win"> table markers.
+ * raw inline/block HTML such as <span class="win"> markers or callouts.
  *
  * Pure Node ESM, no npm dependency.
  */
@@ -322,7 +324,7 @@ function extractTitleAndLede(markdown, meta) {
   };
 }
 
-function isBlockStarter(lines, index) {
+function isBlockStarter(lines, index, options = {}) {
   const line = lines[index] || '';
   const next = lines[index + 1] || '';
   return /^#{1,6}\s+/.test(line)
@@ -331,7 +333,8 @@ function isBlockStarter(lines, index) {
     || /^\s{0,3}([-*+]|\d+[.)])\s+/.test(line)
     || /^\s{0,3}>/.test(line)
     || /^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)
-    || isTableStart(line, next);
+    || isTableStart(line, next)
+    || (options.allowHtml && isHtmlBlockStart(line));
 }
 
 function renderMarkdown(markdown, options = {}) {
@@ -344,6 +347,13 @@ function renderMarkdown(markdown, options = {}) {
     const line = lines[i];
     if (!line.trim()) {
       i += 1;
+      continue;
+    }
+
+    if (options.allowHtml && isHtmlBlockStart(line)) {
+      const { block, nextIndex } = readHtmlBlock(lines, i);
+      html.push(block.join('\n'));
+      i = nextIndex;
       continue;
     }
 
@@ -424,7 +434,7 @@ function renderMarkdown(markdown, options = {}) {
     }
 
     const paragraph = [];
-    while (i < lines.length && lines[i].trim() && !isBlockStarter(lines, i)) {
+    while (i < lines.length && lines[i].trim() && !isBlockStarter(lines, i, options)) {
       paragraph.push(lines[i]);
       i += 1;
     }
@@ -436,6 +446,37 @@ function renderMarkdown(markdown, options = {}) {
 
 function isTableStart(line, nextLine) {
   return line.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine || '');
+}
+
+function isHtmlBlockStart(line) {
+  return /^\s*<(address|article|aside|blockquote|details|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|main|nav|ol|p|pre|section|table|ul)(\s|>|\/>)/i.test(line);
+}
+
+function readHtmlBlock(lines, startIndex) {
+  const first = lines[startIndex];
+  const tagMatch = first.match(/^\s*<([A-Za-z][A-Za-z0-9-]*)\b/i);
+  if (!tagMatch) return { block: [first], nextIndex: startIndex + 1 };
+
+  const tag = tagMatch[1].toLowerCase();
+  if (/^\s*<hr\b/i.test(first) || /\/>\s*$/.test(first)) {
+    return { block: [first], nextIndex: startIndex + 1 };
+  }
+
+  const block = [];
+  let depth = 0;
+  let i = startIndex;
+
+  while (i < lines.length) {
+    const current = lines[i];
+    block.push(current);
+    const openMatches = current.match(new RegExp(`<${tag}(\\s|>|/)`, 'gi')) || [];
+    const closeMatches = current.match(new RegExp(`</${tag}>`, 'gi')) || [];
+    depth += openMatches.length - closeMatches.length;
+    i += 1;
+    if (depth <= 0) break;
+  }
+
+  return { block, nextIndex: i };
 }
 
 function splitTableRow(line) {
@@ -524,10 +565,12 @@ async function buildPost(filePath, args) {
     title,
     slug,
     date: published.iso,
+    sortOrder: Number(meta.sortOrder || meta.sort_order || 0),
     displayDate: published.display,
     readTime,
     description,
     excerpt,
+    cardTitle: String(meta.cardTitle || meta.card_title || title),
     keywords,
     author,
     authorUrl,
@@ -566,7 +609,9 @@ function estimateReadTime(text) {
 
 function sortPosts(posts) {
   return [...posts].sort((a, b) => (
-    b.date.localeCompare(a.date) || a.title.localeCompare(b.title)
+    b.date.localeCompare(a.date)
+      || a.sortOrder - b.sortOrder
+      || a.title.localeCompare(b.title)
   ));
 }
 
@@ -1176,7 +1221,7 @@ function renderIndexPage(posts, args) {
   const cards = posts.map((post) => (
     `<a href="${escAttr(post.urlPath)}" class="post-card">
         <div class="post-meta">${escHtml(post.displayDate)} &middot; ${escHtml(post.readTime)}</div>
-        <div class="post-title">${escHtml(post.title)}</div>
+        <div class="post-title">${escHtml(post.cardTitle || post.title)}</div>
         <div class="post-excerpt">${escHtml(post.excerpt)}</div>
       </a>`
   )).join('\n');
