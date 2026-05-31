@@ -197,6 +197,9 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
         }
         try {
           const json = JSON.parse(payload);
+          if (json.usage) {
+            yield { type: 'usage', usage: json.usage };
+          }
           const delta = json.choices?.[0]?.delta;
           if (delta?.content) {
             yield { type: 'text', content: delta.content };

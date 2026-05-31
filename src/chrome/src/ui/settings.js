@@ -17,6 +17,10 @@ const maxStepsRange = document.getElementById('range-max-steps');
 const stepsValueLabel = document.getElementById('steps-value');
 const requestTimeoutRange = document.getElementById('range-request-timeout');
 const requestTimeoutValueLabel = document.getElementById('timeout-value');
+const costSessionLimitInput = document.getElementById('input-cost-session-limit');
+const costTotalLimitInput = document.getElementById('input-cost-total-limit');
+const costSpentValueLabel = document.getElementById('cost-spent-value');
+const btnResetCostSpend = document.getElementById('btn-reset-cost-spend');
 const autoScreenshotSelect = document.getElementById('select-auto-screenshot');
 const siteAdaptersToggle = document.getElementById('toggle-site-adapters');
 const notifySoundToggle = document.getElementById('toggle-notify-sound');
@@ -119,6 +123,22 @@ let authToken = '';
 let authEmail = '';
 let authDefaultModel = '';
 
+const DEFAULT_COST_ALLOWANCE_USD = 10;
+
+function normalizeCostAmount(value, fallback = DEFAULT_COST_ALLOWANCE_USD) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function formatUsd(value) {
+  return '$' + normalizeCostAmount(value, 0).toFixed(2);
+}
+
+function renderCostAllowanceSpent(spent, limit) {
+  if (!costSpentValueLabel) return;
+  costSpentValueLabel.textContent = `${formatUsd(spent)} / ${formatUsd(limit)}`;
+}
+
 // Filter + collapse state for the providers panel. With 11+ providers the
 // flat list is unwieldy — filter keeps the visual surface small, and
 // per-card collapse defaults non-active cards to header-only so the page
@@ -137,7 +157,7 @@ async function init() {
   renderAuthSection();
 
   // Load display settings
-  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'notifySound', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'providerFilter', 'requestTimeoutMs']);
+  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'notifySound', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'providerFilter', 'requestTimeoutMs', 'costAllowanceSessionUsd', 'costAllowanceTotalUsd', 'cloudCostSpentUsd']);
   if (typeof stored.providerFilter === 'string' && ['all','local','cloud','router'].includes(stored.providerFilter)) {
     providerFilter = stored.providerFilter;
   }
@@ -159,6 +179,12 @@ async function init() {
   siteAdaptersToggle.checked = stored.useSiteAdapters ?? true;
   notifySoundToggle.checked = stored.notifySound ?? true; // on by default
   tracingToggle.checked = stored.tracingEnabled === true; // off by default
+  const sessionLimit = normalizeCostAmount(stored.costAllowanceSessionUsd);
+  const totalLimit = normalizeCostAmount(stored.costAllowanceTotalUsd);
+  const totalSpent = normalizeCostAmount(stored.cloudCostSpentUsd, 0);
+  if (costSessionLimitInput) costSessionLimitInput.value = sessionLimit.toFixed(2);
+  if (costTotalLimitInput) costTotalLimitInput.value = totalLimit.toFixed(2);
+  renderCostAllowanceSpent(totalSpent, totalLimit);
   if (strictSecretToggle) {
     strictSecretToggle.checked = stored.strictSecretMode === true; // off by default
   }
@@ -400,6 +426,25 @@ notifySoundToggle.addEventListener('change', () => {
 
 tracingToggle.addEventListener('change', () => {
   chrome.storage.local.set({ tracingEnabled: tracingToggle.checked });
+});
+
+costSessionLimitInput?.addEventListener('change', () => {
+  const value = normalizeCostAmount(costSessionLimitInput.value);
+  costSessionLimitInput.value = value.toFixed(2);
+  chrome.storage.local.set({ costAllowanceSessionUsd: value });
+});
+
+costTotalLimitInput?.addEventListener('change', async () => {
+  const value = normalizeCostAmount(costTotalLimitInput.value);
+  costTotalLimitInput.value = value.toFixed(2);
+  const stored = await chrome.storage.local.get(['cloudCostSpentUsd']);
+  renderCostAllowanceSpent(normalizeCostAmount(stored.cloudCostSpentUsd, 0), value);
+  chrome.storage.local.set({ costAllowanceTotalUsd: value });
+});
+
+btnResetCostSpend?.addEventListener('click', async () => {
+  await chrome.storage.local.set({ cloudCostSpentUsd: 0 });
+  renderCostAllowanceSpent(0, normalizeCostAmount(costTotalLimitInput?.value));
 });
 
 if (strictSecretToggle) {
