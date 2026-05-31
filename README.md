@@ -64,6 +64,8 @@ ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
 ```
 
+> **Context window:** For reliable agent runs, load a local model with **at least a 16k-token context window** (the usable minimum). 8k can work with **Compact mode** enabled (Settings → per-provider checkbox); 4k is too small to hold the system prompt + tool schemas. WebBrain auto-compacts the conversation as it nears the window — it assumes 16k for local models unless you set an explicit context size, so give the model server (e.g. `llama-server -c 16384`) enough room.
+
 ### Use it
 
 Click the WebBrain icon → the side panel opens. Type a message like:

@@ -1600,7 +1600,23 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     if (oldMessages.length < 4) return; // not enough to summarize
 
-    // Build a summary of old messages
+    // Build tool_call_id → name map so each tool result in the summary can be
+    // labelled with the tool that produced it. Without this we'd lose the
+    // association when the assistant turn gets summarized away.
+    const toolNameById = new Map();
+    for (const msg of oldMessages) {
+      if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          if (tc?.id) toolNameById.set(tc.id, tc.function?.name || 'tool');
+        }
+      }
+    }
+
+    // Build a summary of old messages. We emit one-line digests for tool
+    // results too — critical because the boundary fix above can move orphaned
+    // `tool` results into this summarized set. Skipping them (the old behavior)
+    // would drop the actual observations, leaving only "Assistant used tools:"
+    // and causing the agent to repeat work or decide without the prior result.
     let summaryText = 'Previous conversation summary:\n';
     for (const msg of oldMessages) {
       if (msg.role === 'user') {
@@ -1608,10 +1624,23 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       } else if (msg.role === 'assistant' && msg.content && !msg.tool_calls) {
         summaryText += `- Assistant answered: ${this._truncate(msg.content, 150)}\n`;
       } else if (msg.role === 'assistant' && msg.tool_calls) {
-        const toolNames = msg.tool_calls.map(tc => tc.function?.name).join(', ');
-        summaryText += `- Assistant used tools: ${toolNames}\n`;
+        // The result lines below carry tool name + outcome, so only emit an
+        // assistant line when there's prose reasoning alongside the calls.
+        if (msg.content) {
+          summaryText += `- Assistant: ${this._truncate(msg.content, 150)}\n`;
+        } else {
+          const toolNames = msg.tool_calls.map(tc => tc.function?.name).join(', ');
+          summaryText += `- Assistant used tools: ${toolNames}\n`;
+        }
+      } else if (msg.role === 'tool') {
+        const toolName = toolNameById.get(msg.tool_call_id) || 'tool';
+        // Sanitize: digests can echo short page-derived fields (a url, a
+        // filename) — strip chars that could break out of the [..] trim
+        // message or inject a newline into the summarizer input.
+        const digest = String(this._digestToolResult(toolName, msg.content))
+          .replace(/[[\]`\r\n]/g, ' ');
+        summaryText += `- ${toolName} → ${digest}\n`;
       }
-      // Skip tool result messages in summary (too verbose)
     }
 
     // Try to compress the summary using the LLM if it's still huge
@@ -1704,6 +1733,139 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const nonce = Math.random().toString(36).slice(2, 10);
     const safe = String(content).replace(/<\/?untrusted_page_content\b[^>]*>/gi, '[markup stripped]');
     return `<untrusted_page_content id="${nonce}">\n${safe}\n</untrusted_page_content id="${nonce}">`;
+  }
+
+  /**
+   * Strip the <untrusted_page_content> wrapper, returning the inner payload.
+   * Used by digest/summarization so a wrapped tool result can still be parsed
+   * and reduced to SAFE metadata ("read page (N chars)") instead of falling
+   * back to dumping raw page text into the trusted trim summary.
+   */
+  _unwrapUntrusted(content) {
+    if (typeof content !== 'string') return content;
+    const m = content.match(/<untrusted_page_content\b[^>]*>\n?([\s\S]*?)\n?<\/untrusted_page_content\b[^>]*>/);
+    return m ? m[1] : content;
+  }
+
+  /**
+   * One-line digest of a tool result, used when summarizing older turns so
+   * the model retains the key outcome (file count, download IDs, final URL)
+   * even after the full JSON is dropped. Target ≤ 140 chars.
+   *
+   * `content` is the stringified tool result from the messages array; we try
+   * to parse it as JSON and pick the most-useful fact per tool. For anything
+   * we don't recognize, fall back to a length-bounded truncate.
+   */
+  _digestToolResult(name, content) {
+    if (!content) return '(empty)';
+    // Unwrap the untrusted-content markers first so the inner JSON parses —
+    // otherwise the parse fails and the fallback would dump raw (attacker-
+    // controlled) page text into the trusted trim summary / summarizer input.
+    const raw = this._unwrapUntrusted(content);
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { /* not JSON / truncated */ }
+    if (!parsed || typeof parsed !== 'object') {
+      // Never echo raw bytes from a page-derived tool into the trusted summary.
+      if (UNTRUSTED_CONTENT_TOOLS.has(name)) {
+        return `${name}: untrusted page content (${String(raw).length} chars)`;
+      }
+      return this._truncate(String(raw).replace(/\s+/g, ' '), 140);
+    }
+    if (parsed.error) {
+      return `error: ${this._truncate(String(parsed.error), 120)}`;
+    }
+
+    switch (name) {
+      case 'list_downloads': {
+        if (Array.isArray(parsed.downloads)) {
+          const n = parsed.downloads.length;
+          const complete = parsed.downloads.filter(d => d.state === 'complete').length;
+          const latest = parsed.downloads[0];
+          const label = latest ? (latest.filename || latest.url || '') : '';
+          return `${n} downloads listed (${complete} complete)${label ? `; latest: ${this._truncate(label, 70)}` : ''}`;
+        }
+        break;
+      }
+      case 'download_file':
+      case 'download_files': {
+        if (Array.isArray(parsed.results)) {
+          const ok = parsed.results.filter(r => r?.success).length;
+          return `${ok}/${parsed.results.length} downloaded`;
+        }
+        if (parsed.count != null) return `${parsed.count} downloads queued`;
+        break;
+      }
+      case 'read_downloaded_file': {
+        if (parsed.filename) {
+          const len = parsed.originalLength ?? (typeof parsed.text === 'string' ? parsed.text.length : '?');
+          return `read ${this._truncate(parsed.filename, 80)} (${parsed.contentType || '?'}, ${len} chars)`;
+        }
+        break;
+      }
+      case 'navigate': {
+        if (parsed.blockedUnsavedChanges) return `navigation blocked: unsaved changes on current page (use force:true to discard)`;
+        if (parsed.url) return `now on ${this._truncate(parsed.url, 110)}`;
+        break;
+      }
+      case 'upload_file': {
+        if (parsed.success === false) return `upload failed: ${this._truncate(parsed.error || '', 110)}`;
+        if (parsed.attached) return `uploaded ${this._truncate(parsed.attached.name || '', 60)} (${parsed.attached.size} bytes)`;
+        return parsed.verified === false ? `upload sent (unverified)` : `uploaded ${this._truncate(parsed.file || '', 70)}`;
+      }
+      case 'new_tab': {
+        if (parsed.url) return `opened tab ${this._truncate(parsed.url, 100)}`;
+        break;
+      }
+      case 'extract_data': {
+        if (Array.isArray(parsed)) {
+          const rows = parsed.reduce((s, t) => s + (Array.isArray(t?.rows) ? t.rows.length : 0), 0);
+          return `extracted ${parsed.length} item(s), ${rows} row(s)`;
+        }
+        break;
+      }
+      case 'fetch_url':
+      case 'research_url': {
+        // Don't echo parsed.title — it's page-derived. Status + char count only.
+        const len = parsed.originalLength ?? (typeof parsed.text === 'string' ? parsed.text.length : '?');
+        return `${parsed.status ?? 200} (${len} chars)`;
+      }
+      case 'get_accessibility_tree':
+      case 'read_page': {
+        const len = (typeof parsed.text === 'string' ? parsed.text.length : null)
+          ?? (typeof parsed.pageContent === 'string' ? parsed.pageContent.length : '?');
+        return `read page (${len} chars)`;
+      }
+      case 'scroll': {
+        if (parsed.success) {
+          return `scrolled${parsed.containerScrollY != null ? ` (containerY=${Math.round(parsed.containerScrollY)}/${Math.round(parsed.containerScrollHeight ?? 0)})` : ''}`;
+        }
+        break;
+      }
+      case 'screenshot':
+      case 'full_page_screenshot':
+        return parsed.success ? 'screenshot captured' : 'screenshot failed';
+      case 'solve_captcha': {
+        if (parsed.success === false) return `captcha solve failed: ${this._truncate(parsed.error || '', 100)}`;
+        const inj = parsed.injected ? 'injected' : 'token only';
+        return `${parsed.type || 'captcha'} solved (${inj})`;
+      }
+      case 'scratchpad_write': {
+        return `scratchpad ${parsed.mode || 'write'} (${parsed.bytes ?? '?'} chars)`;
+      }
+    }
+
+    // Generic fallback. For a page-derived tool, NEVER stringify the parsed
+    // object — it holds page content (element labels, selection, frame text,
+    // PDF text, execute_js output, …) that would land in the trusted trim
+    // summary. Emit a content-free digest instead.
+    if (UNTRUSTED_CONTENT_TOOLS.has(name)) {
+      return `${name} ok (untrusted page content)`;
+    }
+    try {
+      return this._truncate(JSON.stringify(parsed), 140);
+    } catch {
+      return this._truncate(String(raw), 140);
+    }
   }
 
   /**

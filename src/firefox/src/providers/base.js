@@ -50,20 +50,23 @@ export class BaseLLMProvider {
    * automatically compacted"): once the running input-token count crosses a
    * fraction of this window, older turns are summarized away.
    *
-   * Providers can pass an exact value via `config.contextWindow` (e.g. an
-   * 8k local model, or a 200k cloud model). Otherwise the default is
-   * category-aware: local backends (llama.cpp / Ollama / LM Studio) commonly
-   * run small 4k–8k windows and the default settings UI doesn't populate
-   * `contextWindow`, so we assume a conservative 8k for them — better to
+   * Providers can pass an exact value via `config.contextWindow` (e.g. a
+   * 16k local model, or a 200k cloud model). Otherwise the default is
+   * category-aware: local backends (llama.cpp / Ollama / LM Studio) often run
+   * small windows and the default settings UI doesn't populate
+   * `contextWindow`, so we assume a conservative 16k for them — better to
    * compact a little early than to sail past the real limit into emergency
-   * trimming. Cloud/router models get a modern 128k default where the
-   * char/message heuristics still govern. Set `config.contextWindow`
-   * explicitly for a large-window local model to lift the conservative cap.
+   * trimming. 16k matches the usable minimum for WebBrain's agent loop: a 4k
+   * window can't even hold the system prompt + tool schemas, 8k is the bare
+   * minimum, and 16k is the smallest window most local models stay coherent
+   * in. Cloud/router models get a modern 128k default where the char/message
+   * heuristics still govern. Set `config.contextWindow` explicitly for a
+   * large-window local model to lift the conservative cap.
    */
   get contextWindow() {
     const n = Number(this.config.contextWindow);
     if (Number.isFinite(n) && n > 0) return n;
-    return this.config.category === 'local' ? 8192 : 128000;
+    return this.config.category === 'local' ? 16384 : 128000;
   }
 
   /**
