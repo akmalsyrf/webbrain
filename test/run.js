@@ -65,6 +65,9 @@ const { resourceBucket, bucketArgsKey, URL_FAMILY_TOOLS } = await import(
 const { resourceBucket: resourceBucketFx, bucketArgsKey: bucketArgsKeyFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/agent/loop-bucket.js').replace(/\\/g, '/')
 );
+const { CDPClient } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/cdp/cdp-client.js').replace(/\\/g, '/')
+);
 
 // bump-version.mjs is the version-bump CLI but exports its pure helpers
 // for testing. The CLI body is guarded so importing it is side-effect-free.
@@ -1663,6 +1666,50 @@ test('social media downloader names extensionless HTTP videos as videos', () => 
     assert.match(source, /const isVideoDownloadUrl = url =>\s*isHttpVideoUrl\(url\) \|\|[\s\S]*v\\.redd\\.it/);
     assert.match(source, /const isVideo = isVideoDownloadUrl\(url\);/);
   }
+});
+
+test('probeLocalFile uses a detached isolated input for validation', async () => {
+  const cdp = new CDPClient();
+  const commands = [];
+  const filePath = 'C:\\tmp\\asset.zip';
+
+  cdp.sendCommand = async (tabId, method, params = {}) => {
+    assert.equal(tabId, 42);
+    commands.push({ method, params });
+    if (method === 'Page.getFrameTree') {
+      return { frameTree: { frame: { id: 'main-frame' } } };
+    }
+    if (method === 'Page.createIsolatedWorld') {
+      assert.deepEqual(params, {
+        frameId: 'main-frame',
+        worldName: 'webbrain-upload-probe',
+        grantUniveralAccess: false,
+      });
+      return { executionContextId: 7 };
+    }
+    if (method === 'Runtime.evaluate') {
+      assert.equal(params.contextId, 7);
+      assert.match(params.expression, /document\.createElement\('input'\)/);
+      assert.doesNotMatch(params.expression, /appendChild|document\.documentElement|document\.body/);
+      return { result: { objectId: 'probe-input' } };
+    }
+    if (method === 'DOM.setFileInputFiles') {
+      assert.deepEqual(params, { objectId: 'probe-input', files: [filePath] });
+      return {};
+    }
+    if (method === 'Runtime.callFunctionOn') {
+      assert.equal(params.objectId, 'probe-input');
+      return { result: { value: { exists: true, readable: true, size: 123 } } };
+    }
+    return {};
+  };
+
+  assert.deepEqual(
+    await cdp.probeLocalFile(42, filePath),
+    { exists: true, readable: true, size: 123 },
+  );
+  assert.ok(commands.some(c => c.method === 'Runtime.releaseObject'), 'probe object should be released');
+  assert.equal(commands.some(c => c.method === 'DOM.resolveNode'), false);
 });
 
 test('HLS implicit-IV derivation does not 32-bit-truncate the media sequence', () => {

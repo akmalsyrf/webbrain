@@ -4741,6 +4741,21 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         if (!nodeIds || nodeIds.length === 0) {
           return { success: false, error: `File input not found for selector "${args.selector}". Re-inspect the page with get_interactive_elements or get_accessibility_tree to find the real <input type=file> (some upload widgets hide it until you click their "add files" button first).` };
         }
+
+        // Pre-validate the local path BEFORE handing it to the page's input.
+        // CDP's setFileInputFiles silently attaches a phantom 0-byte entry for
+        // a missing path instead of throwing, and async uploaders clear/swap
+        // the target input on `change`, so reading the target back can't tell
+        // "consumed a valid file" from "got a bad path". A detached isolated
+        // probe input answers that authoritatively without hitting delegated
+        // upload handlers on the page. Only block on a definitive
+        // "present but unreadable" verdict. A null/unknown probe falls
+        // through so we never turn a possibly-good upload into a hard failure.
+        const probe = await cdpClient.probeLocalFile(tabId, args.filePath);
+        if (probe && probe.exists && probe.readable === false) {
+          return { success: false, error: `"${args.filePath}" could not be read — it almost certainly does not exist at that path. Confirm the absolute path (use list_downloads to see where files were actually saved) and retry.` };
+        }
+
         await cdpClient.setFileInputFiles(tabId, nodeIds[0], [args.filePath]);
 
         // Verify the file actually attached. CDP's DOM.setFileInputFiles does
@@ -4758,10 +4773,22 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         } catch { readOk = false; }
 
         if (readOk) {
-          const attached = files.find(f => f.name === basename) || files[files.length - 1] || null;
-          if (!attached) {
-            return { success: false, error: `Upload did not apply: the file input is still empty after setting "${args.filePath}". The selector likely points at the wrong element — re-inspect with get_interactive_elements.` };
+          if (files.length === 0) {
+            // An empty FileList after a setFileInputFiles command that did
+            // NOT throw means the page CONSUMED the file: async uploaders —
+            // GitHub's include-fragment release-asset attacher, and many
+            // drag-drop widgets — listen for the input's 'change' event, read
+            // the file out, fire an XHR, then clear or swap the <input>, so by
+            // the time we read it back the list is empty. We already
+            // pre-validated that args.filePath is readable above, so an empty
+            // list here is NOT a stale/bad-path false success — it's a real
+            // upload the page has taken over. Report it as an unverified
+            // success for the model to confirm against the page, NOT a hard
+            // failure: the old hard failure made the model loop, re-uploading
+            // a file that was already attached and clobbering the page.
+            return { success: true, file: args.filePath, verified: false, note: `The file input is empty after upload — this usually means an async uploader (e.g. a GitHub release attachment) already consumed the file. Confirm "${basename}" now appears attached via get_accessibility_tree before re-uploading; only retry if it is genuinely missing (and if so, re-check the path with list_downloads).` };
           }
+          const attached = files.find(f => f.name === basename) || files[files.length - 1] || null;
           // readable === false means the bytes couldn't be read — the path is
           // missing/unreadable, NOT a real empty file. (A genuine 0-byte file
           // like a .gitkeep reads fine and reports readable === true, so we
