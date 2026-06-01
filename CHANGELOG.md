@@ -6,6 +6,20 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [12.0.0] - 2026-06-01
+
+### Added
+- "Use your subscription" OAuth (PKCE) sign-in for subscription-backed providers (Chrome + Firefox): OpenAI (ChatGPT) and Google Gemini. OpenAI borrows the Codex CLI's first-party `client_id` (same pattern as the existing Claude flow); Gemini stays honest, requiring the user to register and enter their own Google Cloud OAuth `client_id`. Clients send no headers that impersonate a vendor's first-party CLI, and the settings UI surfaces a disclaimer on every borrowed-client card noting it may be revoked by the vendor at any time.
+- Context-aware recommended actions: the agent surfaces actionable recommendations tailored to the current page and runs them directly in Act mode.
+
+### Changed
+- Recording recommendation is now hidden on Firefox where it does not apply.
+
+### Fixed
+- Social media downloads now focus on the active media: extensionless media URLs get correct video filenames, visible-crop filename extensions are fixed, a visible-media crop fallback was added, main-mode videos are ordered before posters, and focused HTTP / blob video downloads are preferred and preserved.
+- Recorder Stop reliably ends stuck or orphaned recordings, with cleared / already-stopped stop results handled and forced-clear stop failures surfaced in the side panel.
+- Fixed 6 bugs across the Chrome and Firefox builds.
+
 ## [11.0.0] - 2026-05-31
 
 ### Added
