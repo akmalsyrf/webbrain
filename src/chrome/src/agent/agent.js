@@ -3797,6 +3797,21 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (name === 'stop_recording') {
       const r = await recorderStop();
       if (!r.ok) return { success: false, error: r.error };
+      // The stop may not have produced a file. recorderStop() force-clears a
+      // stuck/orphaned recording (service worker suspended, offscreen session
+      // evicted) and reports it with `cleared`, and reports a no-op stop with
+      // `alreadyStopped`. In neither case is there a filename — don't claim a
+      // phantom "saved as undefined".
+      if (r.alreadyStopped) {
+        return { success: true, note: 'No recording was active; nothing to stop.' };
+      }
+      if (r.cleared) {
+        return {
+          success: true,
+          cleared: true,
+          note: `The recording could not be finalized, so no file was saved (${r.warning || 'the recorder was no longer running'}). The stuck recording state has been cleared.`,
+        };
+      }
       return {
         success: true,
         filename: r.filename,

@@ -166,16 +166,32 @@ export async function startTabRecording(tabId, options = {}) {
 export async function stopTabRecording() {
   await ensureRecordingStateLoaded();
   if (!recordingState.active) {
-    return { ok: false, error: 'No active recording.' };
+    // Nothing active. Still broadcast 'stopped' so any sidepanel showing a
+    // stale banner clears it, and report success — the user's goal (no active
+    // recording) is already met. This is benign (no failure to surface), so
+    // the broadcast carries ok:true and the UI clears silently.
+    broadcast('stopped', { result: { ok: true, alreadyStopped: true } });
+    return { ok: true, alreadyStopped: true };
   }
-  let res;
+  let res = null;
+  let stopError = null;
   try {
     res = await chrome.runtime.sendMessage({ type: 'recorder-stop' });
   } catch (e) {
-    return { ok: false, error: `recorder-stop dispatch failed: ${e.message}` };
+    stopError = `recorder-stop dispatch failed: ${e.message}`;
   }
-  if (!res?.ok) {
-    return { ok: false, error: res?.error || 'recorder failed to stop' };
+
+  // If the offscreen recorder is gone or refused to stop, the recording is no
+  // longer recoverable (e.g. the service worker was suspended for hours and the
+  // offscreen session was evicted, but recordingState.active stuck around in
+  // session storage). Force the state clear and tell the panel — otherwise the
+  // banner can tick forever with no way to dismiss it.
+  if (stopError || !res?.ok) {
+    const error = stopError || res?.error || 'recorder failed to stop';
+    recordingState = { active: false };
+    saveRecordingState();
+    broadcast('stopped', { result: { ok: false, error } });
+    return { ok: true, cleared: true, warning: error };
   }
 
   // Save webm to Downloads. The data URL is safe — recorder.js strips
@@ -188,6 +204,7 @@ export async function stopTabRecording() {
     .slice(0, 19);
   const filename = `webbrain-recording-${stamp}.webm`;
   let downloadId = null;
+  let saveError = null;
   try {
     downloadId = await chrome.downloads.download({
       url: res.dataUrl,
@@ -195,20 +212,23 @@ export async function stopTabRecording() {
       saveAs: false,
     });
   } catch (e) {
-    return { ok: false, error: `download failed: ${e.message}` };
+    saveError = `download failed: ${e.message}`;
   }
 
-  const wantTranscribe = recordingState.transcribeAfter;
+  const wantTranscribe = recordingState.transcribeAfter && !saveError;
   const final = {
-    ok: true,
-    filename,
+    ok: !saveError,
+    filename: saveError ? null : filename,
     downloadId,
+    error: saveError || undefined,
     sizeBytes: res.sizeBytes,
     durationMs: res.durationMs,
     mimeType: res.mimeType,
     transcribeAfter: wantTranscribe,
   };
 
+  // Always clear the recording state once the recorder has stopped, even if the
+  // download failed — the capture is over and the banner must not linger.
   recordingState = { active: false };
   saveRecordingState();
   broadcast('stopped', { result: final });

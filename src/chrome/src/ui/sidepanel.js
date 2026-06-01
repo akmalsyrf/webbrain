@@ -830,6 +830,11 @@ async function sendMessage() {
 
 let recordingTimerInterval = null;
 let recordingStartedAt = null;
+// Safety cap: auto-stop a recording that has run this long, so a forgotten or
+// orphaned recording can't tick on forever (and pile up memory in the
+// offscreen recorder). Enforced from the 1s banner timer below.
+const MAX_RECORDING_MS = 2 * 60 * 60 * 1000; // 2 hours
+let recordingAutoStopTriggered = false;
 
 function formatRecordTimer(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -841,10 +846,17 @@ function formatRecordTimer(ms) {
 function setRecordingUI(active) {
   if (recordingBanner) recordingBanner.classList.toggle('hidden', !active);
   if (active) {
+    recordingAutoStopTriggered = false;
     if (!recordingTimerInterval) {
       recordingTimerInterval = setInterval(() => {
         if (recordingStartedAt && recordingTimerEl) {
-          recordingTimerEl.textContent = formatRecordTimer(Date.now() - recordingStartedAt);
+          const elapsed = Date.now() - recordingStartedAt;
+          recordingTimerEl.textContent = formatRecordTimer(elapsed);
+          if (elapsed >= MAX_RECORDING_MS && !recordingAutoStopTriggered) {
+            // Hit the safety cap — stop the runaway recording.
+            recordingAutoStopTriggered = true;
+            stopRecording();
+          }
         }
       }, 1000);
     }
@@ -858,6 +870,7 @@ function setRecordingUI(active) {
     }
     if (recordingTimerEl) recordingTimerEl.textContent = '00:00';
     recordingStartedAt = null;
+    recordingAutoStopTriggered = false;
   }
 }
 
@@ -877,11 +890,17 @@ async function stopRecording() {
   if (recordingStopBtn) recordingStopBtn.disabled = true;
   try {
     const res = await sendToBackground('stop_tab_recording');
+    // Always tear down the banner. Whether the stop saved a file, cleared a
+    // stale/orphaned recording, or failed outright, the user pressed Stop —
+    // the banner must go away so they're never trapped (see the stuck-for-hours
+    // report). Errors are surfaced but no longer block the UI from clearing.
+    setRecordingUI(false);
     if (!res?.ok) {
       alert(t('sp.record.error', { error: res?.error || 'unknown' }));
-      return;
     }
+  } catch (e) {
     setRecordingUI(false);
+    alert(t('sp.record.error', { error: e?.message || 'unknown' }));
   } finally {
     if (recordingStopBtn) recordingStopBtn.disabled = false;
   }
@@ -912,7 +931,15 @@ chrome.runtime.onMessage.addListener((msg) => {
   } else if (msg.event === 'stopped') {
     setRecordingUI(false);
     lastRecordingResult = msg.result || null;
-    if (lastRecordingResult?.transcribeAfter) {
+    if (lastRecordingResult && lastRecordingResult.ok === false) {
+      // The recorder couldn't be finalized (lost/evicted recorder, or a
+      // MediaRecorder/download error). host.js still cleared the stuck state,
+      // but no .webm was saved — surface that instead of silently dropping it.
+      showRecordingStatus(
+        t('sp.record.error', { error: lastRecordingResult.error || 'unknown' }),
+        { autoHide: 8000 }
+      );
+    } else if (lastRecordingResult?.transcribeAfter) {
       showRecordingStatus(t('sp.record.transcribing'));
     } else if (lastRecordingResult?.filename) {
       showRecordingStatus(t('sp.record.saved', { filename: lastRecordingResult.filename }), { autoHide: 6000 });
