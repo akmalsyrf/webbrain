@@ -168,8 +168,9 @@ export async function stopTabRecording() {
   if (!recordingState.active) {
     // Nothing active. Still broadcast 'stopped' so any sidepanel showing a
     // stale banner clears it, and report success — the user's goal (no active
-    // recording) is already met.
-    broadcast('stopped', { result: { ok: false, error: 'No active recording.' } });
+    // recording) is already met. This is benign (no failure to surface), so
+    // the broadcast carries ok:true and the UI clears silently.
+    broadcast('stopped', { result: { ok: true, alreadyStopped: true } });
     return { ok: true, alreadyStopped: true };
   }
   let res = null;

@@ -931,7 +931,15 @@ chrome.runtime.onMessage.addListener((msg) => {
   } else if (msg.event === 'stopped') {
     setRecordingUI(false);
     lastRecordingResult = msg.result || null;
-    if (lastRecordingResult?.transcribeAfter) {
+    if (lastRecordingResult && lastRecordingResult.ok === false) {
+      // The recorder couldn't be finalized (lost/evicted recorder, or a
+      // MediaRecorder/download error). host.js still cleared the stuck state,
+      // but no .webm was saved — surface that instead of silently dropping it.
+      showRecordingStatus(
+        t('sp.record.error', { error: lastRecordingResult.error || 'unknown' }),
+        { autoHide: 8000 }
+      );
+    } else if (lastRecordingResult?.transcribeAfter) {
       showRecordingStatus(t('sp.record.transcribing'));
     } else if (lastRecordingResult?.filename) {
       showRecordingStatus(t('sp.record.saved', { filename: lastRecordingResult.filename }), { autoHide: 6000 });
