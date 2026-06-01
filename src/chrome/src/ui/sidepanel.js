@@ -1681,7 +1681,9 @@ function formatMarkdown(text) {
   // 5. Restore inline code
   inlineCodes.forEach((code, i) => {
     const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    text = text.replace(`__INLINE_${i}__`, `<code>${escaped}</code>`);
+    // Function replacer: a string replacement would interpret `$&`, `$\``, etc.
+    // in code that contains literal `$` sequences (shell, jQuery, regex), mangling it.
+    text = text.replace(`__INLINE_${i}__`, () => `<code>${escaped}</code>`);
   });
 
   // 6. Restore fenced code blocks with copy button
@@ -1692,7 +1694,7 @@ function formatMarkdown(text) {
     const header = `<div class="code-block-header">${langLabel}${copyBtn}</div>`;
     text = text.replace(
       `__CODEBLOCK_${i}__`,
-      `<div class="code-block-wrapper">${header}<pre><code>${escaped}</code></pre></div>`
+      () => `<div class="code-block-wrapper">${header}<pre><code>${escaped}</code></pre></div>`
     );
   });
 

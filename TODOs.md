@@ -84,11 +84,13 @@ Recently closed Firefox parity items:
 
 ---
 
-## 3. Trace recorder: tool events missing step number
+## 3. Trace recorder: tool events missing step number — RESOLVED
 
-When inspecting any trace JSON, `kind: "tool"` events have `data.step === null` even though the surrounding `llm_request` / `llm_response` events carry the right step (1, 2, 3, …). The Compare view in the Traces page would benefit from step numbers on tool rows; currently the timeline still renders fine because `traces.js` falls back to `''` when step is missing.
-
-**Where to fix:** [`src/chrome/src/trace/recorder.js`](src/chrome/src/trace/recorder.js) — the tool-call recording path needs to pull the current step number from the agent loop the same way `llm_request` does. Quick fix; just hasn't been done.
+`kind: "tool"` events previously stored `data.step === null` even though the
+surrounding `llm_request` / `llm_response` events carried the right step. Fixed
+by threading the loop's `steps` counter through `_executeToolBatch` (new `step`
+parameter) to the `trace.recordToolCall` call in both the Chrome and Firefox
+agent loops. Tool rows in the Traces Compare view now carry their step number.
 
 ---
 
@@ -208,15 +210,14 @@ agent implementation drifts.
 
 ## 10. Keep streaming and non-streaming provider behavior in sync
 
-`OpenAICompatibleProvider.chat()` supports `options.extraBody`, but
-`chatStream()` does not. If a local or OpenAI-compatible provider needs extra
-request fields, non-streaming and streaming runs can behave differently.
+The original gap — `OpenAICompatibleProvider.chat()` applying `options.extraBody`
+while `chatStream()` did not — is **already resolved**: both methods now apply
+`extraBody` in `src/chrome/src/providers/openai.js` and the Firefox copy. The
+remaining (lower-priority) work is breadth:
 
 **Concrete next steps:**
-1. Apply `options.extraBody` in every streaming provider path where the
-   non-streaming path supports it.
-2. Add provider-level tests or small request-shape probes for OpenAI-compatible,
+1. Add provider-level tests or small request-shape probes for OpenAI-compatible,
    llama.cpp, and Anthropic providers.
-3. Document which provider-specific request fields are intentionally supported.
+2. Document which provider-specific request fields are intentionally supported.
 
 ---

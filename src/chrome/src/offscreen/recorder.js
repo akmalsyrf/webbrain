@@ -127,35 +127,50 @@
     // re-pipe it to the speaker so the user can still hear the call.
     // Without the passthrough, tabCapture mutes the tab and the user
     // can't follow the conversation — a known footgun.
-    const audioContext = new AudioContext();
-    const mixDest = audioContext.createMediaStreamDestination();
+    // Everything from here through the MediaRecorder construction can throw
+    // (AudioContext under autoplay policy, createMediaStreamSource, or the
+    // MediaRecorder constructor on an unsupported config). `session` isn't set
+    // yet, so a throw here would otherwise strand the already-acquired tab/mic
+    // streams (tab left captured + muted) with no way for stop() to release
+    // them. Release everything we acquired before rethrowing.
+    let audioContext = null;
+    let recorder;
+    try {
+      audioContext = new AudioContext();
+      const mixDest = audioContext.createMediaStreamDestination();
 
-    const tabAudioSource = audioContext.createMediaStreamSource(
-      new MediaStream(tabStream.getAudioTracks())
-    );
-    tabAudioSource.connect(mixDest);          // into the recording
-    tabAudioSource.connect(audioContext.destination); // out to user's speaker
+      const tabAudioSource = audioContext.createMediaStreamSource(
+        new MediaStream(tabStream.getAudioTracks())
+      );
+      tabAudioSource.connect(mixDest);          // into the recording
+      tabAudioSource.connect(audioContext.destination); // out to user's speaker
 
-    if (micStream) {
-      const micSource = audioContext.createMediaStreamSource(micStream);
-      micSource.connect(mixDest); // into the recording (do NOT loop to speaker — feedback)
+      if (micStream) {
+        const micSource = audioContext.createMediaStreamSource(micStream);
+        micSource.connect(mixDest); // into the recording (do NOT loop to speaker — feedback)
+      }
+
+      // 4. Build the final stream the recorder consumes.
+      const finalStream = new MediaStream();
+      if (video) {
+        for (const t of tabStream.getVideoTracks()) finalStream.addTrack(t);
+      }
+      for (const t of mixDest.stream.getAudioTracks()) finalStream.addTrack(t);
+
+      // 5. MediaRecorder. Collect dataavailable chunks. Pass a timeslice so
+      // partial data survives a crash and gives us progress estimates.
+      recorder = new MediaRecorder(finalStream, {
+        mimeType: chosenMime,
+        // ~256 kbps audio is plenty for speech; the rest is video budget.
+        audioBitsPerSecond: 192_000,
+        videoBitsPerSecond: 2_500_000,
+      });
+    } catch (e) {
+      try { for (const t of tabStream.getTracks()) t.stop(); } catch {}
+      if (micStream) { try { for (const t of micStream.getTracks()) t.stop(); } catch {} }
+      if (audioContext) { try { audioContext.close(); } catch {} }
+      throw new Error(`Failed to start recorder: ${e.message || e}`);
     }
-
-    // 4. Build the final stream the recorder consumes.
-    const finalStream = new MediaStream();
-    if (video) {
-      for (const t of tabStream.getVideoTracks()) finalStream.addTrack(t);
-    }
-    for (const t of mixDest.stream.getAudioTracks()) finalStream.addTrack(t);
-
-    // 5. MediaRecorder. Collect dataavailable chunks. Pass a timeslice so
-    // partial data survives a crash and gives us progress estimates.
-    const recorder = new MediaRecorder(finalStream, {
-      mimeType: chosenMime,
-      // ~256 kbps audio is plenty for speech; the rest is video budget.
-      audioBitsPerSecond: 192_000,
-      videoBitsPerSecond: 2_500_000,
-    });
     const chunks = [];
     let bytes = 0;
     recorder.ondataavailable = (e) => {
@@ -224,11 +239,24 @@
 
     // Finalize the recorder, wait for the last dataavailable + the stop event.
     await new Promise((resolve) => {
-      const onStop = () => {
+      // An already-inactive recorder will never emit 'stop' again — resolve
+      // immediately instead of waiting forever.
+      if (s.recorder.state === 'inactive') { resolve(); return; }
+      let settled = false;
+      let timer = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
         s.recorder.removeEventListener('stop', onStop);
         resolve();
       };
+      const onStop = () => finish();
       s.recorder.addEventListener('stop', onStop);
+      // Safety net: a recorder wedged in a bad state may never fire 'stop'.
+      // Without this timeout stop() hangs forever, the recorder-stop message
+      // never returns, and the recording banner gets stuck with no recovery.
+      timer = setTimeout(finish, 5000);
       try { s.recorder.requestData(); } catch {}
       try { s.recorder.stop(); } catch {}
     });

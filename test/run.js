@@ -1477,6 +1477,23 @@ test('social media downloader names extensionless HTTP videos as videos', () => 
   }
 });
 
+test('HLS implicit-IV derivation does not 32-bit-truncate the media sequence', () => {
+  // RFC 8216 §5.2 implicit IV = media-sequence number as a 128-bit big-endian
+  // integer. A `BigInt(seq | 0)` truncates to signed 32-bit, yielding an
+  // all-zero IV for sequences ≥ 2^31 and breaking AES-128 decryption on long
+  // live streams. Guard all three byte-identical copies against the regression.
+  const downloaderPaths = [
+    'src/chrome/src/agent/social-media-downloader.js',
+    'src/firefox/src/agent/social-media-downloader.js',
+    'test/smd-tests/social-media-downloader.js',
+  ];
+  for (const relPath of downloaderPaths) {
+    const source = fs.readFileSync(path.join(ROOT, relPath), 'utf8');
+    assert.doesNotMatch(source, /BigInt\(seq \| 0\)/);
+    assert.match(source, /let n = BigInt\(Math\.max\(0, Math\.trunc\(Number\(seq\)\) \|\| 0\)\);/);
+  }
+});
+
 test('compact act prompt exists in both browser builds', () => {
   assert.match(SYSTEM_PROMPT_ACT_COMPACT_CH, /untrusted/i);
   assert.match(SYSTEM_PROMPT_ACT_COMPACT_FX, /untrusted/i);

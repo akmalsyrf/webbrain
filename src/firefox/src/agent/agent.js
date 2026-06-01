@@ -630,7 +630,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    * Shared tool-batch executor used by both processMessage and
    * processMessageStream so they can't drift.
    */
-  async _executeToolBatch(tabId, toolCalls, messages, onUpdate, provider, partialAssistantText = null, allowedToolNames = AGENT_TOOL_NAMES) {
+  async _executeToolBatch(tabId, toolCalls, messages, onUpdate, provider, partialAssistantText = null, allowedToolNames = AGENT_TOOL_NAMES, step = null) {
     let didStateChange = false;
     const NAV_PRONE_TOOLS = new Set(['click', 'navigate', 'execute_js', 'iframe_click']);
     const navNotices = [];
@@ -744,7 +744,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       try {
         const runId = this.currentRunId.get(tabId);
         if (runId) {
-          await trace.recordToolCall(runId, null, {
+          await trace.recordToolCall(runId, step, {
             name: fnName, args: fnArgs, result: toolResult,
             latencyMs: Date.now() - _toolStart,
           });
@@ -2529,6 +2529,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const keepLast = 6; // keep only 6 most recent messages
     const recent = messages.slice(-keepLast).filter(m => !this._isScratchpadMessage(m));
 
+    // Drop any leading `tool` messages whose requesting assistant turn fell
+    // outside the kept window. Both OpenAI-compatible and Anthropic APIs reject
+    // a `tool` message that isn't preceded by the assistant turn that requested
+    // it — same guard _manageContext applies. Without this, the emergency-trim
+    // retry re-sends a malformed conversation and the run dies instead of
+    // recovering, defeating the whole point of the fallback.
+    while (recent.length && recent[0].role === 'tool') recent.shift();
+
     // Also truncate any huge tool results in remaining messages
     for (const msg of recent) {
       if (msg.role === 'tool' && msg.content && msg.content.length > 2000) {
@@ -4022,7 +4030,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
 
         const batchResult = await this._executeToolBatch(
-          tabId, result.toolCalls, messages, onUpdate, provider, result.content, allowedToolNames
+          tabId, result.toolCalls, messages, onUpdate, provider, result.content, allowedToolNames, steps
         );
         if (batchResult.action === 'return') {
           finalResponse = batchResult.value;
@@ -4222,7 +4230,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             tool_calls: toolCalls,
           });
           const batchResult = await this._executeToolBatch(
-            tabId, toolCalls, messages, onUpdate, provider, fullText, allowedToolNames
+            tabId, toolCalls, messages, onUpdate, provider, fullText, allowedToolNames, steps
           );
           if (batchResult.action === 'return') {
             return batchResult.value;

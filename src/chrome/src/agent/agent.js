@@ -983,7 +983,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    *   { action: 'return',   value: string }   → caller should return immediately
    *   { action: 'abort' }                     → user requested abort mid-batch
    */
-  async _executeToolBatch(tabId, toolCalls, messages, onUpdate, provider, partialAssistantText = null) {
+  async _executeToolBatch(tabId, toolCalls, messages, onUpdate, provider, partialAssistantText = null, step = null) {
     let didStateChange = false;
     // Set of tools whose side effect can navigate the page. We snapshot the
     // URL before these and re-check after, so we can warn the model when an
@@ -1093,7 +1093,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       onUpdate('tool_result', { name: fnName, result: toolResult });
       const _runIdForTool = this.currentRunId.get(tabId);
       if (_runIdForTool) {
-        trace.recordToolCall(_runIdForTool, null, {
+        trace.recordToolCall(_runIdForTool, step, {
           name: fnName, args: fnArgs, result: toolResult, latencyMs: _toolLatency,
         });
       }
@@ -3298,6 +3298,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const scratchpadMsg = scratchpadIdx >= 0 ? messages[scratchpadIdx] : null;
     const keepLast = 6; // keep only 6 most recent messages
     const recent = messages.slice(-keepLast).filter(m => !this._isScratchpadMessage(m));
+
+    // Drop any leading `tool` messages whose requesting assistant turn fell
+    // outside the kept window. Both OpenAI-compatible and Anthropic APIs reject
+    // a `tool` message that isn't preceded by the assistant turn that requested
+    // it — same guard _manageContext applies. Without this, the emergency-trim
+    // retry re-sends a malformed conversation and the run dies instead of
+    // recovering, defeating the whole point of the fallback.
+    while (recent.length && recent[0].role === 'tool') recent.shift();
 
     // Also truncate any huge tool results in remaining messages
     for (const msg of recent) {
@@ -6824,7 +6832,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
 
         const batchResult = await this._executeToolBatch(
-          tabId, result.toolCalls, messages, onUpdate, provider, result.content
+          tabId, result.toolCalls, messages, onUpdate, provider, result.content, steps
         );
         if (batchResult.action === 'return') {
           finalResponse = batchResult.value;
@@ -7038,7 +7046,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           });
 
           const batchResult = await this._executeToolBatch(
-            tabId, toolCalls, messages, onUpdate, provider, fullText
+            tabId, toolCalls, messages, onUpdate, provider, fullText, steps
           );
           if (batchResult.action === 'return') {
             return batchResult.value;

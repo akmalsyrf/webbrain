@@ -761,7 +761,11 @@ window.SocialMediaDownloader = (() => {
   // 128-bit big-endian unsigned integer (left-zero-padded).
   const _ivFromSequence = seq => {
     const iv = new Uint8Array(16);
-    let n = BigInt(seq | 0);
+    // A bitwise `| 0` here would coerce to a signed 32-bit int, returning an
+    // all-zero IV for any media sequence ≥ 2^31 (which long-running live HLS
+    // streams routinely exceed) and breaking AES-128 segment decryption.
+    // Coerce defensively to a non-negative integer, then go straight to BigInt.
+    let n = BigInt(Math.max(0, Math.trunc(Number(seq)) || 0));
     for (let i = 15; i >= 0 && n > 0n; i--) {
       iv[i] = Number(n & 0xffn);
       n >>= 8n;
