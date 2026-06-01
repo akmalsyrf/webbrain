@@ -1360,6 +1360,14 @@ test('recommended actions match issue scenarios', () => {
       'Fill this form with my saved profile info',
     ],
     [
+      { url: 'https://mail.google.com/mail/u/0/#inbox/FMfc123', title: 'Gmail - Project update', text: 'From Ada Subject Project update Reply' },
+      'Draft a reply',
+    ],
+    [
+      { url: 'https://www.instagram.com/direct/t/123456', title: 'Instagram Direct', text: 'New message Reply' },
+      'Draft a reply',
+    ],
+    [
       { url: 'https://meet.google.com/abc-defg-hij', title: 'Team meeting' },
       'Record this meeting',
     ],
@@ -1379,6 +1387,14 @@ test('recommended actions match issue scenarios', () => {
       { url: 'https://www.amazon.com/dp/B000000', title: 'Product', description: 'Price $19.99 Add to Cart' },
       'Compare this price with other stores',
     ],
+    [
+      { url: 'https://x.com/karpathy', title: 'Andrej Karpathy (@karpathy) / X' },
+      'Research this person',
+    ],
+    [
+      { url: 'https://example.com/wp-admin/post-new.php', title: 'Add New Post - WordPress' },
+      'Draft a post',
+    ],
   ];
 
   for (const [pageInfo, label] of cases) {
@@ -1394,6 +1410,7 @@ test('actionable recommendations opt into Act mode', () => {
     { url: 'https://tinder.com/app/recs', title: 'Profile' },
     { url: 'https://www.instagram.com/p/abc/', title: 'Post', media: { imageCount: 1, videoCount: 0 } },
     { url: 'https://checkout.example.com/', title: 'Checkout', forms: [{ inputs: [{ type: 'email', name: 'email' }, { type: 'text', name: 'name' }] }] },
+    { url: 'https://example.com/wp-admin/site-editor.php', title: 'Editor - WordPress', text: 'Templates' },
   ];
   const readOnlyPage = { url: 'https://news.example.com/article/story', title: 'Long article', text: 'word '.repeat(500) };
 
@@ -1402,6 +1419,93 @@ test('actionable recommendations opt into Act mode', () => {
     assert.ok(actions.some((action) => action.mode === 'act'), `expected an Act-mode action for ${pageInfo.url}`);
   }
   assert.equal(buildRecommendedActionsCh(readOnlyPage).find((a) => a.id === 'summarize-page')?.mode, undefined);
+});
+
+test('communication threads get reply, summary, and follow-up suggestions', () => {
+  const pages = [
+    { url: 'https://mail.google.com/mail/u/0/#inbox/FMfc123', title: 'Gmail - Thread', text: 'From Ada Subject Launch Reply' },
+    { url: 'https://x.com/messages/123-456', title: 'Messages / X', text: 'Direct message conversation' },
+  ];
+  for (const buildRecommendedActions of [buildRecommendedActionsCh, buildRecommendedActionsFx]) {
+    for (const pageInfo of pages) {
+      const actions = buildRecommendedActions(pageInfo);
+      const labels = actions.map((a) => a.label);
+      assert.ok(labels.includes('Draft a reply'), `expected reply draft for ${pageInfo.url}; got ${labels.join(', ')}`);
+      assert.ok(labels.includes('Summarize this thread'), `expected thread summary for ${pageInfo.url}; got ${labels.join(', ')}`);
+      assert.ok(labels.includes('Find follow-ups'), `expected follow-ups for ${pageInfo.url}; got ${labels.join(', ')}`);
+      assert.equal(actions.find((a) => a.id === 'draft-reply')?.mode, undefined);
+    }
+    const inboxActions = buildRecommendedActions({
+      url: 'https://mail.google.com/mail/u/0/#inbox',
+      title: 'Inbox - Gmail',
+      text: 'Primary Promotions Social Updates',
+    });
+    assert.equal(inboxActions.some((a) => a.id === 'draft-reply'), false);
+  }
+});
+
+test('focused compose boxes get rewrite suggestions', () => {
+  const composePage = {
+    url: 'https://x.com/compose/post',
+    title: 'Post / X',
+    activeElement: {
+      tag: 'div',
+      role: 'textbox',
+      editable: true,
+      ariaLabel: 'Post text',
+      textPreview: 'This update is too blunt and needs a calmer tone.',
+    },
+  };
+  const searchPage = {
+    url: 'https://x.com/search',
+    title: 'Search / X',
+    activeElement: {
+      tag: 'input',
+      type: 'search',
+      role: 'searchbox',
+      placeholder: 'Search',
+      textPreview: 'launch plan',
+    },
+  };
+  for (const buildRecommendedActions of [buildRecommendedActionsCh, buildRecommendedActionsFx]) {
+    const composeActions = buildRecommendedActions(composePage);
+    assert.ok(composeActions.some((a) => a.id === 'rewrite-focused-draft'), 'expected rewrite action for focused compose box');
+    assert.equal(composeActions.find((a) => a.id === 'rewrite-focused-draft')?.mode, undefined);
+    assert.equal(buildRecommendedActions(searchPage).some((a) => a.id === 'rewrite-focused-draft'), false);
+  }
+});
+
+test('X and LinkedIn profile pages get a person research suggestion', () => {
+  const pages = [
+    { url: 'https://x.com/karpathy', title: 'Andrej Karpathy (@karpathy) / X' },
+    { url: 'https://www.linkedin.com/in/ada-lovelace/', title: 'Ada Lovelace - LinkedIn' },
+  ];
+  for (const buildRecommendedActions of [buildRecommendedActionsCh, buildRecommendedActionsFx]) {
+    for (const pageInfo of pages) {
+      const actions = buildRecommendedActions(pageInfo);
+      const research = actions.find((a) => a.id === 'research-person');
+      assert.equal(research?.label, 'Research this person', `expected person research for ${pageInfo.url}`);
+      assert.equal(research?.mode, undefined);
+    }
+    assert.equal(buildRecommendedActions({ url: 'https://x.com/messages/123', title: 'Messages' }).some((a) => a.id === 'research-person'), false);
+  }
+});
+
+test('WordPress admin pages get drafting and template suggestions', () => {
+  const dashboard = { url: 'https://example.com/wp-admin/index.php', title: 'Dashboard - WordPress', text: 'Posts Appearance Themes Settings' };
+  const siteEditor = { url: 'https://example.com/wp-admin/site-editor.php', title: 'Editor - WordPress', text: 'Templates' };
+  for (const buildRecommendedActions of [buildRecommendedActionsCh, buildRecommendedActionsFx]) {
+    const dashboardActions = buildRecommendedActions(dashboard);
+    const draft = dashboardActions.find((a) => a.id === 'draft-wp-post');
+    assert.equal(draft?.label, 'Draft a post');
+    assert.equal(draft?.mode, 'act');
+    assert.equal(dashboardActions.some((a) => a.id === 'change-wp-template'), false);
+
+    const editorActions = buildRecommendedActions(siteEditor);
+    const template = editorActions.find((a) => a.id === 'change-wp-template');
+    assert.equal(template?.label, 'Change template');
+    assert.equal(template?.mode, 'act');
+  }
 });
 
 test('firefox recommended actions match chrome', () => {

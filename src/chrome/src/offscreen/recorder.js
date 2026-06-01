@@ -54,6 +54,14 @@
 
   async function start({ streamId, tabId, options }) {
     if (session) {
+      const state = session.recorder?.state || '';
+      if (state === 'inactive') {
+        log('discarding stale inactive session before start');
+        try { await releaseSession(session); } catch {}
+        session = null;
+      }
+    }
+    if (session) {
       throw new Error('A recording is already in progress.');
     }
     const { video = true, mic = true, mimeType: requestedMime } = options || {};
@@ -192,6 +200,7 @@
       micStream,
       audioContext,
       chunks,
+      stopping: false,
       get bytes() { return bytes; },
     };
 
@@ -223,6 +232,7 @@
     return {
       recording: session.recorder.state === 'recording',
       paused: session.recorder.state === 'paused',
+      stopping: !!session.stopping,
       tabId: session.tabId,
       startedAt: session.startedAt,
       mimeType: session.mimeType,
@@ -236,64 +246,78 @@
   async function stop() {
     if (!session) throw new Error('No active recording.');
     const s = session;
+    s.stopping = true;
 
-    // Finalize the recorder, wait for the last dataavailable + the stop event.
-    await new Promise((resolve) => {
-      // An already-inactive recorder will never emit 'stop' again — resolve
-      // immediately instead of waiting forever.
-      if (s.recorder.state === 'inactive') { resolve(); return; }
-      let settled = false;
-      let timer = null;
+    try {
+      // Finalize the recorder, wait for the last dataavailable + the stop event.
+      await waitForRecorderStop(s);
+
+      // Release the streams + AudioContext.
+      await releaseSession(s);
+
+      // IMPORTANT: strip the codecs= parameter from the blob's type before
+      // serializing to a data URL. MediaRecorder gives us something like
+      // "video/webm;codecs=vp9,opus" — that comma inside the parameter
+      // value makes the resulting `data:video/webm;codecs=vp9,opus;base64,XXX`
+      // URL ambiguous, and chrome.downloads.download's URL parser
+      // mis-segments it. The base64 payload ends up partially treated as
+      // mediatype params, so what hits disk is corrupted bytes and the
+      // .webm fails to play ("Invalid data found").
+      //
+      // The bare type ("video/webm") is enough — the codec is also encoded
+      // inside the WebM track header, so players auto-detect it without
+      // the param hint. We still return the FULL mimeType in the metadata
+      // for callers that want it (e.g. transcription).
+      const bareType = (s.mimeType || 'video/webm').split(';')[0];
+      const blob = new Blob(s.chunks, { type: bareType });
+      const dataUrl = await blobToDataUrl(blob);
+
+      return {
+        ok: true,
+        mimeType: s.mimeType,        // original, with codecs param
+        blobType: bareType,          // what the data URL actually carries
+        sizeBytes: blob.size,
+        durationMs: Date.now() - s.startedAt,
+        dataUrl,
+      };
+    } finally {
+      if (session === s) session = null;
+    }
+  }
+
+  function waitForRecorderStop(s) {
+    if (!s?.recorder || s.recorder.state === 'inactive') return Promise.resolve();
+    return new Promise((resolve) => {
+      let done = false;
+      let timeout = null;
       const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        s.recorder.removeEventListener('stop', onStop);
+        if (done) return;
+        done = true;
+        if (timeout) clearTimeout(timeout);
+        try { s.recorder.removeEventListener('stop', finish); } catch {}
         resolve();
       };
-      const onStop = () => finish();
-      s.recorder.addEventListener('stop', onStop);
-      // Safety net: a recorder wedged in a bad state may never fire 'stop'.
-      // Without this timeout stop() hangs forever, the recorder-stop message
-      // never returns, and the recording banner gets stuck with no recovery.
-      timer = setTimeout(finish, 5000);
+      try { s.recorder.addEventListener('stop', finish); } catch {}
       try { s.recorder.requestData(); } catch {}
-      try { s.recorder.stop(); } catch {}
+      timeout = setTimeout(() => {
+        log('timed out waiting for MediaRecorder stop event; finalizing with collected chunks');
+        finish();
+      }, 5000);
+      try {
+        if (s.recorder.state === 'inactive') finish();
+        else s.recorder.stop();
+      } catch {
+        finish();
+      }
     });
+  }
 
-    // Release the streams + AudioContext.
-    try { for (const t of s.tabStream.getTracks()) t.stop(); } catch {}
-    if (s.micStream) {
-      try { for (const t of s.micStream.getTracks()) t.stop(); } catch {}
-    }
-    try { await s.audioContext.close(); } catch {}
-
-    // IMPORTANT: strip the codecs= parameter from the blob's type before
-    // serializing to a data URL. MediaRecorder gives us something like
-    // "video/webm;codecs=vp9,opus" — that comma inside the parameter
-    // value makes the resulting `data:video/webm;codecs=vp9,opus;base64,XXX`
-    // URL ambiguous, and chrome.downloads.download's URL parser
-    // mis-segments it. The base64 payload ends up partially treated as
-    // mediatype params, so what hits disk is corrupted bytes and the
-    // .webm fails to play ("Invalid data found").
-    //
-    // The bare type ("video/webm") is enough — the codec is also encoded
-    // inside the WebM track header, so players auto-detect it without
-    // the param hint. We still return the FULL mimeType in the metadata
-    // for callers that want it (e.g. transcription).
-    const bareType = (s.mimeType || 'video/webm').split(';')[0];
-    const blob = new Blob(s.chunks, { type: bareType });
-    const dataUrl = await blobToDataUrl(blob);
-
-    session = null;
-    return {
-      ok: true,
-      mimeType: s.mimeType,        // original, with codecs param
-      blobType: bareType,          // what the data URL actually carries
-      sizeBytes: blob.size,
-      durationMs: Date.now() - s.startedAt,
-      dataUrl,
-    };
+  async function releaseSession(s) {
+    try { for (const t of s.tabStream?.getTracks?.() || []) t.stop(); } catch {}
+    try { for (const t of s.micStream?.getTracks?.() || []) t.stop(); } catch {}
+    try {
+      if (s.audioContext && s.audioContext.state !== 'closed') await s.audioContext.close();
+    } catch {}
   }
 
   // ─── runtime.onMessage router ─────────────────────────────────────

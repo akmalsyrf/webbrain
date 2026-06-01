@@ -126,6 +126,41 @@
     };
   }
 
+  function getActiveEditableSummary() {
+    let el = document.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return null;
+    if (!el.isContentEditable && el.closest) {
+      const editableRoot = el.closest('input:not([type="hidden"]), textarea, [role="textbox"], [role="searchbox"], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]');
+      if (editableRoot) el = editableRoot;
+    }
+
+    const tag = (el.tagName || '').toLowerCase();
+    const role = el.getAttribute?.('role') || '';
+    const type = tag === 'input' ? String(el.type || 'text').toLowerCase() : tag;
+    const editable =
+      el.isContentEditable ||
+      tag === 'textarea' ||
+      (tag === 'input' && !['button', 'checkbox', 'color', 'date', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'].includes(type)) ||
+      /^(textbox|searchbox)$/i.test(role);
+    if (!editable) return null;
+
+    const textPreview = tag === 'textarea' || el.isContentEditable
+      ? String(el.value || el.innerText || el.textContent || '').trim().slice(0, 160)
+      : '';
+    return {
+      tag,
+      type,
+      role,
+      name: el.name || '',
+      id: el.id || '',
+      placeholder: el.getAttribute?.('placeholder') || '',
+      ariaLabel: el.getAttribute?.('aria-label') || '',
+      label: _getFieldLabel(el) || '',
+      editable: !!el.isContentEditable,
+      textPreview,
+    };
+  }
+
   /**
    * Get page metadata.
    */
@@ -140,6 +175,7 @@
       isArticlePage: t.isArticlePage,
       includeChrome: !!(params && params.includeChrome),
       media: getPageMediaSummary(),
+      activeElement: getActiveEditableSummary(),
       links: Array.from(document.querySelectorAll('a[href]')).slice(0, 100).map(a => ({
         text: a.innerText.trim().slice(0, 100),
         href: a.href,
@@ -187,6 +223,7 @@
       isArticlePage: t.isArticlePage,
       includeChrome: !!(params && params.includeChrome),
       media: getPageMediaSummary(),
+      activeElement: getActiveEditableSummary(),
       links: Array.from(document.querySelectorAll('a[href]')).slice(0, 100).map(a => ({
         text: a.innerText.trim().slice(0, 100),
         href: a.href,
