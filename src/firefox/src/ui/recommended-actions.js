@@ -1,5 +1,4 @@
 const SOCIAL_HOST_RE = /(^|\.)(instagram\.com|tiktok\.com|x\.com|twitter\.com|facebook\.com|fb\.com|threads\.net|youtube\.com|youtu\.be|reddit\.com|pinterest\.com|snapchat\.com)$/i;
-const MEETING_HOST_RE = /(^|\.)(zoom\.us|meet\.google\.com|teams\.microsoft\.com|whereby\.com|webex\.com|gotomeeting\.com)$/i;
 const DATING_HOST_RE = /(^|\.)(tinder\.com|bumble\.com|hinge\.co|okcupid\.com|match\.com|pof\.com|badoo\.com|happn\.com|coffeemeetsbagel\.com)$/i;
 const SHOPPING_HOST_RE = /(^|\.)(amazon\.[a-z.]+|ebay\.[a-z.]+|etsy\.com|walmart\.com|target\.com|bestbuy\.com|shopify\.com|aliexpress\.com|mercadolibre\.[a-z.]+|mercadolivre\.com\.br|hepsiburada\.com|trendyol\.com|n11\.com|shopee\.[a-z.]+|lazada\.[a-z.]+)$/i;
 const PRODUCT_PATH_RE = /\/(dp|gp\/product|itm|p|product|products|prod|item|listing|ilan|urun)\b/i;
@@ -74,15 +73,6 @@ export function buildRecommendedActions(pageInfo = {}, options = {}) {
   const host = hostFromUrl(pageInfo.url || '');
   const path = pathFromUrl(pageInfo.url || '');
   const actions = [];
-
-  if (MEETING_HOST_RE.test(host)) {
-    addUnique(actions, {
-      id: 'record-meeting',
-      label: 'Record this meeting',
-      prompt: 'Record this meeting and transcribe it when the recording stops.',
-      mode: 'act',
-    });
-  }
 
   if (host === 'github.com' && RELEASES_PATH_RE.test(path)) {
     addUnique(actions, {

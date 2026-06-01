@@ -1415,6 +1415,12 @@ test('firefox recommended actions match chrome', () => {
   assert.deepEqual(buildRecommendedActionsFx(page), buildRecommendedActionsCh(page));
 });
 
+test('firefox recommended actions omit Chrome-only recording', () => {
+  const meetingPage = { url: 'https://meet.google.com/abc-defg-hij', title: 'Team meeting' };
+  assert.equal(buildRecommendedActionsCh(meetingPage).some((a) => a.id === 'record-meeting'), true);
+  assert.equal(buildRecommendedActionsFx(meetingPage).some((a) => a.id === 'record-meeting'), false);
+});
+
 // ────────────────────────────────────────────────────────────────────────
 // Credential-field detection
 // ────────────────────────────────────────────────────────────────────────
