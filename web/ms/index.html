@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "Apakah sepanduk «WebBrain started debugging this browser»? Mengapa WebBrain menggunakan CDP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Untuk bertindak pada halaman dengan boleh dipercayai, WebBrain menggunakan Chrome DevTools Protocol (CDP) melalui API sambungan standard chrome.debugger — itulah yang mencetuskan sepanduk Chrome «WebBrain started debugging this browser». CDP membolehkan ejen mengklik dan menaip dengan peristiwa input dipercayai yang benar-benar diterima oleh laman moden; peristiwa sintetik yang dipancarkan daripada content script ditolak oleh banyak laman, Web Components dan medan yang dikawal rangka kerja. Melaluinya juga WebBrain menangkap tangkapan skrin berketepatan piksel untuk sandaran visi dan mencapai iframe silang asalan dan shadow DOM yang tidak dapat dilihat oleh content script. Mod Tanya yang baca sahaja tidak memerlukan CDP — bacaan halaman dan pepohon kebolehcapaian melalui content script biasa. Yang memerlukannya ialah kebolehpercayaan Mod Bertindak dan kerja silang asalan, dan dalam sambungan Manifest V3 tiada API tanpa penyahpepijat untuk input dipercayai. WebBrain melampirkan penyahpepijat hanya apabila sesuatu tindakan memerlukannya, bagi setiap tab, dan keseluruhan sambungan adalah sumber terbuka jadi anda boleh mengaudit dengan tepat apa yang dilakukan sesi. CDP berkuasa, jadi kami menganggap jejaknya sebagai sesuatu yang perlu dibendung (lampir atas permintaan, jauhkan bacaan daripadanya), dan mengetatkannya lagi ada dalam peta jalan keselamatan kami."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Ia bertanya terlalu banyak soalan. Bolehkah saya nyahdayakannya?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>Adakah WebBrain selamat digunakan? Bolehkah ia mengubah suai halaman web?</summary>
       <p>WebBrain mempunyai dua mod: mod Tanya (lalai) adalah baca sahaja dan tidak boleh mengubah suai apa-apa pada halaman. Mod Bertindak membolehkan keupayaan ejen pelayar penuh (mengklik, menaip, menavigasi) tetapi memerlukan pengesahan pengguna yang jelas sebelum diaktifkan, dan disertakan dengan sepanduk amaran yang kelihatan. Anda boleh menghentikan ejen pada bila-bila masa dengan butang Henti. Kod sumber sambungan terbuka sepenuhnya untuk audit di GitHub.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Apakah sepanduk «WebBrain started debugging this browser»? Mengapa WebBrain menggunakan CDP?</summary>
+      <p>Untuk bertindak pada halaman dengan boleh dipercayai, WebBrain menggunakan Chrome DevTools Protocol (CDP) melalui API sambungan standard <code>chrome.debugger</code> — itulah yang mencetuskan sepanduk Chrome «WebBrain started debugging this browser». CDP membolehkan ejen mengklik dan menaip dengan <strong>peristiwa input dipercayai</strong> yang benar-benar diterima oleh laman moden; peristiwa sintetik yang dipancarkan daripada content script ditolak oleh banyak laman, Web Components dan medan yang dikawal rangka kerja. Melaluinya juga WebBrain menangkap tangkapan skrin berketepatan piksel untuk sandaran visi dan mencapai <strong>iframe silang asalan dan shadow DOM</strong> yang tidak dapat dilihat oleh content script.</p><p><strong>Mod Tanya</strong> yang baca sahaja <strong>tidak memerlukan CDP</strong> — bacaan halaman dan pepohon kebolehcapaian melalui content script biasa. Yang memerlukannya ialah kebolehpercayaan <strong>Mod Bertindak</strong> dan kerja silang asalan, dan dalam sambungan Manifest V3 tiada API tanpa penyahpepijat untuk input dipercayai. WebBrain melampirkan penyahpepijat <strong>hanya apabila sesuatu tindakan memerlukannya</strong>, bagi setiap tab, dan keseluruhan sambungan adalah sumber terbuka jadi anda boleh mengaudit dengan tepat apa yang dilakukan sesi. CDP berkuasa, jadi kami menganggap jejaknya sebagai sesuatu yang perlu dibendung (lampir atas permintaan, jauhkan bacaan daripadanya), dan mengetatkannya lagi ada dalam peta jalan keselamatan kami.</p>
     </details>
 
     <details class="faq-item">

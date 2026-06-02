@@ -235,5 +235,7 @@
   "hero.mockup.v4.assistant_1_html": "ローカル LLM は、より優れた量子化、高速化したコンシューマー GPU、プライバシー第一への流れに後押しされ、いまや多くのタスクでクラウドの品質に匹敵します。",
   "hero.mockup.v4.user_prompt_2": "著者は 2026 年について何を予測している？",
   "hero.mockup.v4.step_recall": "記事のコンテキストを呼び出し中",
-  "hero.mockup.v4.assistant_2_html": "<strong>2026 年</strong>までに、著者はコンシューマー向け AI ワークロードの 70% 以上がデバイス上で動くと予想しています。"
+  "hero.mockup.v4.assistant_2_html": "<strong>2026 年</strong>までに、著者はコンシューマー向け AI ワークロードの 70% 以上がデバイス上で動くと予想しています。",
+  "faq.cdp.q": "「WebBrain started debugging this browser」のバナーとは何ですか?なぜ WebBrain は CDP を使うのですか?",
+  "faq.cdp.a_html": "ページ上で確実に操作するため、WebBrain は標準の拡張機能 API である <code>chrome.debugger</code> を介して Chrome DevTools Protocol(CDP)を使用します。これが Chrome の「WebBrain started debugging this browser」バナーが表示される理由です。CDP により、エージェントは最新のサイトが実際に受け入れる<strong>信頼された入力イベント</strong>でクリックや入力を行えます。content script から発行される合成イベントは、多くのサイト・Web Components・フレームワーク制御の入力欄で拒否されます。また WebBrain はこれを使って、ビジョンのフォールバック用にピクセル精度のスクリーンショットを取得し、content script からは見えない<strong>クロスオリジンの iframe や shadow DOM</strong> にアクセスします。</p><p>読み取り専用の<strong>質問モードは CDP を必要としません</strong>。ページやアクセシビリティツリーの読み取りは通常の content script を通ります。CDP が必要なのは<strong>実行モード</strong>の信頼性とクロスオリジン処理であり、Manifest V3 拡張機能には信頼された入力のためのデバッガ不要の API は存在しません。WebBrain はデバッガを<strong>操作が必要なときだけ</strong>タブごとにアタッチし、拡張機能全体がオープンソースなので、セッションが何をしているかを正確に監査できます。CDP は強力なので、その影響範囲は抑えるべきものとして扱い(必要なときだけアタッチし、読み取りには使わない)、さらに絞り込むことをセキュリティのロードマップに含めています。"
 }

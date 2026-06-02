@@ -66,6 +66,7 @@ const FAQ_KEYS = [
   'faq.firefox',
   'faq.firefox_sidebar_move',
   'faq.safe',
+  'faq.cdp',
   'faq.disable_approval_questions',
   'faq.scraping',
   'faq.api_mutations',

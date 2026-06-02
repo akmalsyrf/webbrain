@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "What is the \"WebBrain started debugging this browser\" banner? Why does WebBrain use CDP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "To act on a page reliably, WebBrain uses the Chrome DevTools Protocol (CDP) through the standard chrome.debugger extension API — that's what triggers Chrome's \"WebBrain started debugging this browser\" banner. CDP is what lets the agent click and type with trusted input events that modern sites actually honor; synthetic events fired from a content script get rejected by many sites, Web Components, and framework-controlled inputs. It's also how WebBrain captures pixel-accurate screenshots for the vision fallback and reaches into cross-origin iframes and shadow DOM that content scripts can't see. Read-only Ask mode does not need CDP — page and accessibility-tree reads go through ordinary content scripts. It's Act mode reliability and cross-origin work that require it, and in a Manifest V3 extension there is no non-debugger API for trusted input. WebBrain attaches the debugger only when an action needs it, per tab, and the whole extension is open-source so you can audit exactly what the session does. CDP is powerful, so we treat its footprint as something to contain — attach on demand, keep reads off it — and tightening that further is on our security roadmap."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "It's asking me too many questions. Can I disable that?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>Is WebBrain safe to use? Can it modify web pages?</summary>
       <p>WebBrain has two modes: Ask mode (default) is read-only and cannot modify anything on the page. Act mode enables full browser agent capabilities (clicking, typing, navigating) but requires explicit user confirmation before activation, and comes with a visible warning banner. You can stop the agent at any time with the Stop button. The extension's source code is fully open for audit on GitHub.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>What is the &quot;WebBrain started debugging this browser&quot; banner? Why does WebBrain use CDP?</summary>
+      <p>To act on a page reliably, WebBrain uses the Chrome DevTools Protocol (CDP) through the standard <code>chrome.debugger</code> extension API — that's what triggers Chrome's "WebBrain started debugging this browser" banner. CDP is what lets the agent click and type with <strong>trusted input events</strong> that modern sites actually honor; synthetic events fired from a content script get rejected by many sites, Web Components, and framework-controlled inputs. It's also how WebBrain captures pixel-accurate screenshots for the vision fallback and reaches into <strong>cross-origin iframes and shadow DOM</strong> that content scripts can't see.</p><p>Read-only <strong>Ask mode does not need CDP</strong> — page and accessibility-tree reads go through ordinary content scripts. It's <strong>Act mode</strong> reliability and cross-origin work that require it, and in a Manifest V3 extension there is no non-debugger API for trusted input. WebBrain attaches the debugger <strong>only when an action needs it</strong>, per tab, and the whole extension is open-source so you can audit exactly what the session does. CDP is powerful, so we treat its footprint as something to contain — attach on demand, keep reads off it — and tightening that further is on our security roadmap.</p>
     </details>
 
     <details class="faq-item">

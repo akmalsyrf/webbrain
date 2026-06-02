@@ -235,5 +235,7 @@
   "hero.mockup.v4.assistant_1_html": "本地 LLM 如今在许多任务上已能媲美云端质量 —— 这得益于更优的量化、更快的消费级 GPU，以及隐私优先的转向。",
   "hero.mockup.v4.user_prompt_2": "作者对 2026 年有何预测？",
   "hero.mockup.v4.step_recall": "正在回顾文章上下文",
-  "hero.mockup.v4.assistant_2_html": "作者预计到 <strong>2026</strong> 年，超过 70% 的消费级 AI 工作负载将在设备端运行。"
+  "hero.mockup.v4.assistant_2_html": "作者预计到 <strong>2026</strong> 年，超过 70% 的消费级 AI 工作负载将在设备端运行。",
+  "faq.cdp.q": "「WebBrain started debugging this browser」横幅是什么?WebBrain 为什么使用 CDP?",
+  "faq.cdp.a_html": "为了可靠地在页面上执行操作,WebBrain 通过标准的 <code>chrome.debugger</code> 扩展 API 使用 Chrome DevTools Protocol(CDP)——这也是触发 Chrome「WebBrain started debugging this browser」横幅的原因。CDP 让代理能够以现代网站真正接受的<strong>可信输入事件</strong>进行点击和输入;从 content script 派发的合成事件会被许多网站、Web Components 以及由框架控制的输入字段拒绝。WebBrain 也借此为视觉回退捕获像素级精确的截图,并访问 content script 看不到的<strong>跨域 iframe 和 shadow DOM</strong>。</p><p>只读的<strong>询问模式不需要 CDP</strong>——页面和无障碍树的读取都通过普通的 content script 完成。需要它的是<strong>执行模式</strong>的可靠性和跨域操作;而在 Manifest V3 扩展中,没有任何无需调试器的 API 能提供可信输入。WebBrain <strong>仅在某个操作需要时</strong>才按标签页附加调试器,而且整个扩展都是开源的,你可以审计会话究竟做了什么。CDP 很强大,因此我们把它的影响范围当作需要约束的东西(按需附加、读取不经过它),进一步收紧它已列入我们的安全路线图。"
 }

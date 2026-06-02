@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "「WebBrain started debugging this browser」のバナーとは何ですか?なぜ WebBrain は CDP を使うのですか?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "ページ上で確実に操作するため、WebBrain は標準の拡張機能 API である chrome.debugger を介して Chrome DevTools Protocol(CDP)を使用します。これが Chrome の「WebBrain started debugging this browser」バナーが表示される理由です。CDP により、エージェントは最新のサイトが実際に受け入れる信頼された入力イベントでクリックや入力を行えます。content script から発行される合成イベントは、多くのサイト・Web Components・フレームワーク制御の入力欄で拒否されます。また WebBrain はこれを使って、ビジョンのフォールバック用にピクセル精度のスクリーンショットを取得し、content script からは見えないクロスオリジンの iframe や shadow DOM にアクセスします。 読み取り専用の質問モードは CDP を必要としません。ページやアクセシビリティツリーの読み取りは通常の content script を通ります。CDP が必要なのは実行モードの信頼性とクロスオリジン処理であり、Manifest V3 拡張機能には信頼された入力のためのデバッガ不要の API は存在しません。WebBrain はデバッガを操作が必要なときだけタブごとにアタッチし、拡張機能全体がオープンソースなので、セッションが何をしているかを正確に監査できます。CDP は強力なので、その影響範囲は抑えるべきものとして扱い(必要なときだけアタッチし、読み取りには使わない)、さらに絞り込むことをセキュリティのロードマップに含めています。"
+      }
+    },
+    {
+      "@type": "Question",
       "name": "質問が多すぎます。無効にできますか？",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>WebBrain は安全ですか? Web ページを変更しますか?</summary>
       <p>WebBrain には 2 つのモードがあります。質問モード (デフォルト) は読み取り専用で、ページ上の何も変更できません。実行モードはフルブラウザエージェント機能 (クリック、入力、ナビゲーション) を有効にしますが、起動前に明示的なユーザー確認が必要で、目に見える警告バナーが表示されます。エージェントは「停止」ボタンでいつでも止められます。拡張のソースコードは GitHub で完全公開されており、監査可能です。</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>「WebBrain started debugging this browser」のバナーとは何ですか?なぜ WebBrain は CDP を使うのですか?</summary>
+      <p>ページ上で確実に操作するため、WebBrain は標準の拡張機能 API である <code>chrome.debugger</code> を介して Chrome DevTools Protocol(CDP)を使用します。これが Chrome の「WebBrain started debugging this browser」バナーが表示される理由です。CDP により、エージェントは最新のサイトが実際に受け入れる<strong>信頼された入力イベント</strong>でクリックや入力を行えます。content script から発行される合成イベントは、多くのサイト・Web Components・フレームワーク制御の入力欄で拒否されます。また WebBrain はこれを使って、ビジョンのフォールバック用にピクセル精度のスクリーンショットを取得し、content script からは見えない<strong>クロスオリジンの iframe や shadow DOM</strong> にアクセスします。</p><p>読み取り専用の<strong>質問モードは CDP を必要としません</strong>。ページやアクセシビリティツリーの読み取りは通常の content script を通ります。CDP が必要なのは<strong>実行モード</strong>の信頼性とクロスオリジン処理であり、Manifest V3 拡張機能には信頼された入力のためのデバッガ不要の API は存在しません。WebBrain はデバッガを<strong>操作が必要なときだけ</strong>タブごとにアタッチし、拡張機能全体がオープンソースなので、セッションが何をしているかを正確に監査できます。CDP は強力なので、その影響範囲は抑えるべきものとして扱い(必要なときだけアタッチし、読み取りには使わない)、さらに絞り込むことをセキュリティのロードマップに含めています。</p>
     </details>
 
     <details class="faq-item">

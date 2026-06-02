@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "Qu'est-ce que la bannière « WebBrain started debugging this browser » ? Pourquoi WebBrain utilise-t-il CDP ?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Pour agir sur une page de manière fiable, WebBrain utilise le Chrome DevTools Protocol (CDP) via l'API d'extension standard chrome.debugger — c'est ce qui déclenche la bannière de Chrome « WebBrain started debugging this browser ». CDP permet à l'agent de cliquer et de saisir avec des événements d'entrée de confiance que les sites modernes acceptent réellement ; les événements synthétiques émis depuis un content script sont rejetés par de nombreux sites, par les Web Components et par les champs contrôlés par des frameworks. C'est aussi ainsi que WebBrain capture des captures d'écran au pixel près pour le repli vision et accède aux iframes cross-origin et au shadow DOM que les content scripts ne peuvent pas voir. Le mode Demander, en lecture seule, n'a pas besoin de CDP : les lectures de la page et de l'arbre d'accessibilité passent par des content scripts ordinaires. Ce sont la fiabilité du mode Agir et le travail cross-origin qui l'exigent, et dans une extension Manifest V3 il n'existe aucune API sans débogueur pour l'entrée de confiance. WebBrain attache le débogueur uniquement quand une action en a besoin, par onglet, et toute l'extension est open source, vous pouvez donc auditer exactement ce que fait la session. CDP est puissant, c'est pourquoi nous traitons son empreinte comme quelque chose à contenir (attacher à la demande, garder les lectures en dehors), et la réduire davantage figure dans notre feuille de route sécurité."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Il me pose trop de questions. Puis-je désactiver cela ?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>WebBrain est-il sûr ? Peut-il modifier les pages web ?</summary>
       <p>WebBrain a deux modes : le mode Demander (par défaut) est en lecture seule et ne peut rien modifier sur la page. Le mode Agir active les capacités complètes de l'agent (clic, saisie, navigation) mais demande une confirmation explicite de l'utilisateur avant activation et affiche un avertissement visible. Vous pouvez arrêter l'agent à tout moment avec le bouton Arrêter. Le code source de l'extension est entièrement ouvert à l'audit sur GitHub.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Qu&#39;est-ce que la bannière « WebBrain started debugging this browser » ? Pourquoi WebBrain utilise-t-il CDP ?</summary>
+      <p>Pour agir sur une page de manière fiable, WebBrain utilise le Chrome DevTools Protocol (CDP) via l'API d'extension standard <code>chrome.debugger</code> — c'est ce qui déclenche la bannière de Chrome « WebBrain started debugging this browser ». CDP permet à l'agent de cliquer et de saisir avec des <strong>événements d'entrée de confiance</strong> que les sites modernes acceptent réellement ; les événements synthétiques émis depuis un content script sont rejetés par de nombreux sites, par les Web Components et par les champs contrôlés par des frameworks. C'est aussi ainsi que WebBrain capture des captures d'écran au pixel près pour le repli vision et accède aux <strong>iframes cross-origin et au shadow DOM</strong> que les content scripts ne peuvent pas voir.</p><p>Le <strong>mode Demander</strong>, en lecture seule, <strong>n'a pas besoin de CDP</strong> : les lectures de la page et de l'arbre d'accessibilité passent par des content scripts ordinaires. Ce sont la fiabilité du <strong>mode Agir</strong> et le travail cross-origin qui l'exigent, et dans une extension Manifest V3 il n'existe aucune API sans débogueur pour l'entrée de confiance. WebBrain attache le débogueur <strong>uniquement quand une action en a besoin</strong>, par onglet, et toute l'extension est open source, vous pouvez donc auditer exactement ce que fait la session. CDP est puissant, c'est pourquoi nous traitons son empreinte comme quelque chose à contenir (attacher à la demande, garder les lectures en dehors), et la réduire davantage figure dans notre feuille de route sécurité.</p>
     </details>
 
     <details class="faq-item">

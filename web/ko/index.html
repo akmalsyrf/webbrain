@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "「WebBrain started debugging this browser」 배너는 무엇인가요? WebBrain은 왜 CDP를 사용하나요?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "페이지에서 안정적으로 작업하기 위해 WebBrain은 표준 확장 API인 chrome.debugger를 통해 Chrome DevTools Protocol(CDP)을 사용합니다. 이것이 Chrome의 「WebBrain started debugging this browser」 배너가 나타나는 이유입니다. CDP는 에이전트가 최신 사이트가 실제로 받아들이는 신뢰된 입력 이벤트로 클릭하고 입력할 수 있게 해 줍니다. content script에서 발생시킨 합성 이벤트는 많은 사이트, Web Components, 프레임워크가 제어하는 입력란에서 거부됩니다. 또한 WebBrain은 이를 통해 비전 폴백용 픽셀 단위 스크린샷을 캡처하고 content script가 볼 수 없는 교차 출처 iframe과 shadow DOM에 접근합니다. 읽기 전용 묻기 모드는 CDP가 필요 없습니다 — 페이지와 접근성 트리 읽기는 일반 content script를 거칩니다. CDP가 필요한 것은 실행 모드의 안정성과 교차 출처 작업이며, Manifest V3 확장에는 신뢰된 입력을 위한 디버거 없는 API가 없습니다. WebBrain은 작업이 필요할 때만 탭별로 디버거를 연결하며, 확장 전체가 오픈 소스라서 세션이 정확히 무엇을 하는지 감사할 수 있습니다. CDP는 강력하므로 그 영향 범위를 억제해야 할 대상으로 다루고(필요할 때만 연결하고 읽기에는 사용하지 않음), 이를 더 강화하는 것이 보안 로드맵에 포함되어 있습니다."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "질문을 너무 많이 합니다. 비활성화할 수 있나요?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>WebBrain은 안전한가요? 웹 페이지를 수정할 수 있나요?</summary>
       <p>WebBrain에는 두 가지 모드가 있습니다: 묻기 모드(기본)는 읽기 전용이며 페이지의 어떤 것도 수정하지 못합니다. 실행 모드는 완전한 브라우저 에이전트 기능(클릭, 입력, 탐색)을 활성화하지만, 활성화 전 명시적인 사용자 확인이 필요하고 눈에 띄는 경고 배너가 함께 표시됩니다. 정지 버튼으로 언제든지 에이전트를 멈출 수 있습니다. 확장의 소스 코드는 GitHub에 완전히 공개되어 감사가 가능합니다.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>「WebBrain started debugging this browser」 배너는 무엇인가요? WebBrain은 왜 CDP를 사용하나요?</summary>
+      <p>페이지에서 안정적으로 작업하기 위해 WebBrain은 표준 확장 API인 <code>chrome.debugger</code>를 통해 Chrome DevTools Protocol(CDP)을 사용합니다. 이것이 Chrome의 「WebBrain started debugging this browser」 배너가 나타나는 이유입니다. CDP는 에이전트가 최신 사이트가 실제로 받아들이는 <strong>신뢰된 입력 이벤트</strong>로 클릭하고 입력할 수 있게 해 줍니다. content script에서 발생시킨 합성 이벤트는 많은 사이트, Web Components, 프레임워크가 제어하는 입력란에서 거부됩니다. 또한 WebBrain은 이를 통해 비전 폴백용 픽셀 단위 스크린샷을 캡처하고 content script가 볼 수 없는 <strong>교차 출처 iframe과 shadow DOM</strong>에 접근합니다.</p><p>읽기 전용 <strong>묻기 모드는 CDP가 필요 없습니다</strong> — 페이지와 접근성 트리 읽기는 일반 content script를 거칩니다. CDP가 필요한 것은 <strong>실행 모드</strong>의 안정성과 교차 출처 작업이며, Manifest V3 확장에는 신뢰된 입력을 위한 디버거 없는 API가 없습니다. WebBrain은 <strong>작업이 필요할 때만</strong> 탭별로 디버거를 연결하며, 확장 전체가 오픈 소스라서 세션이 정확히 무엇을 하는지 감사할 수 있습니다. CDP는 강력하므로 그 영향 범위를 억제해야 할 대상으로 다루고(필요할 때만 연결하고 읽기에는 사용하지 않음), 이를 더 강화하는 것이 보안 로드맵에 포함되어 있습니다.</p>
     </details>
 
     <details class="faq-item">

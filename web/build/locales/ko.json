@@ -235,5 +235,7 @@
   "hero.mockup.v4.assistant_1_html": "로컬 LLM은 이제 더 나은 양자화, 더 빠른 컨슈머 GPU, 프라이버시 우선 흐름에 힘입어 많은 작업에서 클라우드 품질에 맞먹습니다.",
   "hero.mockup.v4.user_prompt_2": "저자가 2026년에 대해 무엇을 예측하나요?",
   "hero.mockup.v4.step_recall": "기사 컨텍스트 회상 중",
-  "hero.mockup.v4.assistant_2_html": "저자는 <strong>2026년</strong>까지 컨슈머 AI 워크로드의 70% 이상이 기기에서 실행될 것으로 예상합니다."
+  "hero.mockup.v4.assistant_2_html": "저자는 <strong>2026년</strong>까지 컨슈머 AI 워크로드의 70% 이상이 기기에서 실행될 것으로 예상합니다.",
+  "faq.cdp.q": "「WebBrain started debugging this browser」 배너는 무엇인가요? WebBrain은 왜 CDP를 사용하나요?",
+  "faq.cdp.a_html": "페이지에서 안정적으로 작업하기 위해 WebBrain은 표준 확장 API인 <code>chrome.debugger</code>를 통해 Chrome DevTools Protocol(CDP)을 사용합니다. 이것이 Chrome의 「WebBrain started debugging this browser」 배너가 나타나는 이유입니다. CDP는 에이전트가 최신 사이트가 실제로 받아들이는 <strong>신뢰된 입력 이벤트</strong>로 클릭하고 입력할 수 있게 해 줍니다. content script에서 발생시킨 합성 이벤트는 많은 사이트, Web Components, 프레임워크가 제어하는 입력란에서 거부됩니다. 또한 WebBrain은 이를 통해 비전 폴백용 픽셀 단위 스크린샷을 캡처하고 content script가 볼 수 없는 <strong>교차 출처 iframe과 shadow DOM</strong>에 접근합니다.</p><p>읽기 전용 <strong>묻기 모드는 CDP가 필요 없습니다</strong> — 페이지와 접근성 트리 읽기는 일반 content script를 거칩니다. CDP가 필요한 것은 <strong>실행 모드</strong>의 안정성과 교차 출처 작업이며, Manifest V3 확장에는 신뢰된 입력을 위한 디버거 없는 API가 없습니다. WebBrain은 <strong>작업이 필요할 때만</strong> 탭별로 디버거를 연결하며, 확장 전체가 오픈 소스라서 세션이 정확히 무엇을 하는지 감사할 수 있습니다. CDP는 강력하므로 그 영향 범위를 억제해야 할 대상으로 다루고(필요할 때만 연결하고 읽기에는 사용하지 않음), 이를 더 강화하는 것이 보안 로드맵에 포함되어 있습니다."
 }

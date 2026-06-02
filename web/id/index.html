@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "Apa itu spanduk «WebBrain started debugging this browser»? Mengapa WebBrain memakai CDP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Agar dapat bertindak pada halaman dengan andal, WebBrain memakai Chrome DevTools Protocol (CDP) melalui API ekstensi standar chrome.debugger — itulah yang memicu spanduk Chrome «WebBrain started debugging this browser». CDP memungkinkan agen mengeklik dan mengetik dengan peristiwa input tepercaya yang benar-benar diterima situs modern; peristiwa sintetis yang dipicu dari content script ditolak oleh banyak situs, Web Components, dan bidang yang dikontrol framework. Lewat ini pula WebBrain mengambil tangkapan layar berpresisi piksel untuk cadangan visi dan menjangkau iframe lintas-asal dan shadow DOM yang tak terlihat oleh content script. Mode Tanya yang hanya-baca tidak memerlukan CDP — pembacaan halaman dan pohon aksesibilitas berjalan lewat content script biasa. Yang membutuhkannya adalah keandalan Mode Aksi dan pekerjaan lintas-asal, dan pada ekstensi Manifest V3 tidak ada API tanpa debugger untuk input tepercaya. WebBrain melampirkan debugger hanya saat sebuah tindakan membutuhkannya, per tab, dan seluruh ekstensi bersifat sumber terbuka sehingga Anda dapat mengaudit persis apa yang dilakukan sesi. CDP itu kuat, jadi kami memperlakukan jejaknya sebagai sesuatu yang harus dibatasi (lampirkan sesuai kebutuhan, jauhkan pembacaan darinya), dan memperketatnya lebih lanjut ada dalam peta jalan keamanan kami."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Pertanyaannya terlalu banyak. Bisakah saya menonaktifkannya?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>Apakah WebBrain aman digunakan? Bisakah ia memodifikasi halaman web?</summary>
       <p>WebBrain memiliki dua mode: mode Tanya (bawaan) hanya-baca dan tidak dapat memodifikasi apa pun pada halaman. Mode Aksi mengaktifkan kapabilitas agen peramban penuh (klik, ketik, navigasi) tetapi membutuhkan konfirmasi pengguna secara eksplisit sebelum aktif, dan disertai spanduk peringatan yang terlihat. Anda dapat menghentikan agen kapan saja dengan tombol Berhenti. Kode sumber ekstensi sepenuhnya terbuka untuk audit di GitHub.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Apa itu spanduk «WebBrain started debugging this browser»? Mengapa WebBrain memakai CDP?</summary>
+      <p>Agar dapat bertindak pada halaman dengan andal, WebBrain memakai Chrome DevTools Protocol (CDP) melalui API ekstensi standar <code>chrome.debugger</code> — itulah yang memicu spanduk Chrome «WebBrain started debugging this browser». CDP memungkinkan agen mengeklik dan mengetik dengan <strong>peristiwa input tepercaya</strong> yang benar-benar diterima situs modern; peristiwa sintetis yang dipicu dari content script ditolak oleh banyak situs, Web Components, dan bidang yang dikontrol framework. Lewat ini pula WebBrain mengambil tangkapan layar berpresisi piksel untuk cadangan visi dan menjangkau <strong>iframe lintas-asal dan shadow DOM</strong> yang tak terlihat oleh content script.</p><p><strong>Mode Tanya</strong> yang hanya-baca <strong>tidak memerlukan CDP</strong> — pembacaan halaman dan pohon aksesibilitas berjalan lewat content script biasa. Yang membutuhkannya adalah keandalan <strong>Mode Aksi</strong> dan pekerjaan lintas-asal, dan pada ekstensi Manifest V3 tidak ada API tanpa debugger untuk input tepercaya. WebBrain melampirkan debugger <strong>hanya saat sebuah tindakan membutuhkannya</strong>, per tab, dan seluruh ekstensi bersifat sumber terbuka sehingga Anda dapat mengaudit persis apa yang dilakukan sesi. CDP itu kuat, jadi kami memperlakukan jejaknya sebagai sesuatu yang harus dibatasi (lampirkan sesuai kebutuhan, jauhkan pembacaan darinya), dan memperketatnya lebih lanjut ada dalam peta jalan keamanan kami.</p>
     </details>
 
     <details class="faq-item">

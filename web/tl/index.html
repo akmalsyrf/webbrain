@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "Ano ang banner na «WebBrain started debugging this browser»? Bakit gumagamit ng CDP ang WebBrain?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Para makakilos nang maaasahan sa isang pahina, ginagamit ng WebBrain ang Chrome DevTools Protocol (CDP) sa pamamagitan ng karaniwang extension API na chrome.debugger — iyon ang nagpapalabas ng banner ng Chrome na «WebBrain started debugging this browser». Sa pamamagitan ng CDP, nakakapag-click at nakakapag-type ang ahente gamit ang mga pinagkakatiwalaang input event na talagang tinatanggap ng mga makabagong site; ang mga synthetic na event mula sa content script ay tinatanggihan ng maraming site, ng Web Components, at ng mga field na kontrolado ng framework. Dito rin kumukuha ang WebBrain ng pixel-accurate na screenshot para sa vision fallback at umaabot sa cross-origin na iframe at shadow DOM na hindi nakikita ng mga content script. Ang read-only na mode ng Pagtatanong ay hindi nangangailangan ng CDP — ang pagbabasa ng pahina at ng accessibility tree ay dumadaan sa karaniwang content script. Ang nangangailangan nito ay ang pagiging maaasahan ng mode ng Pagkilos at ang cross-origin na gawain, at sa isang Manifest V3 extension ay walang API na walang debugger para sa pinagkakatiwalaang input. Ikinakabit ng WebBrain ang debugger kapag kailangan lang ito ng isang aksyon, bawat tab, at open-source ang buong extension kaya maa-audit mo nang eksakto ang ginagawa ng session. Makapangyarihan ang CDP, kaya itinuturing naming dapat limitahan ang bakas nito (ikabit kapag kailangan, ilayo ang pagbabasa rito), at ang higit pang paghihigpit dito ay nasa aming security roadmap."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Masyado itong maraming tanong. Maaari ko ba itong i-disable?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>Ligtas bang gamitin ang WebBrain? Maaari ba nitong baguhin ang mga web page?</summary>
       <p>May dalawang mode ang WebBrain: ang mode ng Pagtatanong (default) ay read-only at hindi maaaring baguhin ang anumang bagay sa pahina. Ang mode ng Pagkilos ay nag-e-enable ng buong browser agent capabilities (pag-click, pag-type, pagna-navigate) ngunit nangangailangan ng tahasang kumpirmasyon ng user bago i-activate, at may kasamang nakikitang warning banner. Maaari mong itigil ang ahente anumang oras gamit ang Stop button. Ang source code ng extension ay buong nakabukas sa GitHub para sa audit.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Ano ang banner na «WebBrain started debugging this browser»? Bakit gumagamit ng CDP ang WebBrain?</summary>
+      <p>Para makakilos nang maaasahan sa isang pahina, ginagamit ng WebBrain ang Chrome DevTools Protocol (CDP) sa pamamagitan ng karaniwang extension API na <code>chrome.debugger</code> — iyon ang nagpapalabas ng banner ng Chrome na «WebBrain started debugging this browser». Sa pamamagitan ng CDP, nakakapag-click at nakakapag-type ang ahente gamit ang <strong>mga pinagkakatiwalaang input event</strong> na talagang tinatanggap ng mga makabagong site; ang mga synthetic na event mula sa content script ay tinatanggihan ng maraming site, ng Web Components, at ng mga field na kontrolado ng framework. Dito rin kumukuha ang WebBrain ng pixel-accurate na screenshot para sa vision fallback at umaabot sa <strong>cross-origin na iframe at shadow DOM</strong> na hindi nakikita ng mga content script.</p><p>Ang read-only na <strong>mode ng Pagtatanong ay hindi nangangailangan ng CDP</strong> — ang pagbabasa ng pahina at ng accessibility tree ay dumadaan sa karaniwang content script. Ang nangangailangan nito ay ang pagiging maaasahan ng <strong>mode ng Pagkilos</strong> at ang cross-origin na gawain, at sa isang Manifest V3 extension ay walang API na walang debugger para sa pinagkakatiwalaang input. Ikinakabit ng WebBrain ang debugger <strong>kapag kailangan lang ito ng isang aksyon</strong>, bawat tab, at open-source ang buong extension kaya maa-audit mo nang eksakto ang ginagawa ng session. Makapangyarihan ang CDP, kaya itinuturing naming dapat limitahan ang bakas nito (ikabit kapag kailangan, ilayo ang pagbabasa rito), at ang higit pang paghihigpit dito ay nasa aming security roadmap.</p>
     </details>
 
     <details class="faq-item">

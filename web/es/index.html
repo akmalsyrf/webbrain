@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "¿Qué es el aviso «WebBrain started debugging this browser»? ¿Por qué WebBrain usa CDP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Para actuar sobre una página de forma fiable, WebBrain usa el Chrome DevTools Protocol (CDP) a través de la API de extensión estándar chrome.debugger; eso es lo que provoca el aviso de Chrome «WebBrain started debugging this browser». CDP es lo que permite al agente hacer clic y escribir con eventos de entrada de confianza que los sitios modernos sí aceptan; los eventos sintéticos lanzados desde un content script son rechazados por muchos sitios, Web Components y campos controlados por frameworks. También es como WebBrain captura capturas de pantalla con precisión de píxel para el respaldo de visión y accede a iframes de origen cruzado y al shadow DOM que los content scripts no pueden ver. El modo Preguntar, de solo lectura, no necesita CDP: las lecturas de la página y del árbol de accesibilidad pasan por content scripts normales. Son la fiabilidad del modo Actuar y el trabajo entre orígenes los que lo requieren, y en una extensión Manifest V3 no existe ninguna API sin depurador para la entrada de confianza. WebBrain adjunta el depurador solo cuando una acción lo necesita, por pestaña, y toda la extensión es de código abierto, así que puedes auditar exactamente lo que hace la sesión. CDP es potente, por eso tratamos su alcance como algo que hay que contener (adjuntar bajo demanda, mantener las lecturas fuera de él), y reducirlo aún más está en nuestra hoja de ruta de seguridad."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Me está haciendo demasiadas preguntas. ¿Puedo desactivarlo?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>¿Es seguro usar WebBrain? ¿Puede modificar páginas web?</summary>
       <p>WebBrain tiene dos modos: el modo Preguntar (por defecto) es de solo lectura y no puede modificar nada en la página. El modo Actuar habilita las capacidades completas del agente (clics, escritura, navegación) pero requiere confirmación explícita del usuario antes de activarse y muestra un aviso visible. Puedes detener el agente en cualquier momento con el botón Detener. El código fuente de la extensión está totalmente abierto en GitHub para auditoría.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>¿Qué es el aviso «WebBrain started debugging this browser»? ¿Por qué WebBrain usa CDP?</summary>
+      <p>Para actuar sobre una página de forma fiable, WebBrain usa el Chrome DevTools Protocol (CDP) a través de la API de extensión estándar <code>chrome.debugger</code>; eso es lo que provoca el aviso de Chrome «WebBrain started debugging this browser». CDP es lo que permite al agente hacer clic y escribir con <strong>eventos de entrada de confianza</strong> que los sitios modernos sí aceptan; los eventos sintéticos lanzados desde un content script son rechazados por muchos sitios, Web Components y campos controlados por frameworks. También es como WebBrain captura capturas de pantalla con precisión de píxel para el respaldo de visión y accede a <strong>iframes de origen cruzado y al shadow DOM</strong> que los content scripts no pueden ver.</p><p>El <strong>modo Preguntar</strong>, de solo lectura, <strong>no necesita CDP</strong>: las lecturas de la página y del árbol de accesibilidad pasan por content scripts normales. Son la fiabilidad del <strong>modo Actuar</strong> y el trabajo entre orígenes los que lo requieren, y en una extensión Manifest V3 no existe ninguna API sin depurador para la entrada de confianza. WebBrain adjunta el depurador <strong>solo cuando una acción lo necesita</strong>, por pestaña, y toda la extensión es de código abierto, así que puedes auditar exactamente lo que hace la sesión. CDP es potente, por eso tratamos su alcance como algo que hay que contener (adjuntar bajo demanda, mantener las lecturas fuera de él), y reducirlo aún más está en nuestra hoja de ruta de seguridad.</p>
     </details>
 
     <details class="faq-item">

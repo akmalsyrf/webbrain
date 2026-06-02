@@ -147,6 +147,14 @@
     },
     {
       "@type": "Question",
+      "name": "「WebBrain started debugging this browser」横幅是什么?WebBrain 为什么使用 CDP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "为了可靠地在页面上执行操作,WebBrain 通过标准的 chrome.debugger 扩展 API 使用 Chrome DevTools Protocol(CDP)——这也是触发 Chrome「WebBrain started debugging this browser」横幅的原因。CDP 让代理能够以现代网站真正接受的可信输入事件进行点击和输入;从 content script 派发的合成事件会被许多网站、Web Components 以及由框架控制的输入字段拒绝。WebBrain 也借此为视觉回退捕获像素级精确的截图,并访问 content script 看不到的跨域 iframe 和 shadow DOM。 只读的询问模式不需要 CDP——页面和无障碍树的读取都通过普通的 content script 完成。需要它的是执行模式的可靠性和跨域操作;而在 Manifest V3 扩展中,没有任何无需调试器的 API 能提供可信输入。WebBrain 仅在某个操作需要时才按标签页附加调试器,而且整个扩展都是开源的,你可以审计会话究竟做了什么。CDP 很强大,因此我们把它的影响范围当作需要约束的东西(按需附加、读取不经过它),进一步收紧它已列入我们的安全路线图。"
+      }
+    },
+    {
+      "@type": "Question",
       "name": "它问我的问题太多了。可以关闭吗？",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -2143,6 +2151,11 @@
     <details class="faq-item">
       <summary>使用 WebBrain 安全吗?它能修改网页吗?</summary>
       <p>WebBrain 有两种模式:询问模式(默认)只读,无法修改页面上的任何内容。执行模式启用完整的浏览器代理能力(点击、输入、导航),但在启用前需要用户显式确认,并会显示明显的警告横幅。你可以随时通过「停止」按钮停止代理。扩展的源代码在 GitHub 上完全开放供审计。</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>「WebBrain started debugging this browser」横幅是什么?WebBrain 为什么使用 CDP?</summary>
+      <p>为了可靠地在页面上执行操作,WebBrain 通过标准的 <code>chrome.debugger</code> 扩展 API 使用 Chrome DevTools Protocol(CDP)——这也是触发 Chrome「WebBrain started debugging this browser」横幅的原因。CDP 让代理能够以现代网站真正接受的<strong>可信输入事件</strong>进行点击和输入;从 content script 派发的合成事件会被许多网站、Web Components 以及由框架控制的输入字段拒绝。WebBrain 也借此为视觉回退捕获像素级精确的截图,并访问 content script 看不到的<strong>跨域 iframe 和 shadow DOM</strong>。</p><p>只读的<strong>询问模式不需要 CDP</strong>——页面和无障碍树的读取都通过普通的 content script 完成。需要它的是<strong>执行模式</strong>的可靠性和跨域操作;而在 Manifest V3 扩展中,没有任何无需调试器的 API 能提供可信输入。WebBrain <strong>仅在某个操作需要时</strong>才按标签页附加调试器,而且整个扩展都是开源的,你可以审计会话究竟做了什么。CDP 很强大,因此我们把它的影响范围当作需要约束的东西(按需附加、读取不经过它),进一步收紧它已列入我们的安全路线图。</p>
     </details>
 
     <details class="faq-item">
