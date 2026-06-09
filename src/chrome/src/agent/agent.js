@@ -2809,9 +2809,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    */
   _autoScratchpadNote(tabId, line) {
     try {
+      // Collapse newlines only — keep brackets so the leading `[auto]` marker
+      // (which the Act prompt tells the model to scan for before attaching by
+      // downloadId) survives. Callers must sanitize any UNTRUSTED fragment
+      // (e.g. a page-derived filename) before building the line — stripping the
+      // whole line here would also eat the trusted marker. See _pinDownloadId.
       const clean = String(line == null ? '' : line)
         .replace(/[\r\n]+/g, ' ')
-        .replace(/[`[\]]/g, '')
         .trim();
       if (!clean) return;
       const messages = this.conversations.get(tabId);
@@ -2845,7 +2849,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    */
   _pinDownloadId(tabId, downloadId, label) {
     if (downloadId == null) return;
-    const hint = label ? ` "${String(label).slice(0, 60)}"` : '';
+    // The label is page-influenced (Content-Disposition / href), so strip
+    // brackets/backticks/newlines from IT — not from the whole line, which
+    // would also eat the trusted `[auto]` marker the prompt scans for.
+    const safe = label ? String(label).replace(/[`[\]\r\n]+/g, '').trim().slice(0, 60) : '';
+    const hint = safe ? ` "${safe}"` : '';
     this._autoScratchpadNote(tabId, `[auto] Downloaded${hint} -> downloadId ${downloadId}. Attach with upload_file({downloadId: ${downloadId}, selector}); re-read with read_downloaded_file({downloadId: ${downloadId}}).`);
   }
 

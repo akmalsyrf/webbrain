@@ -2616,19 +2616,30 @@ test('_pinDownloadHandles pins downloadIds id-only across download tools (chrome
       { success: true, downloadId: 43, filename: '/Users/x/Downloads/firefox.zip' },
     ] });
     agent._pinDownloadHandles(tabId, 'download_resource_from_page', { success: true, downloadId: 44, sourceUrl: 'https://cdn.example/cat.png?token=secret' });
+    // A hostile basename with brackets must not survive into the pad, AND must
+    // not corrupt the trusted [auto] marker.
+    agent._pinDownloadHandles(tabId, 'download_files', { success: true, downloads: [
+      { success: true, downloadId: 45, filename: '/tmp/ev]il[name.bin' },
+    ] });
 
     const messages = agent.conversations.get(tabId);
     const idx = agent._findScratchpadIndex(messages);
     assert.ok(idx >= 0, `${AgentClass.name}: nothing pinned`);
     const body = messages[idx].content;
-    for (const id of [42, 43, 44]) {
+    for (const id of [42, 43, 44, 45]) {
       assert.match(body, new RegExp(`downloadId ${id}`), `${AgentClass.name}: id ${id} not pinned`);
     }
+    // The trusted [auto] marker must survive sanitization — the Act prompt tells
+    // the model to scan for it (regression: a whole-line bracket strip mangled
+    // it to "auto Downloaded…").
+    assert.match(body, /\[auto\] Downloaded/, `${AgentClass.name}: [auto] marker stripped`);
     // id-only: the absolute on-disk path must NOT land in the durable pad.
     assert.doesNotMatch(body, /\/Users\/x\/Downloads\//, `${AgentClass.name}: full path leaked into pad`);
     // …but a short basename hint is allowed (and the query string is stripped).
     assert.match(body, /chrome\.zip/, `${AgentClass.name}: label hint missing`);
     assert.doesNotMatch(body, /token=secret/, `${AgentClass.name}: query string leaked into label`);
+    // The label's own brackets are stripped (only the marker's survive).
+    assert.doesNotMatch(body, /ev\]il\[name/, `${AgentClass.name}: brackets in label not sanitized`);
   }
 });
 
