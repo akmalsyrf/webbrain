@@ -5390,7 +5390,24 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
               // Include inputs/select/textarea so we can match by placeholder,
               // value, or aria-label — not just visible button/link text.
               const sels = 'a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="treeitem"], input:not([type="hidden"]), textarea, select, input[type="button"], input[type="submit"], summary, label, [onclick], [data-action]';
-              const all = Array.from(document.querySelectorAll(sels));
+              const all = Array.from(document.querySelectorAll(sels)).filter(el => {
+                // Listbox/menu option roles are often kept mounted but hidden
+                // while a custom select is collapsed or virtualized
+                // (Radix/MUI/React-Select). Drop hidden ones from the primary
+                // pool so click({text}) can't match — and falsely "succeed" on —
+                // an invisible option; the open-listbox fallback below still
+                // surfaces them when the control is actually open.
+                const role = (el.getAttribute && el.getAttribute('role')) || '';
+                if (role !== 'option' && role !== 'menuitemradio' && role !== 'menuitemcheckbox' && role !== 'treeitem') return true;
+                try {
+                  const r = el.getBoundingClientRect();
+                  if (r.width < 1 || r.height < 1) return false;
+                  const s = window.getComputedStyle(el);
+                  if (s.visibility === 'hidden' || s.display === 'none' || parseFloat(s.opacity) === 0) return false;
+                  if (el.closest('[aria-hidden="true"],[hidden]')) return false;
+                  return true;
+                } catch (e) { return false; }
+              });
               // A text field's value is content the user typed, NOT a click
               // label. Matching on it makes click({text}) resolve to the field
               // you just filled (e.g. a combobox/filter box whose value now
@@ -5607,7 +5624,20 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                   const needle = ${JSON.stringify(args.text.toLowerCase())};
                   const explicit = ${JSON.stringify(args.textMatch || '')};
                   const sels = 'a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="treeitem"], input:not([type="hidden"]), textarea, select, input[type="button"], input[type="submit"], summary, label, [onclick], [data-action]';
-                  const all = Array.from(document.querySelectorAll(sels));
+                  const all = Array.from(document.querySelectorAll(sels)).filter(el => {
+                    // See primary path: drop hidden listbox/menu options so we
+                    // don't falsely "succeed" clicking a collapsed/virtualized one.
+                    const role = (el.getAttribute && el.getAttribute('role')) || '';
+                    if (role !== 'option' && role !== 'menuitemradio' && role !== 'menuitemcheckbox' && role !== 'treeitem') return true;
+                    try {
+                      const r = el.getBoundingClientRect();
+                      if (r.width < 1 || r.height < 1) return false;
+                      const s = window.getComputedStyle(el);
+                      if (s.visibility === 'hidden' || s.display === 'none' || parseFloat(s.opacity) === 0) return false;
+                      if (el.closest('[aria-hidden="true"],[hidden]')) return false;
+                      return true;
+                    } catch (e) { return false; }
+                  });
                   // See primary path: don't match editable text fields by their
                   // typed value, or click({text}) resolves to the filter box
                   // instead of the option and loops.
