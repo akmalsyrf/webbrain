@@ -641,7 +641,7 @@
       const needle = params.text.toLowerCase();
       const explicit = params.textMatch || '';
       // Include inputs/select/textarea so we can match by placeholder, value, or aria-label
-      const sels = 'a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], input:not([type="hidden"]), textarea, select, input[type="button"], input[type="submit"], summary, label, [onclick], [data-action]';
+      const sels = 'a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="treeitem"], input:not([type="hidden"]), textarea, select, input[type="button"], input[type="submit"], summary, label, [onclick], [data-action]';
       // Modal scoping: if a topmost modal/dialog is open, restrict the search
       // to elements inside it. Prevents the classic failure where the model
       // types "Publish release" and the resolver clicks the dimmed Publish
@@ -651,9 +651,21 @@
       const _modalRoot = _findTopmostModal();
       const _scope = _modalRoot || document;
       const all = Array.from(_scope.querySelectorAll(sels));
+      // A text field's `value` is content the user typed, NOT a click label.
+      // Matching on it makes click({text}) resolve to the field you just filled
+      // (e.g. a combobox/filter box whose value now equals the needle) instead
+      // of the menu option bearing the same text — the "click succeeds but
+      // nothing happens, model loops forever" bug. Only treat `value` as a label
+      // for button-like inputs; non-input elements with .value (<select>) keep it.
+      const _valIsLabel = (el) => {
+        if (el.tagName === 'TEXTAREA') return false;
+        if (el.tagName !== 'INPUT') return true;
+        const t = (el.getAttribute('type') || 'text').toLowerCase();
+        return t === 'button' || t === 'submit' || t === 'reset';
+      };
       const normalized = all.map(e => ({
         e,
-        txt: (e.innerText || e.value || e.placeholder || e.ariaLabel || '').trim().toLowerCase(),
+        txt: (e.innerText || (_valIsLabel(e) ? e.value : '') || e.placeholder || e.ariaLabel || '').trim().toLowerCase(),
       })).filter(x => !!x.txt);
 
       // Build label→input map so we can match label text and resolve to associated input

@@ -63,6 +63,12 @@ export class Agent {
     // trips the budget. The fixed system+tool-schema overhead rides along in the
     // reported number; the delta captures the new messages.
     this._lastEstCharsAtReport = new Map();
+    // tabId -> number of upcoming steps during which the soft (char/message)
+    // compaction triggers are suppressed after a compaction just ran. Provides
+    // hysteresis so a single fresh screenshot can't re-arm compaction the very
+    // next step (compact-every-step thrash). A genuine token-budget overflow is
+    // never suppressed — see _manageContext.
+    this._compactCooldown = new Map();
     this.autoScreenshot = 'state_change';
     this.useSiteAdapters = true;
     this.costAllowanceSessionUsd = DEFAULT_CLOUD_COST_ALLOWANCE_USD;
@@ -2107,6 +2113,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.conversationIds.delete(tabId);
     this._lastInputTokens.delete(tabId);
     this._lastEstCharsAtReport.delete(tabId);
+    this._compactCooldown.delete(tabId);
     this._cleanupTab(tabId, { preserveRunGuard: true });
   }
 
@@ -2313,19 +2320,51 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return Math.floor(window * this.contextCompactRatio);
   }
 
+  // Char-equivalent billed for the single screenshot that survives image
+  // pruning before a request is sent. A vision image costs ~1.5k tokens
+  // regardless of byte size, so counting the raw base64 (up to ~1.4 MB) would
+  // overstate the real prompt by 100×+ — that mis-measurement made the char
+  // trigger fire on essentially every screenshot step, compacting in a loop.
+  static IMAGE_CHAR_COST = 6000; // ≈1.5k tokens
+
   /**
    * Rough char count of a conversation, used as a cheap token proxy (≈ chars/4).
-   * Counts string content verbatim and JSON-stringifies structured content /
-   * tool_calls. Shared by _manageContext (current size) and the LLM call site
-   * (size at the moment usage was reported) so their delta is consistent.
+   * Counts text verbatim and JSON-stringifies structured content / tool_calls,
+   * but does NOT count base64 image data: screenshots are pruned to the single
+   * most-recent image before a request is sent (_pruneOldImages, keep=1), and a
+   * vision image's token cost is byte-size-independent, so we substitute a flat
+   * IMAGE_CHAR_COST for the one surviving image instead. Shared by
+   * _manageContext (current size) and the LLM call site (size at the moment
+   * usage was reported) so their delta stays consistent.
    */
   _estimateContextChars(messages) {
+    const IMG_DATA_URL = /data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\\]+/g;
     let totalChars = 0;
+    let hasImage = false;
     for (const msg of messages) {
-      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-      totalChars += content.length;
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block && (block.type === 'image_url' || block.type === 'image')) {
+            hasImage = true; // billed once below, not by byte size
+          } else if (typeof block?.text === 'string') {
+            totalChars += block.text.length;
+          } else {
+            totalChars += JSON.stringify(block || '').length;
+          }
+        }
+      } else if (typeof msg.content === 'string') {
+        if (msg.content.includes('data:image/')) {
+          hasImage = true;
+          totalChars += msg.content.replace(IMG_DATA_URL, '').length;
+        } else {
+          totalChars += msg.content.length;
+        }
+      } else {
+        totalChars += JSON.stringify(msg.content || '').length;
+      }
       if (msg.tool_calls) totalChars += JSON.stringify(msg.tool_calls).length;
     }
+    if (hasImage) totalChars += Agent.IMAGE_CHAR_COST;
     return totalChars;
   }
 
@@ -2405,6 +2444,17 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const tooManyMessages = messages.length > this.maxContextMessages;
     const tooManyChars = totalChars > this.maxContextChars;
     const tooManyTokens = usedTokens > tokenBudget;
+
+    // Hysteresis: for a couple of steps after a compaction, suppress the soft
+    // (char/message) triggers so a single fresh screenshot or one bulky tool
+    // result can't immediately re-arm compaction (the compact-every-step
+    // thrash). A genuine token-budget overflow (tooManyTokens) is never
+    // suppressed — that path still protects against provider hard-errors.
+    const cooldown = this._compactCooldown.get(tabId) || 0;
+    if (cooldown > 0 && !tooManyTokens) {
+      this._compactCooldown.set(tabId, cooldown - 1);
+      return;
+    }
 
     if (!tooManyMessages && !tooManyChars && !tooManyTokens) return; // context is fine
 
@@ -2529,6 +2579,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // The next LLM call will report a fresh (smaller) input-token count; clear
     // the stale estimate so we don't immediately re-trigger on the old number.
     this._lastInputTokens.delete(tabId);
+    // Arm the hysteresis cooldown: skip soft triggers for the next 2 steps.
+    this._compactCooldown.set(tabId, 2);
 
     console.log(`[WebBrain] Context trimmed for tab ${tabId}: ${oldMessages.length} old messages → summary. ${messages.length} messages remain.`);
 
