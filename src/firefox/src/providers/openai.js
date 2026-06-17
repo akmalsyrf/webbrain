@@ -33,11 +33,16 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
 
   _headers() {
     const headers = { 'Content-Type': 'application/json' };
+    const providerName = (this.config.providerName || '').toLowerCase();
     if (this.config.apiKey) {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
+    if (providerName === 'webbrain-cloud' && this.config.deviceGuid) {
+      headers['X-WebBrain-Device-Id'] = this.config.deviceGuid;
+      headers['X-WebBrain-Client'] = 'extension';
+    }
     // OpenRouter-specific headers
-    if (this.config.providerName === 'openrouter') {
+    if (providerName === 'openrouter') {
       headers['HTTP-Referer'] = this.config.siteUrl || 'https://github.com/esokullu/webbrain';
       headers['X-Title'] = 'WebBrain';
     }
@@ -70,10 +75,21 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
   }
 
   _formatHttpError(status, body) {
+    const providerName = (this.config.providerName || '').toLowerCase();
+    if (status === 402 && providerName === 'webbrain-cloud') {
+      let subscribeUrl = 'https://webbrain.one/subscribe';
+      let message = 'Daily free WebBrain Cloud allowance used.';
+      try {
+        const parsed = JSON.parse(body || '{}');
+        subscribeUrl = parsed.subscribe_url || subscribeUrl;
+        message = parsed.error?.message || message;
+      } catch { /* keep fallback */ }
+      return `${message}\nSubscribe for more usage: ${subscribeUrl}`;
+    }
     // Ollama enforces an Origin allowlist; browser extensions hit it with a
     // moz-extension:// or chrome-extension:// origin that isn't on the
     // default list, producing a 403 with an empty body.
-    if (status === 403 && this.config.providerName === 'ollama') {
+    if (status === 403 && providerName === 'ollama') {
       return (
         (body ? body + '\n\n' : '') +
         'Ollama rejected the extension origin. Restart Ollama with OLLAMA_ORIGINS allowing extensions, e.g.:\n' +

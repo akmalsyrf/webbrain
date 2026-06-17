@@ -2,6 +2,9 @@ import { LlamaCppProvider } from './llamacpp.js';
 import { OpenAICompatibleProvider } from './openai.js';
 import { AnthropicProvider, AnthropicOAuthProvider } from './anthropic.js';
 
+const WEBBRAIN_CLOUD_PROVIDER_ID = 'webbrain_cloud';
+const WEBBRAIN_DEVICE_GUID_KEY = 'webbrainDeviceGuid';
+
 /**
  * Manages LLM provider instances and persists configuration.
  */
@@ -24,7 +27,7 @@ export class ProviderManager {
    * defaults do not stay visible forever for existing users.
    */
   async load() {
-    const data = await browser.storage.local.get(['providers', 'activeProvider']);
+    const data = await browser.storage.local.get(['providers', 'activeProvider', WEBBRAIN_DEVICE_GUID_KEY]);
     const stored = data.providers || {};
     const defaults = this._defaultConfigs();
     const configs = {};
@@ -36,9 +39,13 @@ export class ProviderManager {
     }
     delete configs.webbrain;
     delete configs.openai_subscription;
+    if (configs[WEBBRAIN_CLOUD_PROVIDER_ID]) {
+      configs[WEBBRAIN_CLOUD_PROVIDER_ID].deviceGuid = await this._getDeviceGuid(data[WEBBRAIN_DEVICE_GUID_KEY]);
+    }
     this.activeProviderId = ['webbrain', 'openai_subscription'].includes(data.activeProvider)
-      ? 'llamacpp'
-      : (data.activeProvider || 'llamacpp');
+      ? WEBBRAIN_CLOUD_PROVIDER_ID
+      : (data.activeProvider || WEBBRAIN_CLOUD_PROVIDER_ID);
+    if (!configs[this.activeProviderId]) this.activeProviderId = WEBBRAIN_CLOUD_PROVIDER_ID;
 
     this.providers.clear();
     for (const [id, config] of Object.entries(configs)) {
@@ -62,6 +69,21 @@ export class ProviderManager {
 
   _defaultConfigs() {
     return {
+      webbrain_cloud: {
+        type: 'openai',
+        category: 'cloud',
+        label: 'WebBrain Cloud',
+        providerName: 'webbrain-cloud',
+        baseUrl: 'https://api.webbrain.one/v1',
+        model: 'webbrain-cloud 1.0',
+        contextWindow: 256000,
+        inputCostPerMillionUsd: 0.20,
+        outputCostPerMillionUsd: 1.15,
+        supportsStreamUsageOptions: true,
+        supportsVision: true,
+        apiKey: '',
+        enabled: true,
+      },
       llamacpp: {
         type: 'llamacpp',
         category: 'local',
@@ -518,5 +540,56 @@ export class ProviderManager {
     const pick = loaded.length ? loaded : chat;
     const ids = pick.map((m) => m.id).filter(Boolean);
     return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
+  }
+
+  async _getDeviceGuid(storedGuid) {
+    if (this._looksLikeGuid(storedGuid)) return storedGuid;
+    const material = await this._deviceFingerprintMaterial();
+    const guid = await this._guidFromMaterial(material);
+    try {
+      await browser.storage.local.set({ [WEBBRAIN_DEVICE_GUID_KEY]: guid });
+    } catch (e) {
+      console.warn('[providers] failed to persist device guid:', e);
+    }
+    return guid;
+  }
+
+  _looksLikeGuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+  }
+
+  async _deviceFingerprintMaterial() {
+    let platform = null;
+    try {
+      platform = await browser.runtime.getPlatformInfo();
+    } catch {
+      platform = null;
+    }
+    const nav = globalThis.navigator || {};
+    return JSON.stringify({
+      runtimeId: browser.runtime?.id || '',
+      os: platform?.os || '',
+      arch: platform?.arch || '',
+      naclArch: platform?.nacl_arch || '',
+      userAgent: nav.userAgent || '',
+      platform: nav.platform || '',
+      language: nav.language || '',
+      languages: Array.isArray(nav.languages) ? nav.languages.join(',') : '',
+      hardwareConcurrency: nav.hardwareConcurrency || '',
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    });
+  }
+
+  async _guidFromMaterial(material) {
+    const bytes = new TextEncoder().encode(`webbrain-device-v1:${material}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+    return [
+      hex.slice(0, 8),
+      hex.slice(8, 12),
+      `5${hex.slice(13, 16)}`,
+      `${(parseInt(hex.slice(16, 18), 16) & 0x3f | 0x80).toString(16).padStart(2, '0')}${hex.slice(18, 20)}`,
+      hex.slice(20, 32),
+    ].join('-');
   }
 }
