@@ -6,6 +6,12 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [13.1.0] - 2026-06-17
+
+### Changed
+- Website header GitHub controls now use the star pill as the single repository link, removing the duplicate GitHub CTA across localized website pages.
+- Updated release metadata, Settings subtitle versions, architecture docs, and Chrome / Firefox submission archives for 13.1.0.
+
 ## [13.0.1] - 2026-06-12
 
 ### Fixed
