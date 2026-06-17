@@ -650,12 +650,13 @@
       // reachable via coordinate clicks.
       const _modalRoot = _findTopmostModal();
       const _scope = _modalRoot || document;
-      const all = Array.from(_scope.querySelectorAll(sels)).filter(el => {
-        // Listbox/menu option roles are often kept mounted but hidden while a
-        // custom select is collapsed or virtualized (Radix/MUI/React-Select).
-        // Drop hidden ones from the primary pool so click({text}) can't match —
-        // and falsely "succeed" on — an invisible option; the open-listbox
-        // fallback still surfaces them when the control is actually open.
+      // Candidate filter: listbox/menu option roles are often kept mounted but
+      // hidden while a custom select is collapsed or virtualized (Radix/MUI/
+      // React-Select). Drop hidden ones so click({text}) can't match — and
+      // falsely "succeed" on — an invisible option; the open-listbox fallback
+      // still surfaces them when the control is actually open. Shared by the
+      // primary pass AND the auto-scroll retry below so they can't diverge.
+      const _keepCandidate = (el) => {
         const role = (el.getAttribute && el.getAttribute('role')) || '';
         if (role !== 'option' && role !== 'menuitemradio' && role !== 'menuitemcheckbox' && role !== 'treeitem') return true;
         try {
@@ -666,7 +667,7 @@
           if (el.closest('[aria-hidden="true"],[hidden]')) return false;
           return true;
         } catch (e) { return false; }
-      });
+      };
       // A text field's `value` is content the user typed, NOT a click label.
       // Matching on it makes click({text}) resolve to the field you just filled
       // (e.g. a combobox/filter box whose value now equals the needle) instead
@@ -679,10 +680,9 @@
         const t = (el.getAttribute('type') || 'text').toLowerCase();
         return t === 'button' || t === 'submit' || t === 'reset';
       };
-      const normalized = all.map(e => ({
-        e,
-        txt: (e.innerText || (_valIsLabel(e) ? e.value : '') || e.placeholder || e.ariaLabel || '').trim().toLowerCase(),
-      })).filter(x => !!x.txt);
+      const _normTxt = (el) => (el.innerText || (_valIsLabel(el) ? el.value : '') || el.placeholder || el.ariaLabel || '').trim().toLowerCase();
+      const all = Array.from(_scope.querySelectorAll(sels)).filter(_keepCandidate);
+      const normalized = all.map(e => ({ e, txt: _normTxt(e) })).filter(x => !!x.txt);
 
       // Build label→input map so we can match label text and resolve to associated input
       const labelMap = new Map();
@@ -738,11 +738,8 @@
           // Re-query after scroll. Re-resolve the modal root in case the
           // dialog opened/closed during scroll.
           const _retryScope = _findTopmostModal() || document;
-          const allRetry = Array.from(_retryScope.querySelectorAll(sels));
-          const normRetry = allRetry.map(e => ({
-            e,
-            txt: (e.innerText || e.value || e.placeholder || e.ariaLabel || '').trim().toLowerCase(),
-          })).filter(x => !!x.txt);
+          const allRetry = Array.from(_retryScope.querySelectorAll(sels)).filter(_keepCandidate);
+          const normRetry = allRetry.map(e => ({ e, txt: _normTxt(e) })).filter(x => !!x.txt);
           for (const m of modes) {
             if (m === 'exact') matches = normRetry.filter(x => x.txt === needle);
             else if (m === 'prefix') matches = normRetry.filter(x => x.txt.startsWith(needle));
