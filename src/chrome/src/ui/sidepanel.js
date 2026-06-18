@@ -469,7 +469,7 @@ async function init() {
   persistObserver.observe(messagesEl, { childList: true, subtree: true, characterData: true });
 
   await loadProviders();
-  await testConnection();
+  await testConnection({ skipWebBrainCloud: true });
   refreshRecommendedActions();
 
   chrome.tabs.onActivated.addListener(async (info) => {
@@ -673,7 +673,20 @@ async function loadProviders() {
   }
 }
 
-async function testConnection() {
+function isWebBrainCloudProviderSelected() {
+  return providerSelect?.value === 'webbrain_cloud';
+}
+
+function markSelectedProviderUntested() {
+  statusDot.className = 'status-dot';
+  statusDot.title = providerSelect?.selectedOptions?.[0]?.textContent || providerSelect?.value || '';
+}
+
+async function testConnection(options = {}) {
+  if (options.skipWebBrainCloud && isWebBrainCloudProviderSelected()) {
+    markSelectedProviderUntested();
+    return;
+  }
   statusDot.className = 'status-dot connecting';
   try {
     const res = await sendToBackground('test_provider', {
