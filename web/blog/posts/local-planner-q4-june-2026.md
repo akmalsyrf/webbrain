@@ -1,22 +1,22 @@
 ---
 title: >
-  Gemma 4 Coder, North Mini Code, DiffusionGemma, and VibeThinker in the WebBrain local planner bench
+  DiffusionGemma hits 0.35s median in the WebBrain local planner bench
 slug: local-planner-q4-june-2026
 sortOrder: 0
 date: 2026-06-19
-readTime: 8 min read
+readTime: 9 min read
 description: >
-  We tested four new local model candidates against WebBrain's frozen first-tool-call browser-agent harness: Gemma 4 12B Coder, Cohere North-Mini-Code, DiffusionGemma, and VibeThinker-3B.
+  DiffusionGemma, Gemma 4 12B Coder, Cohere North-Mini-Code, and VibeThinker-3B in WebBrain's frozen first-tool-call browser-agent harness.
 excerpt: >
-  Gemma 4 12B Coder and North Mini Code both completed the frozen legacy tool-call bench at Q4. DiffusionGemma ran only through the special diffusion CLI, not llama-server. VibeThinker confirmed its own model-card warning: it is not a browser-agent tool-calling model.
+  Gemma 4 12B Coder, North Mini Code, and DiffusionGemma all completed the frozen legacy tool-call bench through different serving paths. DiffusionGemma was the speed surprise under vLLM and also handled the vision probe. VibeThinker confirmed its own model-card warning: it is not a browser-agent tool-calling model.
 titleTag: >
-  Local browser-agent planner bench: Gemma 4 Coder, North, DiffusionGemma, VibeThinker - WebBrain Blog
+  DiffusionGemma hits 0.35s median in the WebBrain local planner bench - WebBrain Blog
 ogTitle: >
-  Local browser-agent planner bench: Gemma 4 Coder, North, DiffusionGemma, VibeThinker
+  DiffusionGemma hits 0.35s median in the WebBrain local planner bench
 ogDescription: >
-  Gemma 4 12B Coder and North Mini Code completed WebBrain's frozen Q4 local planner run; DiffusionGemma is CLI-only for now; VibeThinker is not a tool-calling agent model.
+  Gemma 4 12B Coder, North Mini Code, and DiffusionGemma completed WebBrain's frozen local planner run; VibeThinker is not a tool-calling agent model.
 twitterTitle: >
-  Local browser-agent planner bench: Gemma 4 Coder, North, DiffusionGemma, VibeThinker
+  DiffusionGemma hits 0.35s median in the WebBrain local planner bench
 twitterDescription: >
   A practical local-serving pass over four new browser-agent planner candidates for WebBrain.
 keywords:
@@ -32,7 +32,7 @@ keywords:
   - vLLM
 html: true
 lede: >
-  We pulled four new local candidates into the WebBrain bench: **Gemma 4 12B Coder Fable5 Composer 2.5**, **Cohere North-Mini-Code 1.0**, **DiffusionGemma-26B-A4B-it**, and **VibeThinker-3B**. The practical result: Gemma and North both completed the frozen legacy first-tool-call run at Q4, DiffusionGemma required a special CLI path that cannot yet run the OpenAI-compatible harness, and VibeThinker matched its own caveat: it is not trained for tool-calling or autonomous agents.
+  We pulled four new local candidates into the WebBrain bench: **Gemma 4 12B Coder Fable5 Composer 2.5**, **Cohere North-Mini-Code 1.0**, **DiffusionGemma-26B-A4B-it**, and **VibeThinker-3B**. The practical result: Gemma and North both completed the frozen legacy first-tool-call run at Q4, DiffusionGemma could not use the normal llama.cpp server path but did complete the harness through vLLM at very high speed, and VibeThinker matched its own caveat: it is not trained for tool-calling or autonomous agents.
 ---
 
 ## What we ran
@@ -64,13 +64,13 @@ The strict numbers below score only the first model action. **Exact** means tool
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | Gemma 4 12B Coder Fable5 Composer 2.5 | `Q4_K_M` GGUF, llama.cpp, 32k ctx | 94/100 | 9% | 26% | 1.9s | 2.8s | ~8.8-9.0 GB | Clean text run |
 | Cohere North-Mini-Code 1.0 | `Q4_K_M` GGUF, llama.cpp b9714, 32k ctx | 93/100 | 9% | 24% | 3.2s | 4.0s | ~19.5 GB | Clean run with parser workaround |
+| DiffusionGemma-26B-A4B-it | NVFP4, vLLM, 32k ctx | 79/100 | 10% | 26% | 0.35s | 0.65s | ~32.0 GB reserved | Very fast; vision probe works |
 | VibeThinker-3B | BF16, vLLM, 64k ctx, 8 server seqs | 84/100 | 2% | 19% | 5.0s | 15.1s | ~26.8 GB reserved | Scored, but not recommended |
-| DiffusionGemma-26B-A4B-it | `Q4_K_M` GGUF, special `llama-diffusion-cli` | n/a | n/a | n/a | n/a | n/a | ~21.3 GB peak smoke | Runs, but not through llama-server |
 
 Two VRAM caveats:
 
 - The llama.cpp numbers are observed desktop readings on an RTX 5090, not isolated lab measurements. They include 32k context, full GPU offload, flash attention where available, q4 KV, and one slot.
-- The VibeThinker vLLM number is not the model's minimum memory need. The server was configured with 64k context and 8 concurrent sequences, so vLLM reserved a large GPU pool.
+- The vLLM numbers are not minimum model memory needs. The DiffusionGemma endpoint reserved almost the whole RTX 5090, and the VibeThinker server was configured with 64k context and 8 concurrent sequences.
 
 ## Gemma 4 12B Coder
 
@@ -172,7 +172,7 @@ So North is also text-only in this local run.
 
 ## DiffusionGemma
 
-Model: [google/diffusiongemma-26B-A4B-it](https://huggingface.co/google/diffusiongemma-26B-A4B-it), Q4 GGUF from [unsloth/diffusiongemma-26B-A4B-it-GGUF](https://huggingface.co/unsloth/diffusiongemma-26B-A4B-it-GGUF)
+Model: [google/diffusiongemma-26B-A4B-it](https://huggingface.co/google/diffusiongemma-26B-A4B-it), vLLM endpoint rooted at `nvidia/diffusiongemma-26B-A4B-it-NVFP4`. We also tested the Q4 GGUF from [unsloth/diffusiongemma-26B-A4B-it-GGUF](https://huggingface.co/unsloth/diffusiongemma-26B-A4B-it-GGUF) for local llama.cpp compatibility.
 
 Local file:
 
@@ -180,7 +180,35 @@ Local file:
 G:\llama\models\diffusiongemma-26b-a4b-it\diffusiongemma-26B-A4B-it-Q4_K_M.gguf
 ```
 
-This one is the most interesting runtime story. Standard `llama-server` and `llama-cli` did not load the file in three builds we checked:
+DiffusionGemma was the headline surprise.
+
+The expectation going in was simple: if the model can preserve roughly the same action quality as Gemma 4 26B-A4B while running much faster, it changes the local-agent tradeoff. That is mostly what happened. It did not beat the old Gemma 26B run on strict action quality, but it got close enough to be interesting and was dramatically faster once the vLLM server was warm.
+
+| Metric | Value |
+| --- | ---: |
+| Completed cases | 100/100 |
+| Transport errors | 0 |
+| Parsed calls | 79/100 |
+| Exact first-call match | 10/100 |
+| Tool-name match | 26/100 |
+| Average latency | 0.38s |
+| Median latency | 0.35s |
+| p95 latency | 0.65s |
+| Slowest case | 0.88s |
+| Observed VRAM | ~32.0 GB reserved by vLLM |
+
+The first one-case smoke took 8.8s and picked `about:extensions` instead of Firefox's expected `about:addons`. After that warmup, the full 100-case run finished in 37.8s wall time, with most cases between 200ms and 650ms. That is the flashy part: it behaves like a large local model, but the warmed vLLM path felt closer to a lightweight router.
+
+Quality was more mixed. Compared with the earlier Gemma 4 26B-A4B saved run, DiffusionGemma had:
+
+- better exact score by a small amount than Gemma 4 12B Coder and North Mini Code,
+- the same 26% tool-name score as Gemma 4 12B Coder,
+- lower parseability than Gemma 26B, with 21 no-tool answers,
+- much better latency than every other large-class local run in this table.
+
+The other surprise is vision. Unlike the Gemma 4 12B Coder and North Q4 GGUFs, the vLLM DiffusionGemma endpoint accepted the `vision-probe.mjs` screenshot and produced a useful structured caption of the Google password-error page. It correctly identified the page purpose, the visible text, the focused password input, and the "Enter a password" error state. That makes it more than a text planner curiosity.
+
+There is still a serving split to be aware of. Standard `llama-server` and `llama-cli` did not load the Q4 GGUF in three builds we checked:
 
 - the existing April-era `G:\llama` build,
 - `G:\llama-b9286`,
@@ -213,7 +241,7 @@ llama-diffusion-cli.exe \
 
 That worked. It produced a coherent one-sentence answer and peaked around 21.3 GB total 5090 memory in the smoke run. The CLI reported about 1.3s total generation time for the 256-token canvas, using entropy-bound early stopping.
 
-But this is not a WebBrain score. There is no OpenAI-compatible `llama-server` path for this model in the tested builds, and the benchmark harness expects `/v1/chat/completions`. DiffusionGemma is worth revisiting as soon as a server-compatible diffusion runner exists.
+But the WebBrain score above comes from vLLM, not from the GGUF CLI path. For local llama.cpp users, this is still not drop-in. For vLLM users with enough VRAM, it is suddenly one of the most interesting candidates in the batch.
 
 ## VibeThinker
 
@@ -246,9 +274,9 @@ So the fair interpretation is narrow: VibeThinker may still be interesting for r
 
 ## What I would keep testing
 
-The practical local candidates from this batch are Gemma 4 12B Coder and North Mini Code.
+The practical local candidates from this batch are DiffusionGemma on vLLM, Gemma 4 12B Coder, and North Mini Code.
 
-Gemma is lighter and faster. North is heavier, slightly slower, and needed a parser workaround, but once raw actions were allowed through it completed the full run cleanly. Both have the same exact-match score, and both overuse `get_accessibility_tree`.
+Gemma is lighter and faster in the llama.cpp lane. North is heavier, slightly slower, and needed a parser workaround, but once raw actions were allowed through it completed the full run cleanly. Both have the same exact-match score, and both overuse `get_accessibility_tree`.
 
 That suggests the next useful experiment is prompt-side, not model-side:
 
@@ -257,7 +285,7 @@ That suggests the next useful experiment is prompt-side, not model-side:
 - keep the frozen legacy parser path for apples-to-apples comparison,
 - rerun Gemma and North after the prompt change.
 
-DiffusionGemma is a separate track. It is the most unusual model in the batch and the smoke result is promising, but it needs an OpenAI-compatible diffusion serving path before it can enter this benchmark honestly.
+DiffusionGemma is the speed track. It is the most unusual model in the batch, and the vLLM run showed why people are excited about it: large-model behavior with sub-second warmed routing latency. The remaining question is whether prompt changes can reduce its no-tool rate without losing that speed.
 
 VibeThinker should stay out of the browser-agent planner table unless a tool-trained variant appears.
 
@@ -279,6 +307,7 @@ For context, here is the same strict first-tool comparison across the saved runs
 | Browser-Use Qwen 30B-A3B Q4 | 93/100 | 12% | 35% | 0.47s |
 | Qwen 3.5 4B | 82/100 | 12% | 33% | 5.4s |
 | Gemma 4 E2B | 76/100 | 12% | 31% | 3.8s |
+| DiffusionGemma 26B-A4B vLLM | 79/100 | 10% | 26% | 0.35s |
 | Gemma 4 12B Coder Q4 | 94/100 | 9% | 26% | 1.9s |
 | North Mini Code Q4 | 93/100 | 9% | 24% | 3.2s |
 | Qwen 3.5 0.8B | 90/100 | 7% | 15% | 0.44s |
@@ -319,9 +348,9 @@ North belongs in the large local tier, where the question is whether a heavier m
 | --- | ---: | ---: | ---: | ---: |
 | Qwen 3.6 35B-A3B | 90/100 | 18% | 38% | 10.3s |
 | Gemma 4 26B-A4B | 87/100 | 13% | 30% | 1.4s |
+| DiffusionGemma 26B-A4B vLLM | 79/100 | 10% | 26% | 0.35s |
 | North Mini Code Q4 | 93/100 | 9% | 24% | 3.2s |
-| DiffusionGemma 26B-A4B | pending | pending | pending | pending |
 
-North is operationally promising because it loaded, fit, and produced parseable actions after the `--skip-chat-parsing` workaround. But it does not beat the older large local models on first-action quality. Qwen 3.6 35B-A3B remains the large-tier action-selection reference, while Gemma 4 26B-A4B remains much faster in this saved run. DiffusionGemma should land in this same class once we have the vLLM result.
+North is operationally promising because it loaded, fit, and produced parseable actions after the `--skip-chat-parsing` workaround. But it does not beat the older large local models on first-action quality. Qwen 3.6 35B-A3B remains the large-tier action-selection reference. Gemma 4 26B-A4B still has better strict routing quality than DiffusionGemma in this saved replay, but DiffusionGemma is the speed outlier: 0.35s median versus 1.4s for Gemma 26B and 10.3s for Qwen 35B.
 
-The new models did not beat the earlier leaders on strict first-action accuracy. Their stronger signal is operational: Gemma 4 12B Coder is light and parseable, while North Mini Code is heavy but also parseable once its native action format is allowed through. Both need prompt work before they can challenge the older Qwen, MiniMax, Sonnet, or Nemotron runs on action selection.
+The new models did not beat the earlier leaders on strict first-action accuracy. Their stronger signal is operational: DiffusionGemma is genuinely fast through vLLM and vision-capable, Gemma 4 12B Coder is light and parseable, and North Mini Code is heavy but also parseable once its native action format is allowed through. All three need prompt work before they can challenge the older Qwen, MiniMax, Sonnet, or Nemotron runs on action selection.
