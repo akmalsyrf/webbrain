@@ -84,6 +84,12 @@ const { ProviderManager: ProviderManagerCh } = await import(
 const { ProviderManager: ProviderManagerFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/manager.js').replace(/\\/g, '/')
 );
+const { inferContextWindow: inferContextWindowCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/providers/context-windows.js').replace(/\\/g, '/')
+);
+const { inferContextWindow: inferContextWindowFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/providers/context-windows.js').replace(/\\/g, '/')
+);
 const { OpenAICompatibleProvider: OpenAIProviderCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/openai.js').replace(/\\/g, '/')
 );
@@ -1986,6 +1992,30 @@ test('categoryFor: unknown id with no category defaults to cloud', () => {
   for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
     assert.equal(PM.categoryFor('some_new_thing', { type: 'openai' }), 'cloud');
     assert.equal(PM.categoryFor('whatever', {}), 'cloud');
+  }
+});
+
+test('inferContextWindow: model-aware cloud/router defaults and local 16k fallback', () => {
+  for (const infer of [inferContextWindowCh, inferContextWindowFx]) {
+    assert.equal(infer({ category: 'local', providerName: 'lmstudio', model: 'qwen3.7-plus' }), 16384);
+    assert.equal(infer({ category: 'cloud', providerName: 'openai', model: 'gpt-5.5-pro' }), 1050000);
+    assert.equal(infer({ category: 'cloud', providerName: 'openai', model: 'gpt-5.5' }), 400000);
+    assert.equal(infer({ category: 'cloud', providerName: 'anthropic', model: 'claude-opus-4-8' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'anthropic', model: 'claude-sonnet-4-6' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'anthropic', model: 'claude-haiku-4-5' }), 200000);
+    assert.equal(infer({ category: 'cloud', providerName: 'gemini', model: 'gemini-3.1-flash' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'mistral', model: 'mistral-medium-3.5' }), 262144);
+    assert.equal(infer({ category: 'cloud', providerName: 'deepseek', model: 'deepseek-v4-flash' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'xai', model: 'grok-4.3' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'groq', model: 'openai/gpt-oss-120b' }), 131072);
+    assert.equal(infer({ category: 'cloud', providerName: 'nvidia', model: 'nvidia/llama-3.3-nemotron-super-49b' }), 131072);
+    assert.equal(infer({ category: 'router', providerName: 'openrouter', model: 'minimax/minimax-m3' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'minimax', model: 'minimax-m2.7' }), 204800);
+    assert.equal(infer({ category: 'router', providerName: 'openrouter', model: 'qwen/qwen3.7-max' }), 262144);
+    assert.equal(infer({ category: 'router', providerName: 'openrouter', model: 'qwen/qwen3.7-plus' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-max' }), 32768);
+    assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-plus' }), 1000000);
+    assert.equal(infer({ category: 'cloud', providerName: 'unknown', model: 'whatever' }), 128000);
   }
 });
 

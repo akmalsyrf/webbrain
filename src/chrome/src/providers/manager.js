@@ -111,6 +111,7 @@ export class ProviderManager {
         label: 'llama.cpp (Local)',
         baseUrl: 'http://localhost:8080',
         model: '',
+        contextWindow: 16384,
         // Default ON for local providers: in practice users who reach for
         // llama.cpp / Ollama / LM Studio in 2026 are running multimodal
         // models (Qwen-VL, Llama 3.2-Vision, etc.). False-positives where a
@@ -128,6 +129,7 @@ export class ProviderManager {
         providerName: 'ollama',
         baseUrl: 'http://localhost:11434/v1',
         model: '',
+        contextWindow: 16384,
         apiKey: 'ollama',
         supportsVision: true,
         enabled: true,
@@ -139,6 +141,7 @@ export class ProviderManager {
         providerName: 'lmstudio',
         baseUrl: 'http://localhost:1234/v1',
         model: '',
+        contextWindow: 16384,
         apiKey: 'lm-studio',
         supportsVision: true,
         enabled: true,

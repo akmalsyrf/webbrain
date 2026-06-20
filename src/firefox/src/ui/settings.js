@@ -8,7 +8,7 @@ import { CAPABILITY_LABEL } from '../agent/permission-gate.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '14.0.4';
+const EXT_VERSION = '14.0.5';
 
 const providersContainer = document.getElementById('providers');
 const verboseToggle = document.getElementById('toggle-verbose');
@@ -680,10 +680,40 @@ const PROMPT_TIER_FIELD = {
   ],
 };
 
+const CONTEXT_WINDOW_FIELD = {
+  key: 'contextWindow',
+  labelKey: 'st.provider.field.context_window',
+  type: 'number',
+  placeholder: '16384',
+  min: 4096,
+  step: 1024,
+};
+
 const COST_ESTIMATE_FIELDS = [
   { key: 'inputCostPerMillionUsd', labelKey: 'st.provider.field.input_cost_per_million', type: 'number', placeholder: '3.00' },
   { key: 'outputCostPerMillionUsd', labelKey: 'st.provider.field.output_cost_per_million', type: 'number', placeholder: '15.00' },
 ];
+
+const ZERO_ALLOWED_NUMBER_FIELDS = new Set([
+  'inputCostPerMillionUsd',
+  'outputCostPerMillionUsd',
+]);
+
+function providerInputValue(input) {
+  if (input.dataset.type === 'checkbox' || input.type === 'checkbox') {
+    return input.checked;
+  }
+  if (input.dataset.type === 'number' || input.type === 'number') {
+    const raw = input.value.trim();
+    if (raw === '') return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return '';
+    return ZERO_ALLOWED_NUMBER_FIELDS.has(input.dataset.key)
+      ? (n >= 0 ? n : '')
+      : (n > 0 ? n : '');
+  }
+  return input.value;
+}
 
 // Effective tier for the dropdown's initial value — same precedence as the
 // provider getter: cloud is forced full; an explicit promptTier wins; the
@@ -711,6 +741,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:8080' },
         { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'qwen/qwen3.5-9b' },
+        CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
       ],
@@ -719,6 +750,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:11434/v1' },
         { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'llama3.1' },
+        CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
       ],
@@ -727,6 +759,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:1234/v1' },
         { key: 'model', labelKey: 'st.provider.field.model_optional', type: 'text', placeholderKey: 'st.provider.field.model_loaded_hint' },
+        CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
       ],
@@ -752,8 +785,8 @@ function renderProviders() {
     anthropic: {
       fields: [
         { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'sk-ant-...' },
-        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'claude-opus-4-7',
-          suggestions: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'] },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'claude-opus-4-8',
+          suggestions: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'] },
         { key: 'baseUrl', labelKey: 'st.provider.field.api_base_url', type: 'text', placeholder: 'https://api.anthropic.com' },
         ...COST_ESTIMATE_FIELDS,
       ],
@@ -922,11 +955,14 @@ function renderProviders() {
         const apiKeyLink = (field.key === 'apiKey' && config.apiKeyUrl)
           ? ` <a href="${escapeHtml(config.apiKeyUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:11px;margin-left:6px;color:var(--accent,#4A90D9);text-decoration:none;">${escapeHtml(t('st.providers.get_api_key'))}</a>`
           : '';
+        const minAttr = field.min != null ? ` min="${escapeHtml(field.min)}"` : '';
+        const stepAttr = field.step != null ? ` step="${escapeHtml(field.step)}"` : '';
+        const value = config[field.key] ?? '';
         fieldsHTML += `
           <div class="field">
             <label>${escapeHtml(label)}${apiKeyLink}</label>
-            <input type="${field.type}" data-provider="${id}" data-key="${field.key}" ${listAttr}
-                   value="${escapeHtml(config[field.key] || '')}" placeholder="${escapeHtml(placeholder)}">
+            <input type="${field.type}" data-provider="${id}" data-key="${field.key}" data-type="${field.type}" ${listAttr}${minAttr}${stepAttr}
+                   value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}">
             ${datalistHTML}
             ${loadBtnHTML}
           </div>
@@ -1214,11 +1250,7 @@ async function saveProvider(id, { showFlash = true } = {}) {
   const inputs = document.querySelectorAll(`input[data-provider="${id}"], select[data-provider="${id}"]`);
   const config = {};
   inputs.forEach(input => {
-    if (input.dataset.type === 'checkbox' || input.type === 'checkbox') {
-      config[input.dataset.key] = input.checked;
-    } else {
-      config[input.dataset.key] = input.value;
-    }
+    config[input.dataset.key] = providerInputValue(input);
   });
 
   await sendToBackground('update_provider', { providerId: id, config });
@@ -1256,11 +1288,7 @@ function syncInputsIntoProvidersData() {
     const id = input.dataset.provider;
     const key = input.dataset.key;
     if (!id || !key || !providersData[id]) return;
-    if (input.dataset.type === 'checkbox' || input.type === 'checkbox') {
-      providersData[id][key] = input.checked;
-    } else {
-      providersData[id][key] = input.value;
-    }
+    providersData[id][key] = providerInputValue(input);
   });
 }
 

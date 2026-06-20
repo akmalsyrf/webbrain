@@ -252,6 +252,7 @@ export default {
   'st.provider.field.api_key': 'API Key',
   'st.provider.field.model': 'Model',
   'st.provider.field.model_optional': 'Model (optional)',
+  'st.provider.field.context_window': 'Context window (tokens)',
   'st.provider.field.supports_vision': 'Model supports vision (multimodal)',
   'st.provider.field.compact_prompt': 'Compact prompt (drops some guardrails — opt in only for models under 8B)',
   'st.provider.field.prompt_tier': 'Prompt tier',
