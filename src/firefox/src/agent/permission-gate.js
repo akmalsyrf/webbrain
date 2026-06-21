@@ -29,6 +29,7 @@ export const Capability = {
   NETWORK: 'network_write',      // fetch_url / research_url with a write method
   DOWNLOAD: 'download',          // download_* tools
   WINDOW: 'window',              // resize_window (changes browser window bounds)
+  SCHEDULE: 'schedule',          // schedule_resume / schedule_task persistent future work
   // NOTE: no UPLOAD / RECORD here — upload_file and record_tab are Chrome-only
   // (CDP file injection / tabCapture+OffscreenDocument). Firefox's AGENT_TOOLS
   // does not implement them, so there is nothing to gate.
@@ -43,6 +44,7 @@ export const CAPABILITY_LABEL = {
   [Capability.NETWORK]: 'make a network request to',
   [Capability.DOWNLOAD]: 'download files from',
   [Capability.WINDOW]: 'resize the browser window for',
+  [Capability.SCHEDULE]: 'schedule future work for',
 };
 
 /**
@@ -134,6 +136,8 @@ const TOOL_CAPABILITY = {
   download_files: Capability.DOWNLOAD,
   download_resource_from_page: Capability.DOWNLOAD,
   download_social_media: Capability.DOWNLOAD,
+  schedule_resume: Capability.SCHEDULE,
+  schedule_task: Capability.SCHEDULE,
 };
 
 /**
@@ -263,6 +267,10 @@ export function hostForCapability(capability, args, currentUrlOrHost, toolName) 
       if (h) return h;
     }
     return normalizeHost(currentUrlOrHost);
+  }
+  if (capability === Capability.SCHEDULE && toolName === 'schedule_task' && args?.target?.type === 'url') {
+    const h = resolveHostAgainst(args.target.url, currentUrlOrHost);
+    if (h) return h;
   }
   return normalizeHost(currentUrlOrHost);
 }

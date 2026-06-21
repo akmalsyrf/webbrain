@@ -1,5 +1,6 @@
 import { ProviderManager } from './providers/manager.js';
 import { Agent } from './agent/agent.js';
+import { ScheduledJobManager } from './agent/scheduler.js';
 import {
   startClaudeOAuth,
   refreshClaudeAccessToken,
@@ -15,6 +16,26 @@ import { getBalance as capsolverGetBalance } from './agent/captcha-solver.js';
 
 const providerManager = new ProviderManager();
 const agent = new Agent(providerManager);
+const scheduler = new ScheduledJobManager({
+  api: browser,
+  agent,
+  loadProviders: async () => {
+    if (providerManager.providers.size === 0) await providerManager.load();
+  },
+  sendUpdate: (tabId, type, data) => {
+    browser.runtime.sendMessage({
+      target: 'sidepanel',
+      action: 'agent_update',
+      tabId,
+      type,
+      data,
+    }).catch(() => {});
+  },
+  showIndicator: (tabId) => sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS'),
+  hideIndicator: (tabId) => sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS'),
+});
+agent.setScheduler(scheduler);
+scheduler.start();
 
 // Load maxSteps setting
 async function loadMaxSteps() {
@@ -208,6 +229,7 @@ browser.windows?.onRemoved?.addListener?.((windowId) => {
 
 // Clean up per-tab agent state when a tab is closed.
 browser.tabs.onRemoved.addListener((tabId) => {
+  scheduler.cancelForTab(tabId).catch(() => {});
   try { agent._cleanupTab(tabId); } catch { /* ignore */ }
 });
 
@@ -347,7 +369,11 @@ async function handleMessage(msg, sender) {
 
     case 'clear_conversation': {
       const tabId = msg.tabId || sender.tab?.id;
-      if (tabId) agent.clearConversation(tabId);
+      if (tabId) {
+        const conversationId = await agent.getConversationId(tabId);
+        await scheduler.cancelForConversation(tabId, conversationId);
+        agent.clearConversation(tabId);
+      }
       return { ok: true };
     }
 
@@ -356,6 +382,48 @@ async function handleMessage(msg, sender) {
       if (tabId) agent.abort(tabId);
       return { ok: true };
     }
+
+    case 'get_scratchpad': {
+      const tabId = msg.tabId || sender.tab?.id;
+      if (!tabId) return { ok: false, error: 'No tab ID' };
+      return { ok: true, ...(await agent.getScratchpad(tabId)) };
+    }
+
+    case 'list_scheduled_jobs': {
+      const tabId = msg.tabId || sender.tab?.id || null;
+      return { ok: true, jobs: await scheduler.listJobs({ tabId: msg.all ? null : tabId }) };
+    }
+
+    case 'create_scheduled_job': {
+      const tabId = msg.tabId || sender.tab?.id || null;
+      let tab = null;
+      if (tabId != null) {
+        try { tab = await browser.tabs.get(tabId); } catch {}
+      }
+      return await scheduler.createTaskJob({
+        tabId,
+        conversationId: tabId != null ? await agent.getConversationId(tabId) : null,
+        args: msg.job || msg.args || {},
+        source: 'user',
+        currentUrl: tab?.url || '',
+        currentTitle: tab?.title || '',
+      });
+    }
+
+    case 'cancel_scheduled_job':
+      return await scheduler.cancelJob(msg.jobId, 'cancelled by user');
+
+    case 'pause_scheduled_job':
+      return await scheduler.pauseJob(msg.jobId);
+
+    case 'resume_scheduled_job':
+      return await scheduler.resumeJob(msg.jobId);
+
+    case 'delete_scheduled_job':
+      return await scheduler.deleteJob(msg.jobId);
+
+    case 'run_scheduled_job_now':
+      return await scheduler.runNow(msg.jobId);
 
     case 'clarify_response': {
       // Side panel posts the user's answer to a pending clarify() tool

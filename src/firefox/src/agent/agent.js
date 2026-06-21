@@ -101,6 +101,8 @@ export class Agent {
     this._doneBlockCount = new Map();
     this._recentSubmitClicks = new Map();
     this._runningTabs = new Set(); // tabIds with an active processMessage/Stream in flight
+    this.scheduler = null;
+    this.scheduledRunPolicies = new Map(); // tabId -> { requireConsequentialConfirmation }
     // Pending clarify() tool calls awaiting user input — see Chrome
     // agent.js. Keyed by tabId → (clarifyId → {resolve, ts}).
     this._pendingClarifications = new Map();
@@ -144,6 +146,47 @@ export class Agent {
         }
       });
     } catch { /* storage API unavailable in this context */ }
+  }
+
+  setScheduler(scheduler) {
+    this.scheduler = scheduler;
+  }
+
+  isRunning(tabId) {
+    return this._runningTabs.has(tabId);
+  }
+
+  async _hydrate(_tabId) {
+    // Firefox conversations are memory-only in this port; Chrome hydrates from
+    // storage.session. Keep the method so shared scheduler/scratchpad code can
+    // call it without browser-specific branching.
+  }
+
+  async getConversationId(tabId) {
+    await this._hydrate(tabId);
+    return this.conversationIds.get(tabId) || null;
+  }
+
+  async getScratchpad(tabId) {
+    await this._hydrate(tabId);
+    const messages = this.conversations.get(tabId);
+    if (!messages) return { exists: false, body: '' };
+    const idx = this._findScratchpadIndex(messages);
+    if (idx < 0) return { exists: false, body: '' };
+    return {
+      exists: true,
+      body: this._extractScratchpadBody(messages[idx].content),
+    };
+  }
+
+  setScheduledRunPolicy(tabId, policy) {
+    this.scheduledRunPolicies.set(tabId, {
+      requireConsequentialConfirmation: policy?.requireConsequentialConfirmation !== false,
+    });
+  }
+
+  clearScheduledRunPolicy(tabId) {
+    this.scheduledRunPolicies.delete(tabId);
   }
 
   /** Lazily load the "ask before consequential actions" master switch. */
@@ -695,7 +738,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // both types AND submits, so it needs a TYPE grant and a CLICK grant.
       const capabilities = capabilitiesFor(fnName, fnArgs);
       await this._ensureGateSetting();
-      if (capabilities.length && !this._skipPermissionGate) {
+      const scheduledPolicy = this.scheduledRunPolicies.get(tabId);
+      const scheduledBypassesGate = scheduledPolicy?.requireConsequentialConfirmation === false;
+      if (capabilities.length && !this._skipPermissionGate && !scheduledBypassesGate) {
         await this.permissions.hydrate();
         const curUrl = await this._currentUrl(tabId);
         let blocked = null;     // { capability, host }
@@ -3029,6 +3074,32 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     }
     if (name === 'resize_window') {
       return await this._resizeWindow(tabId, args || {});
+    }
+    if (name === 'schedule_resume') {
+      if (!this.scheduler) return { success: false, error: 'Scheduling is not available in this build.' };
+      let tab = null;
+      try { tab = await browser.tabs.get(tabId); } catch {}
+      return await this.scheduler.createResumeJob({
+        tabId,
+        conversationId: this.conversationIds.get(tabId) || null,
+        mode: this.conversationModes.get(tabId) || 'act',
+        args: args || {},
+        currentUrl: tab?.url || '',
+        currentTitle: tab?.title || '',
+      });
+    }
+    if (name === 'schedule_task') {
+      if (!this.scheduler) return { success: false, error: 'Scheduling is not available in this build.' };
+      let tab = null;
+      try { tab = await browser.tabs.get(tabId); } catch {}
+      return await this.scheduler.createTaskJob({
+        tabId,
+        conversationId: this.conversationIds.get(tabId) || null,
+        args: args || {},
+        source: 'agent',
+        currentUrl: tab?.url || '',
+        currentTitle: tab?.title || '',
+      });
     }
 
     // clarify: pause the run and wait for the user to answer. This tool

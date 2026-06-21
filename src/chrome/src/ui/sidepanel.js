@@ -292,6 +292,7 @@ const inputArea = document.getElementById('input-area');
 const recommendedActionsEl = document.getElementById('recommended-actions');
 const recommendedActionsToggleEl = document.getElementById('recommended-actions-toggle');
 const recommendedActionsListEl = document.getElementById('recommended-actions-list');
+const scheduledJobsEl = document.getElementById('scheduled-jobs');
 const stopBtn = document.getElementById('btn-stop');
 const RECOMMENDED_ACTIONS_COLLAPSED_KEY = 'recommendedActionsCollapsed';
 const PLACEHOLDER_ROTATION_INTERVAL_MS = 10_000;
@@ -429,6 +430,8 @@ const TOOL_KEYS = {
   get_selection: 'tool.get_selection',
   new_tab: 'tool.new_tab',
   screenshot: 'tool.screenshot',
+  schedule_resume: 'tool.schedule_resume',
+  schedule_task: 'tool.schedule_task',
   done: 'tool.done',
 };
 
@@ -444,6 +447,492 @@ function friendlyToolLabel(name, args) {
   if (name === 'wait_for_element' && args?.selector) return t('tool.wait_for_element.selector', { selector: truncate(args.selector, 30) });
   const key = TOOL_KEYS[name];
   return key ? t(key) : name;
+}
+
+function formatScheduledTime(value) {
+  const ms = Date.parse(value || '');
+  if (!Number.isFinite(ms)) return t('sp.scheduled.time_unknown');
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toLocaleString();
+  }
+}
+
+function scheduledStatusLabel(status) {
+  return t(`sp.scheduled.status.${status || 'pending'}`);
+}
+
+function scheduledJobTitle(job) {
+  return String(job?.title || (job?.kind === 'resume' ? t('sp.scheduled.resume_title') : t('sp.scheduled.task_title')));
+}
+
+function scheduledJobMeta(job) {
+  const parts = [scheduledStatusLabel(job.status)];
+  if (job.nextRunAt && ['pending', 'queued', 'paused'].includes(job.status)) {
+    parts.push(t('sp.scheduled.next', { time: formatScheduledTime(job.nextRunAt) }));
+  }
+  if (job.schedule?.type === 'recurring' && job.schedule?.interval_minutes) {
+    parts.push(t('sp.scheduled.recurring', { minutes: job.schedule.interval_minutes }));
+  }
+  if (job.status === 'needs_user_input' && job.pendingClarify?.question) {
+    parts.push(truncate(String(job.pendingClarify.question), 80));
+  }
+  if (job.status === 'completed' && job.lastResult) {
+    parts.push(truncate(String(job.lastResult), 80));
+  }
+  if (job.lastError) {
+    parts.push(truncate(String(job.lastError), 80));
+  }
+  return parts.filter(Boolean).join(' · ');
+}
+
+function scheduledJobActions(job) {
+  const actions = [];
+  if (job.status === 'paused') {
+    actions.push(['resume', t('sp.scheduled.resume')], ['delete', t('sp.scheduled.delete')]);
+  } else if (['pending', 'queued', 'needs_user_input'].includes(job.status)) {
+    actions.push(['run', t('sp.scheduled.run_now')], ['pause', t('sp.scheduled.pause')], ['cancel', t('sp.scheduled.cancel')]);
+  } else if (job.status === 'running') {
+    actions.push(['cancel', t('sp.scheduled.cancel')]);
+  } else if (['failed', 'completed', 'cancelled'].includes(job.status)) {
+    actions.push(['delete', t('sp.scheduled.delete')]);
+  }
+  return actions;
+}
+
+const SCHEDULED_VISIBLE_STATUSES = new Set(['pending', 'queued', 'paused', 'running', 'needs_user_input', 'failed', 'completed']);
+const crossPanelScheduledJobIds = new Set();
+
+function visibleScheduledJobs(jobs = []) {
+  return jobs.filter((job) => SCHEDULED_VISIBLE_STATUSES.has(job.status));
+}
+
+function scheduledJobTabId(job) {
+  const tabId = job?.tabId ?? job?.target?.tabId ?? null;
+  if (tabId == null) return null;
+  const numeric = Number(tabId);
+  return Number.isFinite(numeric) ? numeric : tabId;
+}
+
+function isUrlTargetScheduledJob(job) {
+  return job?.kind === 'task' && job?.target?.type === 'url';
+}
+
+function findScheduledClarifyCard(jobId, clarifyId) {
+  for (const card of messagesEl?.querySelectorAll?.('.clarify-card[data-scheduled-job-id]') || []) {
+    if (card.dataset.scheduledJobId === String(jobId) && card.dataset.clarifyId === String(clarifyId)) {
+      return card;
+    }
+  }
+  return null;
+}
+
+function findScheduledClarifyCardForJob(jobId) {
+  for (const card of messagesEl?.querySelectorAll?.('.clarify-card[data-scheduled-job-id]') || []) {
+    if (card.dataset.scheduledJobId === String(jobId)) return card;
+  }
+  return null;
+}
+
+function findScheduledAssistantMessageForJob(jobId) {
+  const id = String(jobId || '');
+  if (!id) return null;
+  for (const msgEl of messagesEl?.querySelectorAll?.('.message.assistant[data-scheduled-job-id]') || []) {
+    if (msgEl.dataset.scheduledJobId === id) return msgEl;
+  }
+  const card = findScheduledClarifyCardForJob(id);
+  const msgEl = card?.closest?.('.message.assistant');
+  if (msgEl) return msgEl;
+  if (currentAssistantEl?.dataset?.scheduledJobId === id) return currentAssistantEl;
+  return null;
+}
+
+function ensureScheduledTerminalMessage(job) {
+  const jobId = job?.id ? String(job.id) : '';
+  if (!jobId || !isUrlTargetScheduledJob(job)) return null;
+  const existing = findScheduledAssistantMessageForJob(jobId);
+  if (existing) return existing;
+  const msgEl = addMessage('assistant', '');
+  msgEl.dataset.scheduledJobId = jobId;
+  return msgEl;
+}
+
+function ensureScheduledClarifyCards(jobs = []) {
+  if (!messagesEl) return;
+  for (const job of jobs) {
+    const pending = job?.pendingClarify;
+    if (job?.status !== 'needs_user_input' || !pending?.clarifyId) continue;
+    const jobTabId = scheduledJobTabId(job);
+    if (!isUrlTargetScheduledJob(job) && jobTabId != null && currentTabId != null && String(jobTabId) !== String(currentTabId)) continue;
+    if (findScheduledClarifyCard(job.id, pending.clarifyId)) continue;
+    const isCrossPanel = isUrlTargetScheduledJob(job) && jobTabId != null && currentTabId != null && String(jobTabId) !== String(currentTabId);
+    if (isCrossPanel) crossPanelScheduledJobIds.add(String(job.id));
+    renderClarifyCard({
+      ...pending,
+      scheduledJobId: job.id,
+      scheduledTabId: jobTabId,
+      forceNewScheduledCard: true,
+    });
+  }
+}
+
+function renderScheduledJobs(jobs = []) {
+  if (!scheduledJobsEl) return;
+  const visible = visibleScheduledJobs(jobs);
+  scheduledJobsEl.replaceChildren();
+  scheduledJobsEl.classList.toggle('hidden', visible.length === 0);
+  for (const job of visible) {
+    const card = document.createElement('div');
+    card.className = 'scheduled-job-card';
+    card.dataset.jobId = job.id;
+
+    const title = document.createElement('div');
+    title.className = 'scheduled-job-title';
+    title.textContent = scheduledJobTitle(job);
+    card.appendChild(title);
+
+    const actions = document.createElement('div');
+    actions.className = 'scheduled-job-actions';
+    for (const [action, label] of scheduledJobActions(job)) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.action = action;
+      btn.dataset.jobId = job.id;
+      btn.textContent = label;
+      actions.appendChild(btn);
+    }
+    card.appendChild(actions);
+
+    const meta = document.createElement('div');
+    meta.className = 'scheduled-job-meta';
+    meta.textContent = scheduledJobMeta(job);
+    card.appendChild(meta);
+
+    scheduledJobsEl.appendChild(card);
+  }
+  ensureScheduledClarifyCards(visible);
+}
+
+async function refreshScheduledJobs() {
+  if (!scheduledJobsEl) return;
+  try {
+    const response = await sendToBackground('list_scheduled_jobs', { all: true });
+    const jobs = response?.jobs || [];
+    renderScheduledJobs(jobs);
+    return jobs;
+  } catch (e) {
+    console.warn('[WebBrain] failed to refresh scheduled jobs:', e);
+    return [];
+  }
+}
+
+async function scheduledJobAction(action, jobId) {
+  const actionMap = {
+    run: 'run_scheduled_job_now',
+    pause: 'pause_scheduled_job',
+    resume: 'resume_scheduled_job',
+    cancel: 'cancel_scheduled_job',
+    delete: 'delete_scheduled_job',
+  };
+  const bgAction = actionMap[action];
+  if (!bgAction || !jobId) return;
+  try {
+    const response = await sendToBackground(bgAction, { jobId });
+    if (response && (response.ok === false || response.success === false)) {
+      addMessage('error', t('sp.error_prefix', { msg: response.error || 'Scheduled job action failed.' }));
+    }
+    await refreshScheduledJobs();
+  } catch (e) {
+    addMessage('error', t('sp.error_prefix', { msg: e.message }));
+  }
+}
+
+function settleScheduledRun(event, job) {
+  if (job?.id) crossPanelScheduledJobIds.delete(String(job.id));
+  const assistantEl = job?.id ? findScheduledAssistantMessageForJob(job.id) : currentAssistantEl;
+  if (assistantEl) {
+    finalizeSteps(assistantEl);
+    const textEl = assistantEl.querySelector('.message-text');
+    if (textEl && !textEl.textContent.trim() && event === 'completed' && job?.lastResult) {
+      textEl.innerHTML = formatMarkdown(job.lastResult);
+      addMessageCopyButton(assistantEl);
+    }
+  }
+  const ownsActiveRun = !currentAssistantEl || currentAssistantEl === assistantEl;
+  if (ownsActiveRun) {
+    isProcessing = false;
+    sendBtn.disabled = false;
+    hideActivity();
+    if (currentAssistantEl === assistantEl) currentAssistantEl = null;
+    abortRequested = false;
+  }
+  if (event === 'completed') playCompletionSound();
+}
+
+function handleScheduledJobEvent(data, tabId) {
+  refreshScheduledJobs();
+  const event = data?.event;
+  const job = data?.job;
+  if (!event || !job) return;
+
+  const sameTab = tabId == null || tabId === currentTabId;
+  const jobId = job?.id ? String(job.id) : '';
+  const terminalScheduledEvent = ['completed', 'failed'].includes(event);
+  const crossPanelScheduledEvent = isUrlTargetScheduledJob(job) && (
+    event === 'needs_user_input' ||
+    terminalScheduledEvent
+  );
+  if (!sameTab && !crossPanelScheduledEvent) return;
+
+  const title = scheduledJobTitle(job);
+  const safeTitle = escapeHtml(title);
+  if (event === 'created') {
+    addMessage('system', t('sp.scheduled.created', { title: safeTitle, time: formatScheduledTime(job.nextRunAt || job.scheduledAt) }));
+  } else if (event === 'running') {
+    isProcessing = true;
+    abortRequested = false;
+    sendBtn.disabled = true;
+    currentAssistantEl = addMessage('assistant', '');
+    if (jobId) currentAssistantEl.dataset.scheduledJobId = jobId;
+    showActivity(t('sp.scheduled.running', { title }));
+  } else if (event === 'completed') {
+    ensureScheduledTerminalMessage(job);
+    settleScheduledRun(event, job);
+  } else if (event === 'failed') {
+    settleScheduledRun(event, job);
+    addMessage('error', t('sp.scheduled.failed', { title, msg: job.lastError || t('sp.scheduled.unknown_error') }));
+  } else if (event === 'needs_user_input') {
+    ensureScheduledClarifyCards([job]);
+    hideActivity();
+    abortRequested = false;
+    if (currentAssistantEl) {
+      isProcessing = true;
+      sendBtn.disabled = true;
+    } else {
+      isProcessing = false;
+      sendBtn.disabled = false;
+      addMessage('system', t('sp.scheduled.needs_user_input', { title: safeTitle }));
+    }
+  }
+}
+
+if (scheduledJobsEl) {
+  scheduledJobsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action][data-job-id]');
+    if (!btn) return;
+    scheduledJobAction(btn.dataset.action, btn.dataset.jobId);
+  });
+}
+
+function datetimeLocalValue(ms) {
+  const d = new Date(ms);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function addScheduleField(form, labelText, control) {
+  const label = document.createElement('label');
+  label.className = 'schedule-field';
+  const span = document.createElement('span');
+  span.textContent = labelText;
+  label.appendChild(span);
+  label.appendChild(control);
+  form.appendChild(label);
+  return label;
+}
+
+function renderScheduleComposer(prefillPrompt = '') {
+  const msgEl = addMessage('system', t('sp.schedule_form.opened'));
+  const content = msgEl.querySelector('.message-content');
+  const form = document.createElement('form');
+  form.className = 'schedule-composer';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.maxLength = 200;
+  titleInput.placeholder = t('sp.schedule_form.title_placeholder');
+  addScheduleField(form, t('sp.schedule_form.title'), titleInput);
+
+  const promptInput = document.createElement('textarea');
+  promptInput.rows = 4;
+  promptInput.required = true;
+  promptInput.maxLength = 8000;
+  promptInput.placeholder = t('sp.schedule_form.prompt_placeholder');
+  promptInput.value = prefillPrompt;
+  addScheduleField(form, t('sp.schedule_form.prompt'), promptInput);
+
+  const row = document.createElement('div');
+  row.className = 'schedule-row';
+
+  const scheduleType = document.createElement('select');
+  scheduleType.innerHTML = `<option value="once">${escapeHtml(t('sp.schedule_form.once'))}</option><option value="recurring">${escapeHtml(t('sp.schedule_form.recurring'))}</option>`;
+  addScheduleField(row, t('sp.schedule_form.type'), scheduleType);
+
+  const timeMode = document.createElement('select');
+  timeMode.innerHTML = `<option value="after">${escapeHtml(t('sp.schedule_form.in_minutes'))}</option><option value="at">${escapeHtml(t('sp.schedule_form.at_time'))}</option>`;
+  addScheduleField(row, t('sp.schedule_form.when'), timeMode);
+  form.appendChild(row);
+
+  const afterInput = document.createElement('input');
+  afterInput.type = 'number';
+  afterInput.min = '1';
+  afterInput.max = '1440';
+  afterInput.step = '1';
+  afterInput.value = '10';
+  const afterField = addScheduleField(form, t('sp.schedule_form.after_minutes'), afterInput);
+
+  const runAtInput = document.createElement('input');
+  runAtInput.type = 'datetime-local';
+  runAtInput.value = datetimeLocalValue(Date.now() + 10 * 60 * 1000);
+  const runAtField = addScheduleField(form, t('sp.schedule_form.run_at'), runAtInput);
+
+  const intervalInput = document.createElement('input');
+  intervalInput.type = 'number';
+  intervalInput.min = '1';
+  intervalInput.step = '1';
+  intervalInput.value = '60';
+  const intervalField = addScheduleField(form, t('sp.schedule_form.interval_minutes'), intervalInput);
+
+  const targetType = document.createElement('select');
+  targetType.innerHTML = `<option value="current_tab">${escapeHtml(t('sp.schedule_form.current_tab'))}</option><option value="url">${escapeHtml(t('sp.schedule_form.url'))}</option>`;
+  addScheduleField(form, t('sp.schedule_form.target'), targetType);
+
+  const urlInput = document.createElement('input');
+  urlInput.type = 'url';
+  urlInput.placeholder = 'https://example.com/';
+  const urlField = addScheduleField(form, t('sp.schedule_form.target_url'), urlInput);
+
+  const modeInput = document.createElement('select');
+  modeInput.innerHTML = `<option value="act">${escapeHtml(t('sp.mode.act'))}</option><option value="ask">${escapeHtml(t('sp.mode.ask'))}</option>`;
+  modeInput.value = agentMode === 'ask' ? 'ask' : 'act';
+  addScheduleField(form, t('sp.schedule_form.mode'), modeInput);
+
+  const errorEl = document.createElement('div');
+  errorEl.className = 'schedule-error';
+  form.appendChild(errorEl);
+
+  const actions = document.createElement('div');
+  actions.className = 'schedule-form-actions';
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.className = 'schedule-submit';
+  submit.textContent = t('sp.schedule_form.create');
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'schedule-cancel';
+  cancel.textContent = t('sp.schedule_form.cancel');
+  actions.appendChild(submit);
+  actions.appendChild(cancel);
+  form.appendChild(actions);
+
+  function updateVisibility() {
+    afterField.classList.toggle('hidden', timeMode.value !== 'after');
+    runAtField.classList.toggle('hidden', timeMode.value !== 'at');
+    intervalField.classList.toggle('hidden', scheduleType.value !== 'recurring');
+    urlField.classList.toggle('hidden', targetType.value !== 'url');
+  }
+  scheduleType.addEventListener('change', updateVisibility);
+  timeMode.addEventListener('change', updateVisibility);
+  targetType.addEventListener('change', updateVisibility);
+  updateVisibility();
+
+  cancel.addEventListener('click', () => msgEl.remove());
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    const prompt = promptInput.value.trim();
+    if (!prompt) {
+      errorEl.textContent = t('sp.schedule_form.error_prompt');
+      return;
+    }
+
+    const schedule = { type: scheduleType.value };
+    if (timeMode.value === 'after') {
+      const minutes = Number(afterInput.value);
+      if (!Number.isFinite(minutes) || minutes < 1) {
+        errorEl.textContent = t('sp.schedule_form.error_time');
+        return;
+      }
+      schedule.after_seconds = Math.round(minutes * 60);
+    } else {
+      const runAtMs = Date.parse(runAtInput.value);
+      if (!Number.isFinite(runAtMs)) {
+        errorEl.textContent = t('sp.schedule_form.error_time');
+        return;
+      }
+      schedule.run_at = new Date(runAtMs).toISOString();
+    }
+    if (schedule.type === 'recurring') {
+      const interval = Number(intervalInput.value);
+      if (!Number.isFinite(interval) || interval < 1) {
+        errorEl.textContent = t('sp.schedule_form.error_interval');
+        return;
+      }
+      schedule.interval_minutes = Math.floor(interval);
+    }
+
+    const target = { type: targetType.value };
+    if (target.type === 'url') {
+      const url = urlInput.value.trim();
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('bad protocol');
+        target.url = parsed.href;
+      } catch {
+        errorEl.textContent = t('sp.schedule_form.error_url');
+        return;
+      }
+    }
+
+    submit.disabled = true;
+    try {
+      const title = titleInput.value.trim() || prompt.slice(0, 80) || t('sp.scheduled.task_title');
+      const res = await sendToBackground('create_scheduled_job', {
+        tabId: currentTabId,
+        job: { title, prompt, schedule, target, mode: modeInput.value },
+      });
+      if (res?.success === false || res?.ok === false || !res?.scheduledAt) {
+        throw new Error(res?.error || 'Could not create scheduled job.');
+      }
+      form.remove();
+      const textEl = msgEl.querySelector('.message-text');
+      if (textEl) {
+        textEl.innerHTML = t('sp.schedule_form.created', {
+          title: escapeHtml(title),
+          time: formatScheduledTime(res.scheduledAt),
+        });
+      }
+      await refreshScheduledJobs();
+    } catch (err) {
+      submit.disabled = false;
+      errorEl.textContent = err.message;
+    }
+  });
+
+  content.appendChild(form);
+  promptInput.focus();
+  scrollToBottom();
+}
+
+async function showScratchpad() {
+  try {
+    const res = await sendToBackground('get_scratchpad', { tabId: currentTabId });
+    const body = String(res?.body || '').trim();
+    if (!res?.exists || !body || body === '(empty)') {
+      addMessage('system', t('sp.scratchpad.empty'));
+      return;
+    }
+    addMessage('system', `${t('sp.scratchpad.title_html')}<pre class="scratchpad-dump">${escapeHtml(body)}</pre>`);
+  } catch (e) {
+    addMessage('system', t('sp.scratchpad.error', { msg: e.message }));
+  }
 }
 
 
@@ -473,6 +962,7 @@ async function init() {
 
   await loadProviders();
   await testConnection({ skipWebBrainCloud: true });
+  refreshScheduledJobs();
   refreshRecommendedActions();
 
   chrome.tabs.onActivated.addListener(async (info) => {
@@ -576,6 +1066,7 @@ async function switchToTab(newTabId) {
     addMessage('system', t('sp.help_message'));
   }
   scrollToBottom();
+  refreshScheduledJobs();
   refreshRecommendedActions();
 }
 
@@ -765,6 +1256,28 @@ async function parseSlashCommands(text) {
     return '';
   }
 
+  // /list-schedules — refresh the scheduled job strip
+  if (/^\/list-schedules\b\s*/i.test(text)) {
+    const jobs = await refreshScheduledJobs();
+    addMessage('system', visibleScheduledJobs(jobs).length
+      ? t('sp.schedule_form.list_refreshed')
+      : t('sp.schedule_form.none'));
+    return '';
+  }
+
+  // /show-scratchpad — dump the current tab's agent scratchpad
+  if (/^\/show-scratchpad\b\s*/i.test(text)) {
+    await showScratchpad();
+    return '';
+  }
+
+  // /schedule — open a deterministic scheduled-task composer
+  const mSchedule = text.match(/^\/schedule\b\s*/i);
+  if (mSchedule) {
+    renderScheduleComposer(text.slice(mSchedule[0].length).trim());
+    return '';
+  }
+
   // /allow-api — enable API mutation override
   const mApi = text.match(/^\/allow-api\b\s*/i);
   if (mApi) {
@@ -799,6 +1312,7 @@ async function parseSlashCommands(text) {
     }
     apiMutationsAllowed = false;
     updateApiBadge();
+    refreshScheduledJobs();
     return '';
   }
 
@@ -1166,6 +1680,11 @@ function summarizeLastTranscript() {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
 
+  if (msg.type === 'scheduled_job') {
+    handleScheduledJobEvent(msg.data, msg.tabId);
+    return;
+  }
+
   // Drop updates that belong to a different tab's run. agent_update is a
   // window-wide broadcast (chrome.runtime.sendMessage has no per-tab
   // targeting from the service worker), and the side panel mounts a
@@ -1293,18 +1812,36 @@ chrome.runtime.onMessage.addListener((msg) => {
  */
 function renderClarifyCard(data) {
   hideActivity();
-  if (!currentAssistantEl) return;
-  const tabId = currentTabId;
-  if (!tabId) return;
+  const tabId = data?.scheduledTabId ?? data?.tabId ?? currentTabId;
+  if (tabId == null) return;
+  const scheduledJobId = data?.scheduledJobId ? String(data.scheduledJobId) : '';
+  let assistantEl = currentAssistantEl;
+  if (scheduledJobId && data.forceNewScheduledCard) {
+    assistantEl = addMessage('assistant', '');
+  } else if (scheduledJobId && !assistantEl) {
+    assistantEl = addMessage('assistant', '');
+    currentAssistantEl = assistantEl;
+  } else if (!assistantEl) {
+    return;
+  }
+  if (scheduledJobId) {
+    assistantEl.dataset.scheduledJobId = scheduledJobId;
+  }
   const clarifyId = String(data.clarifyId || '');
   if (!clarifyId) return;
 
-  const content = currentAssistantEl.querySelector('.message-content');
+  const content = assistantEl.querySelector('.message-content');
   if (!content) return;
 
   const card = document.createElement('div');
   card.className = 'clarify-card';
   card.dataset.clarifyId = clarifyId;
+  if (scheduledJobId) {
+    card.dataset.scheduledJobId = scheduledJobId;
+  }
+  if (data.scheduledTabId != null) {
+    card.dataset.scheduledTabId = String(data.scheduledTabId);
+  }
 
   const qEl = document.createElement('div');
   qEl.className = 'clarify-question';
@@ -1432,8 +1969,26 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
   // run stuck in `status: "running"` even after the user answers. Use
   // sendToBackground() rather than chrome.runtime.sendMessage directly
   // so the target field is always injected.
+  const isScheduledClarify = !!card.dataset.scheduledJobId;
+  if (isScheduledClarify) {
+    const msgEl = card.closest('.message.assistant');
+    const scheduledJobId = card.dataset.scheduledJobId;
+    if (msgEl && (!currentAssistantEl || currentAssistantEl.dataset?.scheduledJobId === scheduledJobId)) {
+      currentAssistantEl = msgEl;
+    }
+    isProcessing = true;
+    sendBtn.disabled = true;
+    showActivity(t('sp.activity.thinking'));
+  }
   sendToBackground('clarify_response', { tabId, clarifyId, answer, source })
-    .catch(() => { /* background may be torn down — clarify state already lives there */ });
+    .catch(() => {
+      if (isScheduledClarify) {
+        isProcessing = false;
+        sendBtn.disabled = false;
+        hideActivity();
+      }
+      /* background may be torn down — clarify state already lives there */
+    });
 }
 
 
@@ -1542,9 +2097,9 @@ function markLastStepFailed() {
   }
 }
 
-function finalizeSteps() {
-  if (!currentAssistantEl) return;
-  const actives = currentAssistantEl.querySelectorAll('.step-item.active');
+function finalizeSteps(assistantEl = currentAssistantEl) {
+  if (!assistantEl) return;
+  const actives = assistantEl.querySelectorAll('.step-item.active');
   actives.forEach(step => {
     step.classList.remove('active');
     step.classList.add('done');
@@ -2067,6 +2622,7 @@ clearBtn.addEventListener('click', async () => {
   // Per-conversation flags reset on clear.
   apiMutationsAllowed = false;
   updateApiBadge();
+  refreshScheduledJobs();
   refreshRecommendedActions();
 });
 

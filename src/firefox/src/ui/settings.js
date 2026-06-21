@@ -8,7 +8,7 @@ import { CAPABILITY_LABEL } from '../agent/permission-gate.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '14.0.5';
+const EXT_VERSION = '14.1.0';
 
 const providersContainer = document.getElementById('providers');
 const verboseToggle = document.getElementById('toggle-verbose');
@@ -26,6 +26,8 @@ const siteAdaptersToggle = document.getElementById('toggle-site-adapters');
 const tracingToggle = document.getElementById('toggle-tracing');
 const strictSecretToggle = document.getElementById('toggle-strict-secret');
 const allowLocalNetworkToggle = document.getElementById('toggle-allow-local-network');
+const scheduledTasksToggle = document.getElementById('toggle-scheduled-tasks');
+const scheduledConfirmToggle = document.getElementById('toggle-scheduled-confirm');
 const accountSection = document.getElementById('account-section');
 const visionBaseUrlInput = document.getElementById('vision-base-url');
 const visionApiKeyInput = document.getElementById('vision-api-key');
@@ -153,7 +155,7 @@ async function init() {
   renderAuthSection();
 
   // Load display settings
-  const stored = await browser.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'providerFilter', 'requestTimeoutMs', 'costAllowanceSessionUsd', 'costAllowanceTotalUsd', 'cloudCostSpentUsd']);
+  const stored = await browser.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'scheduledTasksEnabled', 'scheduledRequireConsequentialConfirmation', 'providerFilter', 'requestTimeoutMs', 'costAllowanceSessionUsd', 'costAllowanceTotalUsd', 'cloudCostSpentUsd']);
   if (typeof stored.providerFilter === 'string' && ['all','local','cloud','router'].includes(stored.providerFilter)) {
     providerFilter = stored.providerFilter;
   }
@@ -181,6 +183,8 @@ async function init() {
   renderCostAllowanceSpent(totalSpent, totalLimit);
   if (strictSecretToggle) strictSecretToggle.checked = stored.strictSecretMode === true; // off by default
   if (allowLocalNetworkToggle) allowLocalNetworkToggle.checked = stored.agentAllowLocalNetwork === true;
+  if (scheduledTasksToggle) scheduledTasksToggle.checked = stored.scheduledTasksEnabled !== false;
+  if (scheduledConfirmToggle) scheduledConfirmToggle.checked = stored.scheduledRequireConsequentialConfirmation !== false;
 
   // Load vision model config
   const visionStored = await browser.storage.local.get(['visionModel']);
@@ -438,6 +442,14 @@ strictSecretToggle?.addEventListener('change', () => {
 
 allowLocalNetworkToggle?.addEventListener('change', () => {
   browser.storage.local.set({ agentAllowLocalNetwork: allowLocalNetworkToggle.checked });
+});
+
+scheduledTasksToggle?.addEventListener('change', () => {
+  browser.storage.local.set({ scheduledTasksEnabled: scheduledTasksToggle.checked });
+});
+
+scheduledConfirmToggle?.addEventListener('change', () => {
+  browser.storage.local.set({ scheduledRequireConsequentialConfirmation: scheduledConfirmToggle.checked });
 });
 
 // --- Vision Model ---

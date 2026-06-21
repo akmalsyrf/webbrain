@@ -31,6 +31,7 @@ export const Capability = {
   UPLOAD: 'upload',              // upload_file (selects a local file)
   RECORD: 'record',              // record_tab (captures the tab + microphone)
   WINDOW: 'window',              // resize_window (changes browser window bounds)
+  SCHEDULE: 'schedule',          // schedule_resume / schedule_task persistent future work
 };
 
 // Human-readable verb for the permission prompt: "WebBrain wants to <label> <host>".
@@ -44,6 +45,7 @@ export const CAPABILITY_LABEL = {
   [Capability.UPLOAD]: 'upload a file to',
   [Capability.RECORD]: 'record the tab (and microphone) on',
   [Capability.WINDOW]: 'resize the browser window for',
+  [Capability.SCHEDULE]: 'schedule future work for',
 };
 
 /**
@@ -137,6 +139,8 @@ const TOOL_CAPABILITY = {
   download_files: Capability.DOWNLOAD,
   download_resource_from_page: Capability.DOWNLOAD,
   download_social_media: Capability.DOWNLOAD,
+  schedule_resume: Capability.SCHEDULE,
+  schedule_task: Capability.SCHEDULE,
 };
 
 /**
@@ -266,6 +270,10 @@ export function hostForCapability(capability, args, currentUrlOrHost, toolName) 
       if (h) return h;
     }
     return normalizeHost(currentUrlOrHost);
+  }
+  if (capability === Capability.SCHEDULE && toolName === 'schedule_task' && args?.target?.type === 'url') {
+    const h = resolveHostAgainst(args.target.url, currentUrlOrHost);
+    if (h) return h;
   }
   return normalizeHost(currentUrlOrHost);
 }

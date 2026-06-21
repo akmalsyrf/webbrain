@@ -6,6 +6,32 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [14.1.0] - 2026-06-21
+
+### Added
+- Scheduled agent work for Chrome and Firefox: `schedule_resume` durably pauses a blocked run and resumes it later in the same tab / conversation, while `schedule_task` creates one-shot or recurring future tasks backed by browser alarms and persisted job state.
+- Side panel schedule controls, including `/schedule`, `/list-schedules`, `/show-scratchpad`, an active scheduled-job strip, and Run now / Pause / Resume / Cancel / Delete actions for scheduled jobs.
+- Settings toggles for enabling scheduled tasks and requiring confirmation before unattended scheduled runs perform consequential actions.
+
+### Security
+- Added a `schedule` permission-gate capability so scheduled future work is treated as a consequential action, with unattended scheduled runs defaulting to confirmation before clicks, typing, navigation, downloads, uploads, recording, or other gated actions.
+
+### Changed
+- Full and mid Act-mode prompts now describe the scheduling tools and when they may be used; compact Act mode still forbids scheduling and tells the agent to ask the user to re-invoke WebBrain for external waits.
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and required `alarms` permissions for 14.1.0.
+
+### Tests
+- Added Chrome + Firefox coverage for scheduler validation, busy-tab queuing, stale resume / task targets, recurring next-run calculation, scheduled clarifications, tool exposure by prompt tier, schedule slash commands, scratchpad reads, and schedule capability gating.
+
+## [14.0.5] - 2026-06-20
+
+### Changed
+- Updated Anthropic defaults and context-window inference for `claude-opus-4-8`.
+- Updated release metadata, Settings subtitle versions, architecture docs, and Chrome / Firefox submission archives for 14.0.5.
+
+### Fixed
+- Provider Settings numeric fields now preserve valid zero cost estimates while continuing to reject invalid or negative numeric values.
+
 ## [14.0.4] - 2026-06-19
 
 ### Added
