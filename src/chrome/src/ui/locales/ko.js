@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "파일 다운로드",
   "sp.perm.verb.upload": "파일 업로드",
   "sp.perm.verb.record": "탭(및 마이크) 녹화",
-  "sp.help_html": "<strong>슬래시 명령어</strong><br><code>/help</code> — 이 목록 표시<br><code>/allow-api</code> — 이 대화에서 API 변경 허용<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — 상세/간결 도구 표시 전환<br><code>/reset</code> — 대화 지우기<br><code>/screenshot</code> — 현재 탭 캡처<br><code>/export</code> — 대화를 Markdown으로 다운로드<br><code>/profile</code> — 프로필 자동 입력 전환<br><code>/vision</code> — 활성 제공자의 비전 모드 전환",
+  "sp.help_html": "<strong>슬래시 명령어</strong><br><code>/help</code> — 이 목록 표시<br><code>/allow-api</code> — 이 대화에서 API 변경 허용<br><code>/compact</code> — 이 대화의 컨텍스트 압축<br><code>/verbose</code> — 상세/간결 도구 표시 전환<br><code>/reset</code> — 대화 지우기<br><code>/screenshot</code> — 현재 탭 캡처<br><code>/export</code> — 대화를 Markdown으로 다운로드<br><code>/profile</code> — 프로필 자동 입력 전환<br><code>/vision</code> — 활성 제공자의 비전 모드 전환",
   "sp.compact.verbose_on": "상세 모드 <strong>켜짐</strong> — 전체 도구 호출 JSON이 표시됩니다.",
   "sp.compact.verbose_off": "상세 모드 <strong>꺼짐</strong> — 간결한 도구 표시.",
   "sp.screenshot.error": "스크린샷에 실패했습니다: {msg}",

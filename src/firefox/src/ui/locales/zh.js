@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "下载文件自",
   "sp.perm.verb.upload": "上传文件到",
   "sp.perm.verb.record": "录制标签页（及麦克风）于",
-  "sp.help_html": "<strong>斜杠命令</strong><br><code>/help</code> —— 显示此列表<br><code>/allow-api</code> —— 在本次会话中允许 API 变更<br><code>/compact</code> —— Compact this conversation context<br><code>/verbose</code> —— 切换详细 / 精简工具显示<br><code>/reset</code> —— 清除会话<br><code>/screenshot</code> —— 截取当前标签页<br><code>/export</code> —— 将会话导出为 Markdown<br><code>/profile</code> —— 切换个人资料自动填充<br><code>/vision</code> —— 在当前提供商上切换视觉模式",
+  "sp.help_html": "<strong>斜杠命令</strong><br><code>/help</code> —— 显示此列表<br><code>/allow-api</code> —— 在本次会话中允许 API 变更<br><code>/compact</code> —— 压缩本次会话的上下文<br><code>/verbose</code> —— 切换详细 / 精简工具显示<br><code>/reset</code> —— 清除会话<br><code>/screenshot</code> —— 截取当前标签页<br><code>/export</code> —— 将会话导出为 Markdown<br><code>/profile</code> —— 切换个人资料自动填充<br><code>/vision</code> —— 在当前提供商上切换视觉模式",
   "sp.compact.verbose_on": "详细模式<strong>已开启</strong> —— 显示完整的工具调用 JSON。",
   "sp.compact.verbose_off": "详细模式<strong>已关闭</strong> —— 精简工具显示。",
   "sp.screenshot.error": "截图失败：{msg}",

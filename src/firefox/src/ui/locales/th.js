@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "ดาวน์โหลดไฟล์จาก",
   "sp.perm.verb.upload": "อัปโหลดไฟล์ไปยัง",
   "sp.perm.verb.record": "บันทึกแท็บ (และไมโครโฟน) บน",
-  "sp.help_html": "<strong>คำสั่งสแลช</strong><br><code>/help</code> — แสดงรายการนี้<br><code>/allow-api</code> — อนุญาตการแก้ไขผ่าน API สำหรับการสนทนานี้<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — สลับการแสดงเครื่องมือแบบละเอียด/กระชับ<br><code>/reset</code> — ล้างการสนทนา<br><code>/screenshot</code> — จับภาพแท็บปัจจุบัน<br><code>/export</code> — ดาวน์โหลดการสนทนาเป็น Markdown<br><code>/profile</code> — สลับการกรอกโปรไฟล์อัตโนมัติ<br><code>/vision</code> — สลับโหมดการมองเห็นบนผู้ให้บริการที่ใช้งานอยู่",
+  "sp.help_html": "<strong>คำสั่งสแลช</strong><br><code>/help</code> — แสดงรายการนี้<br><code>/allow-api</code> — อนุญาตการแก้ไขผ่าน API สำหรับการสนทนานี้<br><code>/compact</code> — บีบอัดบริบทของการสนทนานี้<br><code>/verbose</code> — สลับการแสดงเครื่องมือแบบละเอียด/กระชับ<br><code>/reset</code> — ล้างการสนทนา<br><code>/screenshot</code> — จับภาพแท็บปัจจุบัน<br><code>/export</code> — ดาวน์โหลดการสนทนาเป็น Markdown<br><code>/profile</code> — สลับการกรอกโปรไฟล์อัตโนมัติ<br><code>/vision</code> — สลับโหมดการมองเห็นบนผู้ให้บริการที่ใช้งานอยู่",
   "sp.compact.verbose_on": "โหมดละเอียด <strong>เปิด</strong> — แสดง JSON ของการเรียกใช้เครื่องมือเต็มรูปแบบ",
   "sp.compact.verbose_off": "โหมดละเอียด <strong>ปิด</strong> — แสดงเครื่องมือแบบกระชับ",
   "sp.screenshot.error": "จับภาพหน้าจอไม่สำเร็จ: {msg}",

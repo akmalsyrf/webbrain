@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "скачивать файлы с",
   "sp.perm.verb.upload": "загрузить файл на",
   "sp.perm.verb.record": "записывать вкладку (и микрофон) на",
-  "sp.help_html": "<strong>Слэш-команды</strong><br><code>/help</code> — Показать этот список<br><code>/allow-api</code> — Разрешить изменения через API для этого диалога<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Переключить подробный/компактный вид инструментов<br><code>/reset</code> — Очистить диалог<br><code>/screenshot</code> — Снять текущую вкладку<br><code>/export</code> — Скачать диалог в формате Markdown<br><code>/profile</code> — Переключить автозаполнение профиля<br><code>/vision</code> — Переключить режим зрения у активного провайдера",
+  "sp.help_html": "<strong>Слэш-команды</strong><br><code>/help</code> — Показать этот список<br><code>/allow-api</code> — Разрешить изменения через API для этого диалога<br><code>/compact</code> — Сжать контекст этого диалога<br><code>/verbose</code> — Переключить подробный/компактный вид инструментов<br><code>/reset</code> — Очистить диалог<br><code>/screenshot</code> — Снять текущую вкладку<br><code>/export</code> — Скачать диалог в формате Markdown<br><code>/profile</code> — Переключить автозаполнение профиля<br><code>/vision</code> — Переключить режим зрения у активного провайдера",
   "sp.compact.verbose_on": "Подробный режим <strong>включён</strong> — виден полный JSON вызовов инструментов.",
   "sp.compact.verbose_off": "Подробный режим <strong>выключен</strong> — компактный вид инструментов.",
   "sp.screenshot.error": "Не удалось сделать скриншот: {msg}",

@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "からのファイルのダウンロードを",
   "sp.perm.verb.upload": "へのファイルのアップロードを",
   "sp.perm.verb.record": "でのタブ（およびマイク）の録画を",
-  "sp.help_html": "<strong>スラッシュコマンド</strong><br><code>/help</code> — この一覧を表示<br><code>/allow-api</code> — この会話で API による変更を許可<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — 詳細／コンパクトなツール表示を切り替え<br><code>/reset</code> — 会話をクリア<br><code>/screenshot</code> — 現在のタブを取得<br><code>/export</code> — 会話を Markdown でダウンロード<br><code>/profile</code> — プロフィール自動入力を切り替え<br><code>/vision</code> — アクティブなプロバイダーで画像認識モードを切り替え",
+  "sp.help_html": "<strong>スラッシュコマンド</strong><br><code>/help</code> — この一覧を表示<br><code>/allow-api</code> — この会話で API による変更を許可<br><code>/compact</code> — この会話のコンテキストを圧縮する<br><code>/verbose</code> — 詳細／コンパクトなツール表示を切り替え<br><code>/reset</code> — 会話をクリア<br><code>/screenshot</code> — 現在のタブを取得<br><code>/export</code> — 会話を Markdown でダウンロード<br><code>/profile</code> — プロフィール自動入力を切り替え<br><code>/vision</code> — アクティブなプロバイダーで画像認識モードを切り替え",
   "sp.compact.verbose_on": "詳細モードが<strong>オン</strong>になりました — ツール呼び出しの完全な JSON が表示されます。",
   "sp.compact.verbose_off": "詳細モードが<strong>オフ</strong>になりました — コンパクトなツール表示です。",
   "sp.screenshot.error": "スクリーンショットに失敗しました: {msg}",

@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "dosya indirmek",
   "sp.perm.verb.upload": "dosya yüklemek",
   "sp.perm.verb.record": "sekmeyi (ve mikrofonu) kaydetmek",
-  "sp.help_html": "<strong>Eğik Çizgi Komutları</strong><br><code>/help</code> — Bu listeyi göster<br><code>/allow-api</code> — Bu konuşma için API mutasyonlarına izin ver<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Ayrıntılı/kompakt araç görünümünü aç/kapat<br><code>/reset</code> — Konuşmayı temizle<br><code>/screenshot</code> — Geçerli sekmenin ekran görüntüsünü al<br><code>/export</code> — Konuşmayı Markdown olarak indir<br><code>/profile</code> — Profil otomatik doldurmayı aç/kapat<br><code>/vision</code> — Aktif sağlayıcıda görme kipini aç/kapat",
+  "sp.help_html": "<strong>Eğik Çizgi Komutları</strong><br><code>/help</code> — Bu listeyi göster<br><code>/allow-api</code> — Bu konuşma için API mutasyonlarına izin ver<br><code>/compact</code> — Bu konuşmanın bağlamını sıkıştır<br><code>/verbose</code> — Ayrıntılı/kompakt araç görünümünü aç/kapat<br><code>/reset</code> — Konuşmayı temizle<br><code>/screenshot</code> — Geçerli sekmenin ekran görüntüsünü al<br><code>/export</code> — Konuşmayı Markdown olarak indir<br><code>/profile</code> — Profil otomatik doldurmayı aç/kapat<br><code>/vision</code> — Aktif sağlayıcıda görme kipini aç/kapat",
   "sp.compact.verbose_on": "Ayrıntılı mod <strong>açık</strong> — tam araç çağrısı JSON'u görünür.",
   "sp.compact.verbose_off": "Ayrıntılı mod <strong>kapalı</strong> — kompakt araç görünümü.",
   "sp.screenshot.error": "Ekran görüntüsü başarısız: {msg}",

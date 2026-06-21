@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "descargar archivos de",
   "sp.perm.verb.upload": "subir un archivo a",
   "sp.perm.verb.record": "grabar la pestaña (y el micrófono) en",
-  "sp.help_html": "<strong>Comandos de barra</strong><br><code>/help</code> — Muestra esta lista<br><code>/allow-api</code> — Permite mutaciones de API en esta conversación<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Alterna entre vista de herramientas detallada/compacta<br><code>/reset</code> — Borra la conversación<br><code>/screenshot</code> — Captura la pestaña actual<br><code>/export</code> — Descarga la conversación como Markdown<br><code>/profile</code> — Alterna el autocompletado del perfil<br><code>/vision</code> — Alterna el modo de visión en el proveedor activo",
+  "sp.help_html": "<strong>Comandos de barra</strong><br><code>/help</code> — Muestra esta lista<br><code>/allow-api</code> — Permite mutaciones de API en esta conversación<br><code>/compact</code> — Compactar el contexto de esta conversación<br><code>/verbose</code> — Alterna entre vista de herramientas detallada/compacta<br><code>/reset</code> — Borra la conversación<br><code>/screenshot</code> — Captura la pestaña actual<br><code>/export</code> — Descarga la conversación como Markdown<br><code>/profile</code> — Alterna el autocompletado del perfil<br><code>/vision</code> — Alterna el modo de visión en el proveedor activo",
   "sp.compact.verbose_on": "Modo detallado <strong>activado</strong>: se muestra el JSON completo de las llamadas a herramientas.",
   "sp.compact.verbose_off": "Modo detallado <strong>desactivado</strong>: vista de herramientas compacta.",
   "sp.screenshot.error": "Falló la captura de pantalla: {msg}",

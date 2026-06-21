@@ -1518,6 +1518,8 @@ async function parseSlashCommands(text) {
     const res = await sendToBackground('compact_conversation', { tabId: currentTabId });
     if (res?.ok && res.compacted) {
       addContextCompactedNote({ ...res, manual: true });
+    } else if (res?.ok && res.reason === 'busy') {
+      addMessage('system', t('sp.compact.busy'));
     } else if (res?.ok) {
       addMessage('system', t('sp.compact.nothing_to_compact'));
     } else {

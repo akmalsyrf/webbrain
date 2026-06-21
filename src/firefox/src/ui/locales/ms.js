@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "memuat turun fail dari",
   "sp.perm.verb.upload": "memuat naik fail ke",
   "sp.perm.verb.record": "merakam tab (dan mikrofon) pada",
-  "sp.help_html": "<strong>Arahan Slash</strong><br><code>/help</code> — Tunjukkan senarai ini<br><code>/allow-api</code> — Benarkan pengubahan API untuk perbualan ini<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Togol paparan alat terperinci/ringkas<br><code>/reset</code> — Kosongkan perbualan<br><code>/screenshot</code> — Tangkap tab semasa<br><code>/export</code> — Muat turun perbualan sebagai Markdown<br><code>/profile</code> — Togol isi-auto profil<br><code>/vision</code> — Togol mod penglihatan pada pembekal aktif",
+  "sp.help_html": "<strong>Arahan Slash</strong><br><code>/help</code> — Tunjukkan senarai ini<br><code>/allow-api</code> — Benarkan pengubahan API untuk perbualan ini<br><code>/compact</code> — Kompres konteks perbualan ini<br><code>/verbose</code> — Togol paparan alat terperinci/ringkas<br><code>/reset</code> — Kosongkan perbualan<br><code>/screenshot</code> — Tangkap tab semasa<br><code>/export</code> — Muat turun perbualan sebagai Markdown<br><code>/profile</code> — Togol isi-auto profil<br><code>/vision</code> — Togol mod penglihatan pada pembekal aktif",
   "sp.compact.verbose_on": "Mod terperinci <strong>dihidupkan</strong> — JSON panggilan alat penuh kelihatan.",
   "sp.compact.verbose_off": "Mod terperinci <strong>dimatikan</strong> — paparan alat ringkas.",
   "sp.screenshot.error": "Tangkapan skrin gagal: {msg}",

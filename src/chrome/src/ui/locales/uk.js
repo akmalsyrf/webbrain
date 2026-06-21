@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "завантажити файли з",
   "sp.perm.verb.upload": "вивантажити файл на",
   "sp.perm.verb.record": "записати вкладку (і мікрофон) на",
-  "sp.help_html": "<strong>Слеш-команди</strong><br><code>/help</code> — Показати цей список<br><code>/allow-api</code> — Дозволити зміни через API для цього діалогу<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Перемкнути детальний/компактний показ інструментів<br><code>/reset</code> — Очистити діалог<br><code>/screenshot</code> — Зробити скриншот поточної вкладки<br><code>/export</code> — Завантажити діалог як Markdown<br><code>/profile</code> — Перемкнути автозаповнення профілю<br><code>/vision</code> — Перемкнути режим зору на активному провайдері",
+  "sp.help_html": "<strong>Слеш-команди</strong><br><code>/help</code> — Показати цей список<br><code>/allow-api</code> — Дозволити зміни через API для цього діалогу<br><code>/compact</code> — Стиснути контекст цього діалогу<br><code>/verbose</code> — Перемкнути детальний/компактний показ інструментів<br><code>/reset</code> — Очистити діалог<br><code>/screenshot</code> — Зробити скриншот поточної вкладки<br><code>/export</code> — Завантажити діалог як Markdown<br><code>/profile</code> — Перемкнути автозаповнення профілю<br><code>/vision</code> — Перемкнути режим зору на активному провайдері",
   "sp.compact.verbose_on": "Детальний режим <strong>увімкнено</strong> — видно повний JSON викликів інструментів.",
   "sp.compact.verbose_off": "Детальний режим <strong>вимкнено</strong> — компактний показ інструментів.",
   "sp.screenshot.error": "Не вдалося зробити скриншот: {msg}",

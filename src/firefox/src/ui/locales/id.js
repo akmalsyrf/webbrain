@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "mengunduh berkas dari",
   "sp.perm.verb.upload": "mengunggah berkas ke",
   "sp.perm.verb.record": "merekam tab (dan mikrofon) pada",
-  "sp.help_html": "<strong>Perintah Garis Miring</strong><br><code>/help</code> — Tampilkan daftar ini<br><code>/allow-api</code> — Izinkan mutasi API untuk percakapan ini<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Alihkan tampilan alat terperinci/ringkas<br><code>/reset</code> — Hapus percakapan<br><code>/screenshot</code> — Tangkap tab saat ini<br><code>/export</code> — Unduh percakapan sebagai Markdown<br><code>/profile</code> — Alihkan isi otomatis profil<br><code>/vision</code> — Alihkan mode visi pada penyedia aktif",
+  "sp.help_html": "<strong>Perintah Garis Miring</strong><br><code>/help</code> — Tampilkan daftar ini<br><code>/allow-api</code> — Izinkan mutasi API untuk percakapan ini<br><code>/compact</code> — Kompres konteks percakapan ini<br><code>/verbose</code> — Alihkan tampilan alat terperinci/ringkas<br><code>/reset</code> — Hapus percakapan<br><code>/screenshot</code> — Tangkap tab saat ini<br><code>/export</code> — Unduh percakapan sebagai Markdown<br><code>/profile</code> — Alihkan isi otomatis profil<br><code>/vision</code> — Alihkan mode visi pada penyedia aktif",
   "sp.compact.verbose_on": "Mode terperinci <strong>aktif</strong> — JSON pemanggilan alat lengkap terlihat.",
   "sp.compact.verbose_off": "Mode terperinci <strong>nonaktif</strong> — tampilan alat ringkas.",
   "sp.screenshot.error": "Tangkapan layar gagal: {msg}",

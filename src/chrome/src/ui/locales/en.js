@@ -162,6 +162,7 @@ export default {
 
   'sp.help_html': '<strong>Slash Commands</strong><br><code>/help</code> — Show this list<br><code>/schedule</code> — Create a scheduled task<br><code>/list-schedules</code> — Show scheduled tasks<br><code>/show-scratchpad</code> — Show current scratchpad<br><code>/allow-api</code> — Allow API mutations for this conversation<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Toggle verbose/compact tool display<br><code>/reset</code> — Clear conversation<br><code>/screenshot</code> — Capture current tab<br><code>/export</code> — Download conversation as Markdown<br><code>/profile</code> — Toggle profile auto-fill<br><code>/vision</code> — Toggle vision mode on active provider',
   'sp.compact.nothing_to_compact': 'Nothing to compact yet — there is not enough older context.',
+  'sp.compact.busy': 'Cannot compact while a run is in progress — wait for it to finish.',
   'sp.compact.failed': 'Context compaction failed: {error}',
   'sp.compact.verbose_on': 'Verbose mode <strong>on</strong> — full tool call JSON visible.',
   'sp.compact.verbose_off': 'Verbose mode <strong>off</strong> — compact tool display.',

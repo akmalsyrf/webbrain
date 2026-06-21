@@ -299,7 +299,7 @@ export default {
   "sp.perm.verb.download": "télécharger des fichiers depuis",
   "sp.perm.verb.upload": "téléverser un fichier vers",
   "sp.perm.verb.record": "enregistrer l'onglet (et le microphone) sur",
-  "sp.help_html": "<strong>Commandes slash</strong><br><code>/help</code> — Afficher cette liste<br><code>/allow-api</code> — Autoriser les mutations d'API pour cette conversation<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Basculer l'affichage détaillé/compact des outils<br><code>/reset</code> — Effacer la conversation<br><code>/screenshot</code> — Capturer l'onglet actif<br><code>/export</code> — Télécharger la conversation en Markdown<br><code>/profile</code> — Basculer le remplissage automatique du profil<br><code>/vision</code> — Basculer le mode vision sur le fournisseur actif",
+  "sp.help_html": "<strong>Commandes slash</strong><br><code>/help</code> — Afficher cette liste<br><code>/allow-api</code> — Autoriser les mutations d'API pour cette conversation<br><code>/compact</code> — Compacter le contexte de cette conversation<br><code>/verbose</code> — Basculer l'affichage détaillé/compact des outils<br><code>/reset</code> — Effacer la conversation<br><code>/screenshot</code> — Capturer l'onglet actif<br><code>/export</code> — Télécharger la conversation en Markdown<br><code>/profile</code> — Basculer le remplissage automatique du profil<br><code>/vision</code> — Basculer le mode vision sur le fournisseur actif",
   "sp.compact.verbose_on": "Mode détaillé <strong>activé</strong> — JSON complet des appels d'outils visible.",
   "sp.compact.verbose_off": "Mode détaillé <strong>désactivé</strong> — affichage compact des outils.",
   "sp.screenshot.error": "Échec de la capture d'écran : {msg}",

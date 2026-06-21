@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "يُنزّل ملفات من",
   "sp.perm.verb.upload": "يرفع ملفًا إلى",
   "sp.perm.verb.record": "يُسجّل علامة التبويب (والميكروفون) على",
-  "sp.help_html": "<strong>أوامر الشرطة المائلة</strong><br><code>/help</code> — إظهار هذه القائمة<br><code>/allow-api</code> — السماح بتعديلات API لهذه المحادثة<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — تبديل العرض المفصّل/المختصر للأدوات<br><code>/reset</code> — مسح المحادثة<br><code>/screenshot</code> — التقاط علامة التبويب الحالية<br><code>/export</code> — تنزيل المحادثة بصيغة Markdown<br><code>/profile</code> — تبديل تعبئة الملف الشخصي تلقائيًا<br><code>/vision</code> — تبديل وضع الرؤية على المزوّد النشط",
+  "sp.help_html": "<strong>أوامر الشرطة المائلة</strong><br><code>/help</code> — إظهار هذه القائمة<br><code>/allow-api</code> — السماح بتعديلات API لهذه المحادثة<br><code>/compact</code> — ضغط سياق هذه المحادثة<br><code>/verbose</code> — تبديل العرض المفصّل/المختصر للأدوات<br><code>/reset</code> — مسح المحادثة<br><code>/screenshot</code> — التقاط علامة التبويب الحالية<br><code>/export</code> — تنزيل المحادثة بصيغة Markdown<br><code>/profile</code> — تبديل تعبئة الملف الشخصي تلقائيًا<br><code>/vision</code> — تبديل وضع الرؤية على المزوّد النشط",
   "sp.compact.verbose_on": "الوضع المفصّل <strong>مُفعّل</strong> — يظهر كامل JSON لاستدعاءات الأدوات.",
   "sp.compact.verbose_off": "الوضع المفصّل <strong>مُعطّل</strong> — عرض مختصر للأدوات.",
   "sp.screenshot.error": "فشل التقاط لقطة الشاشة: {msg}",

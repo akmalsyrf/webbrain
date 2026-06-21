@@ -309,7 +309,7 @@ export default {
   "sp.perm.verb.download": "mag-download ng files mula sa",
   "sp.perm.verb.upload": "mag-upload ng file sa",
   "sp.perm.verb.record": "i-record ang tab (at mikropono) sa",
-  "sp.help_html": "<strong>Slash Commands</strong><br><code>/help</code> — Ipakita ang listahang ito<br><code>/allow-api</code> — Payagan ang mga pagbabago sa API para sa pag-uusap na ito<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — I-toggle ang verbose/compact na pagpapakita ng tool<br><code>/reset</code> — I-clear ang pag-uusap<br><code>/screenshot</code> — Kumuha ng kasalukuyang tab<br><code>/export</code> — I-download ang pag-uusap bilang Markdown<br><code>/profile</code> — I-toggle ang profile auto-fill<br><code>/vision</code> — I-toggle ang vision mode sa aktibong provider",
+  "sp.help_html": "<strong>Slash Commands</strong><br><code>/help</code> — Ipakita ang listahang ito<br><code>/allow-api</code> — Payagan ang mga pagbabago sa API para sa pag-uusap na ito<br><code>/compact</code> — I-compact ang konteksto ng pag-uusap na ito<br><code>/verbose</code> — I-toggle ang verbose/compact na pagpapakita ng tool<br><code>/reset</code> — I-clear ang pag-uusap<br><code>/screenshot</code> — Kumuha ng kasalukuyang tab<br><code>/export</code> — I-download ang pag-uusap bilang Markdown<br><code>/profile</code> — I-toggle ang profile auto-fill<br><code>/vision</code> — I-toggle ang vision mode sa aktibong provider",
   "sp.compact.verbose_on": "Verbose mode <strong>naka-on</strong> — nakikita ang buong tool call JSON.",
   "sp.compact.verbose_off": "Verbose mode <strong>naka-off</strong> — compact na pagpapakita ng tool.",
   "sp.screenshot.error": "Nabigo ang screenshot: {msg}",

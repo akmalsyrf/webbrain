@@ -2585,7 +2585,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           return result;
         }
       }
-      return { compacted: false, reason: 'not_enough_history', remaining: messages.length, tokens: usedTokens || null, budget: tokenBudget };
+      return { compacted: false, reason: tooManyTokens ? 'over_budget_unshrinkable' : 'not_enough_history', remaining: messages.length, tokens: usedTokens || null, budget: tokenBudget };
     }
 
     // Build tool_call_id → name map so each tool result in the summary can be
@@ -2690,18 +2690,23 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   async compactConversation(tabId, onUpdate = null) {
+    if (this._runningTabs.has(tabId)) {
+      return { compacted: false, reason: 'busy', remaining: 0 };
+    }
     const messages = this.conversations.get(tabId);
     if (!messages || messages.length <= 1) {
       return { compacted: false, reason: 'empty', remaining: messages?.length || 0 };
     }
 
-    return await this._manageContext(
+    const result = await this._manageContext(
       tabId,
       messages,
       onUpdate,
       this.currentCostState.get(tabId) || null,
       { force: true }
-    ) || { compacted: false, reason: 'not_needed', remaining: messages.length };
+    );
+    if (result?.compacted) this._persist(tabId);
+    return result || { compacted: false, reason: 'not_needed', remaining: messages.length };
   }
 
   _truncate(str, len) {
