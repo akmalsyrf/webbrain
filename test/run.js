@@ -65,6 +65,34 @@ const { resourceBucket, bucketArgsKey, URL_FAMILY_TOOLS } = await import(
 const { resourceBucket: resourceBucketFx, bucketArgsKey: bucketArgsKeyFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/agent/loop-bucket.js').replace(/\\/g, '/')
 );
+const {
+  detectProgressAction,
+  isValidLedgerStatus,
+  upsertLedgerItems,
+  progressCounts,
+  ledgerDoneBlock,
+} = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/agent/progress-ledger.js').replace(/\\/g, '/')
+);
+const {
+  detectProgressAction: detectProgressActionFx,
+  isValidLedgerStatus: isValidLedgerStatusFx,
+  upsertLedgerItems: upsertLedgerItemsFx,
+} = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/agent/progress-ledger.js').replace(/\\/g, '/')
+);
+const {
+  buildGithubStargazerProgressItems,
+  parseGithubStargazerFollowButtons,
+} = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/agent/observers/github-stargazers.js').replace(/\\/g, '/')
+);
+const {
+  buildGithubStargazerProgressItems: buildGithubStargazerProgressItemsFx,
+  parseGithubStargazerFollowButtons: parseGithubStargazerFollowButtonsFx,
+} = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/agent/observers/github-stargazers.js').replace(/\\/g, '/')
+);
 const { CDPClient, cdpClient: cdpClientCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/cdp/cdp-client.js').replace(/\\/g, '/')
 );
@@ -2700,6 +2728,195 @@ test('Agent enrich: no recording status note when the conversation never recorde
   assert.doesNotMatch(enriched.content, /Recording status/i);
 });
 
+console.log('\nprogress ledger');
+
+test('progress ledger auto-detects item action clicks (chrome & firefox)', () => {
+  const result = {
+    success: true,
+    method: 'click_ax',
+    name: 'Follow myxvisual',
+    href: '/myxvisual',
+  };
+  const chromeItem = detectProgressAction('click_ax', { ref_id: 'ref_1' }, result);
+  const firefoxItem = detectProgressActionFx('click_ax', { ref_id: 'ref_1' }, result);
+  for (const item of [chromeItem, firefoxItem]) {
+    assert.equal(item.id, 'myxvisual');
+    assert.equal(item.action, 'follow');
+    assert.equal(item.status, 'acted');
+  }
+  assert.equal(detectProgressAction('click', { text: 'Submit' }, { success: true, text: 'Submit' }), null);
+});
+
+test('progress ledger merges rows and does not downgrade terminal rows', () => {
+  let state = upsertLedgerItems([], [
+    { id: 'myxvisual', label: 'follow myxvisual', action: 'follow', status: 'acted' },
+  ], { source: 'auto', now: 100 });
+  assert.equal(state.counts.acted, 1);
+  assert.equal(ledgerDoneBlock(state.rows).blocked, true);
+
+  state = upsertLedgerItems(state.rows, [
+    { id: 'myxvisual', label: 'myxvisual', status: 'processed', fields: { email: null } },
+  ], { source: 'model', now: 200 });
+  assert.equal(state.rows.length, 1);
+  assert.equal(state.rows[0].status, 'processed');
+  assert.equal(state.rows[0].fields.email, null);
+  assert.equal(progressCounts(state.rows).unresolved, 0);
+  assert.equal(ledgerDoneBlock(state.rows), null);
+
+  state = upsertLedgerItems(state.rows, [
+    { id: 'myxvisual', label: 'follow myxvisual', action: 'follow', status: 'acted' },
+  ], { source: 'auto', now: 300 });
+  assert.equal(state.rows[0].status, 'processed');
+  assert.equal(state.rows[0].attempts, 2);
+
+  const fx = upsertLedgerItemsFx([], [
+    { id: 'octocat', label: 'follow octocat', action: 'follow', status: 'acted' },
+  ], { source: 'auto', now: 100 });
+  assert.equal(fx.counts.acted, 1);
+});
+
+test('progress ledger rejects malformed statuses and normalizes null-like fields', () => {
+  assert.equal(isValidLedgerStatus('pending'), true);
+  assert.equal(isValidLedgerStatus('「pending」'), false);
+  assert.equal(isValidLedgerStatusFx('processed'), true);
+  assert.equal(isValidLedgerStatusFx('done'), false);
+
+  const state = upsertLedgerItems([], [
+    { id: 'rafi', label: 'rafi', status: 'processed', fields: { email: 'null', note: 'not found' } },
+  ], { source: 'model', now: 100 });
+  assert.equal(state.rows[0].fields.email, null);
+  assert.equal(state.rows[0].fields.note, null);
+
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const bad = agent._progressUpdate(771, {
+      items: [{ id: 'MarcoSal', label: 'MarcoSal', action: 'follow', status: '「pending」' }],
+    });
+    assert.equal(bad.success, false);
+    assert.match(bad.error, /invalid status/i);
+  }
+});
+
+test('progress ledger reconciles GitHub stargazer Follow and Unfollow buttons', () => {
+  const page = `
+    link "ChJus" [ref_12]
+    button "Follow ChJus" [ref_13]
+    link "myxvisual" [ref_20]
+    button "Unfollow myxvisual" [ref_21]
+    link "rafi" [ref_30]
+    button "Follow rafi" [ref_31]
+    link "ryan-the-crayon" [ref_40]
+    button "Follow ryan-the-crayon" [ref_41]
+  `;
+  for (const [parseButtons, buildItems] of [
+    [parseGithubStargazerFollowButtons, buildGithubStargazerProgressItems],
+    [parseGithubStargazerFollowButtonsFx, buildGithubStargazerProgressItemsFx],
+  ]) {
+    const buttons = parseButtons(page);
+    assert.deepEqual(buttons.map(b => [b.username, b.state]), [
+      ['ChJus', 'not_followed'],
+      ['myxvisual', 'already_followed'],
+      ['rafi', 'not_followed'],
+      ['ryan-the-crayon', 'not_followed'],
+    ]);
+
+    const observed = buildItems([
+      { id: 'myxvisual', label: 'myxvisual', action: 'follow', status: 'pending' },
+      { id: 'rafi', label: 'rafi', action: 'follow', status: 'acted' },
+    ], page, { excludedUsernames: ['ChJus', 'ryan-the-crayon'] });
+    assert.equal(observed.stats.addedPending, 0);
+    assert.equal(observed.stats.alreadyFollowedSkipped, 1);
+    assert.equal(observed.stats.excludedSkipped, 2);
+    assert.deepEqual(observed.items.map(item => [item.id, item.status, item.reason || '']), [
+      ['ChJus', 'skipped', 'excluded by user request'],
+      ['myxvisual', 'skipped', 'already followed before this task'],
+      ['rafi', 'acted', ''],
+      ['ryan-the-crayon', 'skipped', 'excluded by user request'],
+    ]);
+  }
+});
+
+test('agent records GitHub stargazer observations into the progress ledger', async () => {
+  const page = `
+    button "Follow ChJus" [ref_13]
+    button "Unfollow myxvisual" [ref_21]
+    button "Follow rafi" [ref_31]
+  `;
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 772;
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow all not-followed stargazers except ChJus, and while doing that keep usernames/emails.' },
+    ]);
+    agent._currentUrl = async () => 'https://github.com/foo/bar/stargazers?page=2';
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'myxvisual', label: 'myxvisual', action: 'follow', status: 'pending' }],
+    });
+
+    const result = { success: true, pageContent: page };
+    const note = await agent._recordProgressObservation(tabId, 'get_accessibility_tree', result);
+    assert.equal(note.observedButtons, 3);
+    assert.equal(note.alreadyFollowedSkipped, 1);
+    assert.equal(note.excludedSkipped, 1);
+    assert.equal(note.addedPending, 1);
+    assert.equal(result.progressObserved.updatedRows, 3);
+
+    const rows = agent.progressLedgers.get(tabId);
+    const byId = new Map(rows.map(row => [row.id, row]));
+    assert.equal(byId.get('ChJus').status, 'skipped');
+    assert.equal(byId.get('myxvisual').status, 'skipped');
+    assert.equal(byId.get('rafi').status, 'pending');
+  }
+});
+
+test('progress ledger pins app-owned rows and survives compaction (chrome & firefox)', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 76;
+    const messages = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'follow stargazers and collect visible emails' },
+    ];
+    agent.conversations.set(tabId, messages);
+
+    const update = agent._progressUpdate(tabId, {
+      items: [
+        { id: 'myxvisual', label: 'myxvisual', action: 'follow', status: 'processed', fields: { email: null } },
+        { id: 'octocat', label: 'octocat', action: 'follow', status: 'acted' },
+      ],
+    });
+    assert.equal(update.success, true);
+    const idx = agent._findProgressLedgerIndex(messages);
+    assert.ok(idx >= 0, `${AgentClass.name}: progress ledger not pinned`);
+    assert.ok(agent._isProgressLedgerMessage(messages[idx]), `${AgentClass.name}: not a progress ledger message`);
+    assert.match(messages[idx].content, /myxvisual/, `${AgentClass.name}: processed row missing`);
+    assert.match(messages[idx].content, /octocat/, `${AgentClass.name}: acted row missing`);
+
+    for (let i = 0; i < 30; i++) {
+      messages.push({ role: 'assistant', content: `step ${i}` });
+      messages.push({ role: 'user', content: `ok ${i}` });
+    }
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      await agent._manageContext(tabId, messages, () => {});
+    } finally {
+      console.log = origLog;
+    }
+
+    const idx2 = agent._findProgressLedgerIndex(messages);
+    assert.ok(idx2 >= 0, `${AgentClass.name}: progress ledger lost in compaction`);
+    assert.match(messages[idx2].content, /myxvisual/, `${AgentClass.name}: processed row lost`);
+    assert.match(messages[idx2].content, /octocat/, `${AgentClass.name}: acted row lost`);
+    const block = agent._progressDoneBlock(tabId);
+    assert.ok(block?.blocked, `${AgentClass.name}: unresolved row should block done`);
+
+    const h = agent.persistTimers?.get?.(tabId);
+    if (h) clearTimeout(h);
+  }
+});
+
 console.log('\nauto-scratchpad on download');
 
 test('auto-scratchpad: download path is pinned, deduped, and survives compaction (chrome & firefox)', async () => {
@@ -3158,6 +3375,8 @@ test('parity: chrome & firefox permission-gate behave identically', async () => 
 const KNOWN_SAFE_TOOLS = new Set([
   'clarify',              // relays a question to the user (trusted user input)
   'scratchpad_write',     // writes an internal agent note, not the page
+  'progress_update',      // writes sanitized internal progress rows
+  'progress_read',        // reads sanitized internal progress rows
   'get_window_info',      // reads browser/window metadata, not page content
   // NOTE: hover and list_downloads were moved to UNTRUSTED_CONTENT_TOOLS — both
   // return attacker-influenced bytes (hover: the element's accessible name;

@@ -1,6 +1,8 @@
 import { AGENT_TOOLS, AGENT_TOOL_NAMES, getToolsForMode, SYSTEM_PROMPT_ASK, SYSTEM_PROMPT_ACT, SYSTEM_PROMPT_ACT_COMPACT, SYSTEM_PROMPT_ACT_MID } from './tools.js';
 import { URL_FAMILY_TOOLS, resourceBucket, bucketArgsKey } from './loop-bucket.js';
 import { isCredentialField, CREDENTIAL_NOTE_STRICT } from './credential-fields.js';
+import { detectProgressAction, formatLedgerSummary, isValidLedgerStatus, ledgerDoneBlock, progressCounts, selectLedgerRows, unresolvedLedgerRows, upsertLedgerItems } from './progress-ledger.js';
+import { buildGithubStargazerProgressItems } from './observers/github-stargazers.js';
 import { getActiveAdapter, UNIVERSAL_PREAMBLE } from './adapters.js';
 import {
   fetchUrl,
@@ -37,6 +39,7 @@ export class Agent {
   constructor(providerManager) {
     this.providerManager = providerManager;
     this.conversations = new Map(); // tabId -> messages[]
+    this.progressLedgers = new Map(); // tabId -> structured progress rows, projected into a pinned note
     this.conversationIds = new Map(); // tabId -> stable conversationId (regenerated on clearConversation)
     this.conversationModes = new Map(); // tabId -> 'ask' | 'act'
     this.abortFlags = new Map(); // tabId -> boolean
@@ -780,6 +783,22 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // scratchpad_write itself — the failure that made it invent file paths.
       this._pinDownloadHandles(tabId, fnName, toolResult);
 
+      let progressObserved = null;
+      let progressAuto = null;
+      let progressWarning = '';
+      if (toolResult && typeof toolResult === 'object' && !toolResult.done) {
+        progressObserved = await this._recordProgressObservation(tabId, fnName, toolResult);
+        progressAuto = this._autoRecordProgressAction(tabId, fnName, fnArgs, toolResult);
+        if (progressAuto) {
+          toolResult.progressAutoRecorded = {
+            id: progressAuto.item.id,
+            status: progressAuto.item.status,
+            action: progressAuto.item.action,
+          };
+          progressWarning = this._progressWarningForAction(tabId);
+        }
+      }
+
       if (NAV_PRONE_TOOLS.has(fnName) && beforeUrl && !toolResult?.error) {
         await new Promise(r => setTimeout(r, 200));
         const afterUrl = await this._currentUrl(tabId);
@@ -791,7 +810,23 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
 
       if (toolResult && toolResult.done) {
-        const finalResponse = toolResult.summary || partialAssistantText || 'Task completed.';
+        const progressBlock = this._progressDoneBlock(tabId);
+        if (progressBlock) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              success: false,
+              blockedDone: true,
+              error: progressBlock.error,
+              counts: progressBlock.counts,
+              unresolved: progressBlock.unresolved,
+            }),
+          });
+          onUpdate('warning', { message: 'Progress ledger has unresolved rows; continuing.' });
+          continue;
+        }
+        const finalResponse = this._appendProgressLedgerToFinal(tabId, toolResult.summary || partialAssistantText || 'Task completed.');
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
@@ -851,6 +886,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // our own trusted notes (the loop nudge), so the nudge stays outside the
       // <untrusted_page_content> box and is read as an instruction, not data.
       let resultContent = this._wrapUntrusted(fnName, this._limitToolResult(toolResult));
+      if (progressObserved) {
+        resultContent += `\n[PROGRESS LEDGER OBSERVED: GitHub stargazers buttons observed=${progressObserved.observedButtons}; added ${progressObserved.addedPending} pending Follow row(s); skipped ${progressObserved.alreadyFollowedSkipped} already-followed row(s) and ${progressObserved.excludedSkipped} excluded row(s). Only rows created from visible Follow buttons need follow action.]`;
+      }
+      if (progressAuto) {
+        resultContent += `\n[PROGRESS AUTO-RECORDED: ${progressAuto.item.action || 'action'} ${progressAuto.item.id} is now status=${progressAuto.item.status}. After collecting the needed result for this item, call progress_update to mark it processed, skipped, or failed.]`;
+      }
+      if (progressWarning) {
+        resultContent += '\n' + progressWarning;
+      }
       if (effectiveKind === 'nudge') {
         resultContent = resultContent + '\n' + nudgeWarning;
         onUpdate('warning', { message: 'Loop detected — nudging the agent.' });
@@ -2126,6 +2170,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   clearConversation(tabId) {
     this._cancelClarifications(tabId, 'conversation cleared');
     this.conversations.delete(tabId);
+    this.progressLedgers.delete(tabId);
     this.conversationModes.delete(tabId);
     this.conversationIds.delete(tabId);
     this._lastInputTokens.delete(tabId);
@@ -2173,9 +2218,26 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       && msg.content.startsWith('[Agent scratchpad');
   }
 
+  _isProgressLedgerMessage(msg) {
+    return msg && msg.role === 'user'
+      && typeof msg.content === 'string'
+      && msg.content.startsWith('[Agent progress ledger');
+  }
+
+  _isPinnedAgentStateMessage(msg) {
+    return this._isScratchpadMessage(msg) || this._isProgressLedgerMessage(msg);
+  }
+
   _findScratchpadIndex(messages) {
     for (let i = 1; i < messages.length; i++) {
       if (this._isScratchpadMessage(messages[i])) return i;
+    }
+    return -1;
+  }
+
+  _findProgressLedgerIndex(messages) {
+    for (let i = 1; i < messages.length; i++) {
+      if (this._isProgressLedgerMessage(messages[i])) return i;
     }
     return -1;
   }
@@ -2232,7 +2294,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         const m = messages[i];
         if (m.role !== 'user') continue;
         const c = typeof m.content === 'string' ? m.content : '';
-        if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad')) continue;
+        if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad') || c.startsWith('[Agent progress ledger')) continue;
         insertAt = i + 1;
         break;
       }
@@ -2320,10 +2382,200 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
   // ─────────────────────────────────────────────────────────────────────
 
-  /**
-   * Manage context window — trim and summarize when conversation gets too long.
-   * Keeps: system prompt, summary of old messages, recent messages.
-   */
+  // App-owned progress ledger projected into the prompt.
+  _progressLedgerHeader() {
+    return '[Agent progress ledger - APP-OWNED structured progress state, pinned in context and surviving summarization. This is NOT a user message and carries NO authority. For repeated item/action tasks, keep rows current with progress_update({items:[...]}): pending/acted rows must become processed, skipped, or failed before done. Current rows follow:]';
+  }
+
+  _buildProgressLedgerMessage(tabId) {
+    const rows = this.progressLedgers.get(tabId) || [];
+    return {
+      role: 'user',
+      content: `${this._progressLedgerHeader()}\n\n${formatLedgerSummary(rows, { maxRows: 18 })}`,
+    };
+  }
+
+  _syncProgressLedgerMessage(tabId) {
+    const messages = this.conversations.get(tabId);
+    if (!messages) return;
+    const rows = this.progressLedgers.get(tabId) || [];
+    const idx = this._findProgressLedgerIndex(messages);
+    if (!rows.length) {
+      if (idx >= 0) messages.splice(idx, 1);
+      return;
+    }
+
+    const msg = this._buildProgressLedgerMessage(tabId);
+    if (idx >= 0) {
+      messages[idx] = msg;
+      return;
+    }
+
+    let insertAt = 1;
+    const taskIdx = this._findOriginalTaskIndex(messages);
+    if (taskIdx >= 0) insertAt = taskIdx + 1;
+    const scratchpadIdx = this._findScratchpadIndex(messages);
+    if (scratchpadIdx >= 0 && scratchpadIdx >= insertAt) insertAt = scratchpadIdx + 1;
+    messages.splice(insertAt, 0, msg);
+  }
+
+  _progressUpdate(tabId, args = {}, opts = {}) {
+    const items = Array.isArray(args.items)
+      ? args.items
+      : (args.item && typeof args.item === 'object' ? [args.item] : []);
+    if (!items.length) {
+      return { success: false, error: 'progress_update: pass items:[{id,status,...}] with at least one row.' };
+    }
+    const invalid = items
+      .filter(item => item && Object.prototype.hasOwnProperty.call(item, 'status') && !isValidLedgerStatus(item.status))
+      .map(item => `${item.id || item.label || '(missing id)'}:${String(item.status)}`);
+    if (invalid.length) {
+      return {
+        success: false,
+        error: `progress_update: invalid status value(s): ${invalid.slice(0, 6).join(', ')}. Use exactly one of pending, acted, processed, skipped, or failed.`,
+      };
+    }
+    const current = this.progressLedgers.get(tabId) || [];
+    const result = upsertLedgerItems(current, items, { source: opts.source || args.source || 'model' });
+    if (!result.changed) {
+      return { success: false, error: 'progress_update: no valid items were provided. Each item needs a stable id.' };
+    }
+    this.progressLedgers.set(tabId, result.rows);
+    this._syncProgressLedgerMessage(tabId);
+    if (typeof this._persist === 'function') this._persist(tabId);
+    return {
+      success: true,
+      updated: result.updated,
+      counts: result.counts,
+      unresolved: unresolvedLedgerRows(result.rows, { limit: 20 }),
+      note: 'progress ledger updated',
+    };
+  }
+
+  _progressRead(tabId, args = {}) {
+    const rows = this.progressLedgers.get(tabId) || [];
+    const limit = Number.isFinite(Number(args.limit)) ? Math.max(1, Math.min(200, Math.floor(Number(args.limit)))) : 50;
+    const offset = Number.isFinite(Number(args.offset)) ? Math.max(0, Math.floor(Number(args.offset))) : 0;
+    return {
+      success: true,
+      counts: progressCounts(rows),
+      rows: selectLedgerRows(rows, { status: args.status, limit, offset }),
+      offset,
+      limit,
+      note: rows.length ? 'Use progress_update to close pending/acted rows.' : 'No progress rows recorded yet.',
+    };
+  }
+
+  _messageText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content.map(part => typeof part?.text === 'string' ? part.text : '').filter(Boolean).join('\n');
+    }
+    return '';
+  }
+
+  _originalTaskText(tabId) {
+    const messages = this.conversations.get(tabId) || [];
+    const idx = this._findOriginalTaskIndex(messages);
+    return idx >= 0 ? this._messageText(messages[idx]?.content) : '';
+  }
+
+  _excludedGithubUsernames(tabId) {
+    const text = this._originalTaskText(tabId);
+    const match = text.match(/\bexcept\b([\s\S]*?)(?:\band\s+while\b|\bwhile\b|[.;\n]|$)/i);
+    if (!match) return [];
+    const stop = new Set([
+      'and', 'or', 'the', 'these', 'those', 'following', 'listed', 'user', 'users',
+      'username', 'usernames', 'except', 'while', 'doing', 'keep', 'track', 'email',
+      'emails', 'name', 'names',
+    ]);
+    const names = [];
+    const seen = new Set();
+    const re = /@?([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)/g;
+    let token;
+    while ((token = re.exec(match[1])) !== null) {
+      const name = token[1];
+      const key = name.toLowerCase();
+      if (stop.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+    return names;
+  }
+
+  _isGithubStargazersUrl(url) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname !== 'github.com') return false;
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      return parts.length >= 3 && parts[2] === 'stargazers';
+    } catch {
+      return false;
+    }
+  }
+
+  async _recordProgressObservation(tabId, name, result) {
+    if (name !== 'get_accessibility_tree') return null;
+    if (!result || result.error || result.success === false) return null;
+    const pageContent = result.pageContent || result.text || '';
+    if (!pageContent || (!pageContent.includes('button "Follow ') && !pageContent.includes('button "Unfollow '))) return null;
+    const url = result.url || result.pageUrl || await this._currentUrl(tabId);
+    if (!this._isGithubStargazersUrl(url)) return null;
+
+    const observed = buildGithubStargazerProgressItems(
+      this.progressLedgers.get(tabId) || [],
+      pageContent,
+      { excludedUsernames: this._excludedGithubUsernames(tabId) }
+    );
+    if (!observed.items.length) return null;
+    const update = this._progressUpdate(tabId, { items: observed.items }, { source: 'observe' });
+    if (!update?.success) return null;
+    const note = {
+      ...observed.stats,
+      updatedRows: update.updated?.length || 0,
+      counts: update.counts,
+    };
+    result.progressObserved = note;
+    return note;
+  }
+
+  _autoRecordProgressAction(tabId, name, args, result) {
+    const item = detectProgressAction(name, args, result);
+    if (!item) return null;
+    const update = this._progressUpdate(tabId, { items: [item] }, { source: 'auto' });
+    if (!update?.success) return null;
+    return {
+      item: update.updated?.[0] || item,
+      counts: update.counts || progressCounts(this.progressLedgers.get(tabId) || []),
+      unresolved: unresolvedLedgerRows(this.progressLedgers.get(tabId) || [], { limit: 8 }),
+    };
+  }
+
+  _progressWarningForAction(tabId) {
+    const unresolved = unresolvedLedgerRows(this.progressLedgers.get(tabId) || [], { limit: 8 });
+    if (unresolved.length < 2) return '';
+    return `[PROGRESS LEDGER WARNING: ${unresolved.length} item action(s) are recorded but not resolved. Before clicking more item-action buttons or calling done, call progress_update({items:[...]}) to mark each id as processed, skipped, or failed and attach any collected fields such as email/null.]`;
+  }
+
+  _progressDoneBlock(tabId) {
+    return ledgerDoneBlock(this.progressLedgers.get(tabId) || [], { limit: 12 });
+  }
+
+  _appendProgressLedgerToFinal(tabId, summary) {
+    const rows = this.progressLedgers.get(tabId) || [];
+    if (!rows.length) return summary;
+    const counts = progressCounts(rows);
+    const visible = selectLedgerRows(rows, { limit: 20 });
+    const lines = visible.map(r => {
+      const fieldText = r.fields && typeof r.fields === 'object'
+        ? Object.entries(r.fields).map(([k, v]) => `${k}=${v == null ? 'null' : v}`).join(', ')
+        : '';
+      return `- ${r.status}: ${r.label || r.id}${fieldText ? ` (${fieldText})` : ''}`;
+    });
+    const more = rows.length > visible.length ? `\n... ${rows.length - visible.length} more row(s).` : '';
+    return `${summary}\n\nProgress ledger: ${counts.total} row(s), ${counts.processed} processed, ${counts.skipped} skipped, ${counts.failed} failed.\n${lines.join('\n')}${more}`;
+  }
+
   /**
    * Token budget at which we proactively auto-compact for the active provider:
    * a fraction (contextCompactRatio) of the model's context window. Compacting
@@ -2397,7 +2649,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const m = messages[i];
       if (m.role !== 'user') continue;
       const c = typeof m.content === 'string' ? m.content : '';
-      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad')) continue;
+      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context window was trimmed') || c.startsWith('[Agent scratchpad') || c.startsWith('[Agent progress ledger')) continue;
       return i;
     }
     return -1;
@@ -2420,7 +2672,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     for (let i = 1; i < messages.length; i++) {
       if (i === taskIdx) continue; // never truncate the pinned original task
       const m = messages[i];
-      if (this._isScratchpadMessage(m)) continue;
+      if (this._isPinnedAgentStateMessage(m)) continue;
       if (typeof m.content !== 'string') continue; // image/array content handled by _pruneOldImages
       if (m.role === 'tool' && m.content.length > 2000) {
         m.content = m.content.slice(0, 2000) + '\n[...truncated to fit context]';
@@ -2492,13 +2744,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // duplicating it during rebuild.
     const scratchpadIdx = this._findScratchpadIndex(messages);
     const scratchpadMsg = scratchpadIdx >= 0 ? messages[scratchpadIdx] : null;
+    const progressIdx = this._findProgressLedgerIndex(messages);
+    const progressMsg = progressIdx >= 0 ? messages[progressIdx] : null;
     const keepRecent = 16; // keep last N messages verbatim
     // Exclude the pinned original task from both summary and recent slices.
     const afterPin = originalTaskIdx >= 0 ? originalTaskIdx + 1 : 1;
     const oldMessagesRaw = messages.slice(afterPin, -keepRecent);
     const recentMessagesRaw = messages.slice(-keepRecent);
-    const oldMessages = oldMessagesRaw.filter(m => !this._isScratchpadMessage(m));
-    const recentMessages = recentMessagesRaw.filter(m => !this._isScratchpadMessage(m));
+    const oldMessages = oldMessagesRaw.filter(m => !this._isPinnedAgentStateMessage(m));
+    const recentMessages = recentMessagesRaw.filter(m => !this._isPinnedAgentStateMessage(m));
 
     // Boundary fix: the recent slice must not begin in the middle of a
     // tool-call group. If the cutoff lands right after an assistant
@@ -2591,6 +2845,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     messages.push(systemMsg);
     if (originalTask) messages.push(originalTask);
     if (scratchpadMsg) messages.push(scratchpadMsg);
+    if (progressMsg) messages.push(progressMsg);
     messages.push(summaryMsg, summaryAck, ...recentMessages);
 
     // The next LLM call will report a fresh (smaller) input-token count; clear
@@ -2797,6 +3052,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       case 'scratchpad_write': {
         return `scratchpad ${parsed.mode || 'write'} (${parsed.bytes ?? '?'} chars)`;
       }
+      case 'progress_update': {
+        const c = parsed.counts || {};
+        return `progress ledger updated (${c.total ?? '?'} rows, ${c.unresolved ?? 0} unresolved)`;
+      }
+      case 'progress_read': {
+        const c = parsed.counts || {};
+        return `progress ledger read (${c.total ?? '?'} rows, ${c.unresolved ?? 0} unresolved)`;
+      }
     }
 
     // Generic fallback. For a page-derived tool, NEVER stringify the parsed
@@ -2884,7 +3147,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const m = messages[i];
       if (m.role !== 'user') continue;
       const c = typeof m.content === 'string' ? m.content : '';
-      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context') || c.startsWith('[Agent scratchpad')) continue;
+      if (c.startsWith('[Site guidance') || c.startsWith('[Site context changed') || c.startsWith('[Context') || c.startsWith('[Agent scratchpad') || c.startsWith('[Agent progress ledger')) continue;
       originalTask = m;
       break;
     }
@@ -2892,8 +3155,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // notes should survive.
     const scratchpadIdx = this._findScratchpadIndex(messages);
     const scratchpadMsg = scratchpadIdx >= 0 ? messages[scratchpadIdx] : null;
+    const progressIdx = this._findProgressLedgerIndex(messages);
+    const progressMsg = progressIdx >= 0 ? messages[progressIdx] : null;
     const keepLast = 6; // keep only 6 most recent messages
-    const recent = messages.slice(-keepLast).filter(m => !this._isScratchpadMessage(m));
+    const recent = messages.slice(-keepLast).filter(m => !this._isPinnedAgentStateMessage(m));
 
     // Drop any leading `tool` messages whose requesting assistant turn fell
     // outside the kept window. Both OpenAI-compatible and Anthropic APIs reject
@@ -2926,6 +3191,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     messages.push(systemMsg);
     if (originalTask) messages.push(originalTask);
     if (scratchpadMsg) messages.push(scratchpadMsg);
+    if (progressMsg) messages.push(progressMsg);
     messages.push(notice, ack, ...recent);
 
     console.log(`[WebBrain] Emergency context trim: kept ${messages.length} messages.`);
@@ -3713,6 +3979,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     if (name === 'scratchpad_write') {
       return this._scratchpadWrite(tabId, args);
+    }
+
+    if (name === 'progress_update') {
+      return this._progressUpdate(tabId, args);
+    }
+
+    if (name === 'progress_read') {
+      return this._progressRead(tabId, args);
     }
 
     if (name === 'verify_form') {
