@@ -3613,6 +3613,24 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return this._currentTaskProgressRows(tabId).length > 0;
   }
 
+  _plainFinalProgressBlock(tabId) {
+    const progressBlock = this._shouldBlockDoneForProgress(tabId)
+      ? this._progressDoneBlock(tabId)
+      : null;
+    if (!progressBlock) return null;
+    const blockedResult = {
+      success: false,
+      blockedFinal: true,
+      error: progressBlock.error,
+      counts: progressBlock.counts,
+      unresolved: progressBlock.unresolved,
+    };
+    return [
+      '[PROGRESS LEDGER BLOCK: Your previous response was a plain final answer, but this Act-mode repeated-item task still has unresolved progress rows. Continue the task. Use progress_update to mark rows processed, skipped, or failed before finishing.]',
+      this._wrapUntrusted('progress_read', this._limitToolResult(blockedResult)),
+    ].join('\n');
+  }
+
   _appendProgressLedgerToFinal(tabId, summary) {
     const rows = this._currentTaskLedgerRows(tabId);
     if (!rows.length) return summary;
@@ -8037,6 +8055,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         break;
       }
       // Genuine final answer — emit and exit.
+      const progressFinalBlock = this._plainFinalProgressBlock(tabId);
+      if (progressFinalBlock) {
+        messages.push({ role: 'assistant', content: result.content });
+        messages.push({ role: 'user', content: progressFinalBlock });
+        onUpdate('warning', { message: 'Progress ledger has unresolved rows; continuing.' });
+        this._persist(tabId);
+        continue;
+      }
       finalResponse = result.costAllowanceMessage
         ? `${result.content}\n\n${result.costAllowanceMessage}`
         : result.content;
@@ -8244,6 +8270,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           return failMsg;
         }
         emptyOutputRecoveryAttempted = false;
+        const progressFinalBlock = this._plainFinalProgressBlock(tabId);
+        if (progressFinalBlock) {
+          messages.push({ role: 'assistant', content: fullText });
+          messages.push({ role: 'user', content: progressFinalBlock });
+          onUpdate('warning', { message: 'Progress ledger has unresolved rows; continuing.' });
+          this._persist(tabId);
+          continue;
+        }
         if (costStopMessage) {
           onUpdate('text_delta', { content: `\n\n${costStopMessage}` });
           fullText = `${fullText}\n\n${costStopMessage}`;
