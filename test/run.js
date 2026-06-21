@@ -1878,6 +1878,8 @@ test('sidepanel slash commands are autocompletable in both builds', () => {
     assert.match(panel, /const SLASH_COMMANDS = \[/, `${label}: autocomplete command list missing`);
     assert.match(panel, /handleSlashCommandKeydown/, `${label}: autocomplete keyboard handler missing`);
     assert.match(panel, /applySlashCommandCompletion/, `${label}: autocomplete completion handler missing`);
+    assert.match(panel, /scrollSlashCommandOptionIntoView/, `${label}: selected autocomplete option should be scrolled into view`);
+    assert.match(panel, /slashCommandMenuEl\.scrollTop [+-]=/, `${label}: autocomplete scrolling should adjust the menu scroll position`);
     assert.match(panel, /inputEl\.addEventListener\('input', handleInput\)/, `${label}: input handler should refresh autocomplete`);
     assert.match(locale, /sp\.slash\.commands_label/, `${label}: autocomplete aria label missing`);
 

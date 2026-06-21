@@ -1268,15 +1268,30 @@ function getSlashCommandQuery() {
   return beforeCursor.toLowerCase();
 }
 
+function scrollSlashCommandOptionIntoView(option) {
+  if (!slashCommandMenuEl || !option) return;
+
+  const menuRect = slashCommandMenuEl.getBoundingClientRect();
+  const optionRect = option.getBoundingClientRect();
+  if (optionRect.top < menuRect.top) {
+    slashCommandMenuEl.scrollTop -= menuRect.top - optionRect.top;
+  } else if (optionRect.bottom > menuRect.bottom) {
+    slashCommandMenuEl.scrollTop += optionRect.bottom - menuRect.bottom;
+  }
+}
+
 function updateSlashCommandActiveOption() {
   const options = slashCommandMenuEl?.querySelectorAll('.slash-command-option') || [];
+  let selectedOption = null;
   options.forEach((option, index) => {
     const selected = index === slashCommandSelectedIndex;
     option.classList.toggle('selected', selected);
     option.setAttribute('aria-selected', String(selected));
+    if (selected) selectedOption = option;
   });
   const activeId = `${SLASH_COMMAND_OPTION_ID_PREFIX}${slashCommandSelectedIndex}`;
   inputEl?.setAttribute('aria-activedescendant', activeId);
+  scrollSlashCommandOptionIntoView(selectedOption);
 }
 
 function renderSlashCommandAutocomplete() {
