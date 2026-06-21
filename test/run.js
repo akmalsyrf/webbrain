@@ -3659,6 +3659,37 @@ test('manual compactConversation compacts before automatic thresholds', async ()
   }
 });
 
+test('manual compactConversation reports emergency truncation as compacted', async () => {
+  for (const [label, AgentClass] of [['chrome', AgentCh], ['firefox', AgentFx]]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 4000, supportsVision: false }) });
+    const tabId = label === 'chrome' ? 89 : 90;
+    const hugeToolResult = 'x'.repeat(14000);
+    const messages = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'keep working on the task' },
+      { role: 'assistant', tool_calls: [{ id: 'tool-1', function: { name: 'read_page' } }] },
+      { role: 'tool', tool_call_id: 'tool-1', content: hugeToolResult },
+    ];
+    agent.conversations.set(tabId, messages);
+
+    const events = [];
+    const result = await agent.compactConversation(tabId, (type, data) => events.push({ type, data }));
+
+    assert.equal(result.compacted, true, `${label}: emergency truncation should count as compaction`);
+    assert.equal(result.reason, 'truncated_oversized_messages', `${label}: truncation reason missing`);
+    assert.equal(result.truncated, true, `${label}: truncation flag missing`);
+    assert.equal(events[0]?.type, 'context_compacted', `${label}: compaction event missing`);
+    assert.match(messages[3].content, /\[\.\.\.truncated to fit context\]/, `${label}: oversized tool result not truncated`);
+    assert.ok(messages[3].content.length < hugeToolResult.length, `${label}: tool result was not shortened`);
+
+    if (label === 'chrome') {
+      assert.equal(agent.persistTimers.has(tabId), true, 'chrome: truncated conversation should be persisted');
+    }
+    const h = agent.persistTimers?.get?.(tabId);
+    if (h) clearTimeout(h);
+  }
+});
+
 console.log('\nauto-scratchpad on download');
 
 test('auto-scratchpad: download path is pinned, deduped, and survives compaction (chrome & firefox)', async () => {

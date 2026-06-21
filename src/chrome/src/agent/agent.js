@@ -3344,7 +3344,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // over-budget request every step until the provider hard-errors. Shrink
       // oversized tool results / messages in place instead — keeps all turns
       // but caps the bloat — then re-measure on the next call.
-      if (tooManyTokens) this._truncateOversizedMessages(tabId, messages);
+      if (tooManyTokens) {
+        const truncated = this._truncateOversizedMessages(tabId, messages);
+        if (truncated) {
+          const result = {
+            compacted: true,
+            reason: 'truncated_oversized_messages',
+            truncated: true,
+            remaining: messages.length,
+            tokens: usedTokens || null,
+            budget: tokenBudget,
+          };
+          if (typeof onUpdate === 'function') {
+            try {
+              onUpdate('context_compacted', result);
+            } catch { /* ignore */ }
+          }
+          return result;
+        }
+      }
       return { compacted: false, reason: 'not_enough_history', remaining: messages.length, tokens: usedTokens || null, budget: tokenBudget };
     }
 
