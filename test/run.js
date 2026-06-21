@@ -4891,6 +4891,82 @@ test('plain final answers cannot bypass unresolved progress rows', async () => {
   }
 });
 
+test('empty-output recovery nudges cannot hide unresolved progress rows', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const responses = [
+      { content: '', toolCalls: [] },
+      { content: 'Done after recovery nudge.', toolCalls: [] },
+      {
+        content: null,
+        toolCalls: [
+          {
+            id: 'progress_call',
+            function: {
+              name: 'progress_update',
+              arguments: JSON.stringify({
+                items: [{ id: 'nudge-user', status: 'processed' }],
+              }),
+            },
+          },
+          {
+            id: 'done_call',
+            function: {
+              name: 'done',
+              arguments: JSON.stringify({ summary: 'Actually done after recovery.' }),
+            },
+          },
+        ],
+      },
+    ];
+    const provider = {
+      supportsTools: true,
+      supportsVision: false,
+      promptTier: 'full',
+      contextWindow: 128000,
+      model: 'test-model',
+      name: 'test-provider',
+      chat: async () => {
+        const next = responses.shift();
+        assert.ok(next, `${AgentClass.name}: model was called too many times`);
+        return next;
+      },
+    };
+    const agent = new AgentClass({
+      getActive: () => provider,
+      getVisionProvider: async () => null,
+    });
+    const tabId = 796;
+    agent.maxSteps = 5;
+    agent._manageContext = async () => {};
+    agent._enrichUserMessageWithCurrentPage = async (_tabId, _messages, content) => ({ role: 'user', content });
+    agent._maybeReinjectAdapter = async () => {};
+    agent._persist = () => {};
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+    ]);
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'nudge-user', label: 'nudge-user', action: 'follow', status: 'pending' }],
+    });
+    agent.executeTool = async (toolTabId, name, args) => {
+      if (name === 'progress_update') return agent._progressUpdate(toolTabId, args);
+      if (name === 'done') return { done: true, summary: args.summary };
+      throw new Error(`unexpected tool ${name}`);
+    };
+    const updates = [];
+
+    const final = await agent.processMessage(tabId, 'continue', (type, data) => {
+      updates.push({ type, data });
+    }, 'act');
+
+    assert.match(final, /Actually done after recovery\./, `${AgentClass.name}: recovery run did not continue to done`);
+    assert.equal(responses.length, 0, `${AgentClass.name}: system nudge let the plain final bypass ledger rows`);
+    assert.equal(agent._latestTaskText(tabId), 'continue', `${AgentClass.name}: system nudge replaced the latest real task`);
+    assert.ok(updates.some(update => update.type === 'warning' && /Progress ledger has unresolved rows/.test(update.data?.message || '')), `${AgentClass.name}: recovery final was not blocked`);
+  }
+});
+
 test('streamed plain final answers cannot bypass unresolved progress rows', async () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const provider = {

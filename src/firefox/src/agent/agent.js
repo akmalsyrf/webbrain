@@ -2760,6 +2760,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       || c.startsWith('[Site context changed')
       || c.startsWith('[Context window was trimmed')
       || c.startsWith('[Context was too large')
+      || c.startsWith('[System nudge')
       || c.startsWith('[Agent scratchpad')
       || c.startsWith('[Agent progress ledger')
       || c.startsWith('[PROGRESS LEDGER BLOCK')
