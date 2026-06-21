@@ -13,9 +13,12 @@ This changelog was generated from the repository Git history and release tags. V
 
 ### Changed
 - Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 14.1.2.
-
+- Completed missing translations for all 13 supported languages (Arabic, Spanish, French, Indonesian, Japanese, Korean, Malay, Russian, Thai, Tagalog, Turkish, Ukrainian, Chinese Simplified) across Chrome and Firefox locale files, covering scheduled-task UI strings, scratchpad panel, schedule form, permission verb, tool labels, and settings toggles added in 14.1.0.
+- 
 ### Tests
 - Added static Chrome + Firefox coverage to keep the slash command parser and autocomplete command list in sync.
+
+
 
 ## [14.1.0] - 2026-06-21
 
