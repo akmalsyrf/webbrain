@@ -2426,6 +2426,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!items.length) {
       return { success: false, error: 'progress_update: pass items:[{id,status,...}] with at least one row.' };
     }
+    const missingStatus = items
+      .filter(item => item && typeof item === 'object' && !Array.isArray(item) && !Object.prototype.hasOwnProperty.call(item, 'status'))
+      .map(item => item.id || item.label || '(missing id)');
+    if (missingStatus.length) {
+      return {
+        success: false,
+        error: `progress_update: missing status value(s): ${missingStatus.slice(0, 6).join(', ')}. Use exactly one of pending, acted, processed, skipped, or failed.`,
+      };
+    }
     const invalid = items
       .filter(item => item && Object.prototype.hasOwnProperty.call(item, 'status') && !isValidLedgerStatus(item.status))
       .map(item => `${item.id || item.label || '(missing id)'}:${String(item.status)}`);

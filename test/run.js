@@ -2828,6 +2828,19 @@ test('progress ledger rejects malformed statuses and normalizes null-like fields
     });
     assert.equal(bad.success, false);
     assert.match(bad.error, /invalid status/i);
+
+    const tabId = 777;
+    const closed = agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'processed', fields: { email: null } }],
+    });
+    assert.equal(closed.success, true);
+    const missing = agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', fields: { email: 'octocat@example.com' } }],
+    });
+    assert.equal(missing.success, false);
+    assert.match(missing.error, /missing status/i);
+    assert.equal(agent.progressLedgers.get(tabId)[0].status, 'processed');
+    assert.equal(agent.progressLedgers.get(tabId)[0].fields.email, null);
   }
 });
 
