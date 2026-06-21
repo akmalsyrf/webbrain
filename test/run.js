@@ -52,6 +52,8 @@ const {
   capabilityFor: capabilityForCh,
   PermissionManager: PermissionManagerCh,
   normalizeHost: normalizeHostCh,
+  hostForCapability: hostForCapabilityCh,
+  requiredHosts: requiredHostsCh,
   UNTRUSTED_CONTENT_TOOLS: UNTRUSTED_CONTENT_TOOLS_CH,
 } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/agent/permission-gate.js').replace(/\\/g, '/')
@@ -1842,6 +1844,7 @@ function makeSchedulerHarness(SchedulerMod, opts = {}) {
     [SchedulerMod.SCHEDULED_TASKS_ENABLED_KEY]: opts.enabled ?? true,
     [SchedulerMod.SCHEDULED_REQUIRE_CONFIRMATION_KEY]: opts.requireConfirmation ?? true,
   };
+  const cloneStoredValue = (value) => value == null ? value : structuredClone(value);
   const alarms = new Map();
   const updates = [];
   let currentNow = opts.now ?? Date.UTC(2026, 0, 1, 12, 0, 0);
@@ -1853,13 +1856,15 @@ function makeSchedulerHarness(SchedulerMod, opts = {}) {
       local: {
         async get(keys) {
           if (Array.isArray(keys)) {
-            return Object.fromEntries(keys.map((key) => [key, store[key]]));
+            return Object.fromEntries(keys.map((key) => [key, cloneStoredValue(store[key])]));
           }
-          if (typeof keys === 'string') return { [keys]: store[keys] };
-          return { ...store };
+          if (typeof keys === 'string') return { [keys]: cloneStoredValue(store[keys]) };
+          return Object.fromEntries(Object.entries(store).map(([key, value]) => [key, cloneStoredValue(value)]));
         },
         async set(values) {
-          Object.assign(store, values);
+          Object.assign(store, Object.fromEntries(
+            Object.entries(values).map(([key, value]) => [key, cloneStoredValue(value)])
+          ));
         },
       },
     },
@@ -2097,6 +2102,49 @@ test('ScheduledJobManager requeues agent active-run errors', async () => {
   }
 });
 
+test('ScheduledJobManager serializes concurrent job storage updates', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const when = new Date(now).toISOString();
+    const h = makeSchedulerHarness(SchedulerMod, {
+      now,
+      jobs: [
+        {
+          id: 'job_a',
+          kind: 'resume',
+          status: 'pending',
+          tabId: 77,
+          reason: 'first',
+          resumeInstruction: 'first',
+          scheduledAt: when,
+          nextRunAt: when,
+        },
+        {
+          id: 'job_b',
+          kind: 'resume',
+          status: 'pending',
+          tabId: 77,
+          reason: 'second',
+          resumeInstruction: 'second',
+          scheduledAt: when,
+          nextRunAt: when,
+        },
+      ],
+    });
+
+    await Promise.all([
+      h.manager._updateJob('job_a', () => ({ status: 'queued', lastError: 'first update' })),
+      h.manager._updateJob('job_b', () => ({ status: 'paused', lastError: 'second update' })),
+    ]);
+
+    const byId = Object.fromEntries(h.jobs().map((job) => [job.id, job]));
+    assert.equal(byId.job_a.status, 'queued', `${label}: first concurrent update should be preserved`);
+    assert.equal(byId.job_a.lastError, 'first update', `${label}: first concurrent metadata should be preserved`);
+    assert.equal(byId.job_b.status, 'paused', `${label}: second concurrent update should be preserved`);
+    assert.equal(byId.job_b.lastError, 'second update', `${label}: second concurrent metadata should be preserved`);
+  }
+});
+
 test('ScheduledJobManager keeps live scheduled clarifications resumable', async () => {
   const now = Date.UTC(2026, 0, 1, 12, 0, 0);
   for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
@@ -2261,6 +2309,37 @@ test('ScheduledJobManager fails current-tab tasks after the tab navigates away',
     const job = h.jobs()[0];
     assert.equal(processCalled, false, `${label}: navigated-away task must not call agent`);
     assert.equal(job.status, 'failed', `${label}: navigated-away task should fail`);
+    assert.match(job.lastError, /Target tab changed/, `${label}: failure should explain target staleness`);
+  }
+});
+
+test('ScheduledJobManager fails current-tab tasks after the hash route changes', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    let processCalled = false;
+    const h = makeSchedulerHarness(SchedulerMod, {
+      now,
+      processMessage: async () => { processCalled = true; return 'should not run'; },
+    });
+    const created = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: {
+        title: 'Check invoice',
+        prompt: 'Check this invoice route.',
+        schedule: { type: 'once', after_seconds: 60 },
+        target: { type: 'current_tab' },
+      },
+      source: 'user',
+      currentUrl: 'https://example.com/app#/invoice/1',
+      currentTitle: 'Example',
+    });
+    h.tabs.set(77, { id: 77, url: 'https://example.com/app#/settings', title: 'Settings' });
+
+    await h.manager.handleAlarm(h.alarmName(created.jobId));
+    const job = h.jobs()[0];
+    assert.equal(processCalled, false, `${label}: hash-route-changed task must not call agent`);
+    assert.equal(job.status, 'failed', `${label}: hash-route-changed task should fail`);
     assert.match(job.lastError, /Target tab changed/, `${label}: failure should explain target staleness`);
   }
 });
@@ -3635,6 +3714,45 @@ test('hostForCapability: navigate/network use target URL, others use current pag
   assert.equal(hostForCapability(Capability.NETWORK, { url: 'https://api.dest.com' }, 'https://cur.com'), 'api.dest.com');
   assert.equal(hostForCapability(Capability.CLICK, { ref_id: 'ref_1' }, 'https://cur.com'), 'cur.com');
   assert.equal(hostForCapability(Capability.TYPE, {}, 'https://cur.com'), 'cur.com');
+});
+
+test('hostForCapability: URL-target scheduled tasks use the scheduled host', () => {
+  const top = 'https://news.example/article';
+  for (const [label, Cap, hostFor, reqHosts] of [
+    ['firefox', Capability, hostForCapability, requiredHosts],
+    ['chrome', CapabilityCh, hostForCapabilityCh, requiredHostsCh],
+  ]) {
+    assert.equal(
+      hostFor(
+        Cap.SCHEDULE,
+        { target: { type: 'url', url: 'https://bank.example/dashboard' } },
+        top,
+        'schedule_task'
+      ),
+      'bank.example',
+      `${label}: URL-target scheduled tasks should charge target host`
+    );
+    assert.deepEqual(
+      reqHosts(
+        Cap.SCHEDULE,
+        { target: { type: 'url', url: 'https://bank.example/dashboard' } },
+        top,
+        'schedule_task'
+      ),
+      ['bank.example'],
+      `${label}: required hosts should include target host`
+    );
+    assert.equal(
+      hostFor(Cap.SCHEDULE, { target: { type: 'current_tab' } }, top, 'schedule_task'),
+      'news.example',
+      `${label}: current-tab scheduled tasks should stay on current host`
+    );
+    assert.equal(
+      hostFor(Cap.SCHEDULE, { resume_instruction: 'continue' }, top, 'schedule_resume'),
+      'news.example',
+      `${label}: scheduled resumes should stay on current host`
+    );
+  }
 });
 
 test('iframe actions are gated on the frame host (urlFilter), not the top page', () => {

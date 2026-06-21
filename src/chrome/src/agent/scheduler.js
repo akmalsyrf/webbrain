@@ -33,7 +33,8 @@ function sameDocumentUrl(a, b) {
     const right = new URL(String(b || ''));
     return left.origin === right.origin &&
       left.pathname === right.pathname &&
-      left.search === right.search;
+      left.search === right.search &&
+      left.hash === right.hash;
   } catch {
     return String(a || '') === String(b || '');
   }
@@ -231,6 +232,7 @@ export class ScheduledJobManager {
     this._started = false;
     this._waitingForInput = new Set();
     this._runningTabs = new Set();
+    this._jobMutation = Promise.resolve();
   }
 
   start() {
@@ -252,6 +254,18 @@ export class ScheduledJobManager {
 
   async _setJobs(jobs) {
     await this.api.storage.local.set({ [SCHEDULED_JOBS_KEY]: jobs });
+  }
+
+  async _withJobMutation(fn) {
+    const previous = this._jobMutation;
+    let release;
+    this._jobMutation = new Promise((resolve) => { release = resolve; });
+    await previous.catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
   }
 
   async _getSettings() {
@@ -280,24 +294,27 @@ export class ScheduledJobManager {
   }
 
   async restoreAlarms() {
-    const jobs = await this._getJobs();
     const retryAt = iso(this.now() + QUEUE_RETRY_MS);
-    let changed = false;
-    const normalized = jobs.map((job) => {
-      if (!['running', 'needs_user_input'].includes(job.status)) return job;
-      changed = true;
-      this._waitingForInput.delete(job.id);
-      return {
-        ...job,
-        status: 'queued',
-        nextRunAt: retryAt,
-        queueDeferrals: Number(job.queueDeferrals || 0) + 1,
-        lastError: 'Scheduled run was interrupted by a background restart; queued to retry.',
-        pendingClarify: null,
-        updatedAt: iso(this.now()),
-      };
+    const normalized = await this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      let changed = false;
+      const next = jobs.map((job) => {
+        if (!['running', 'needs_user_input'].includes(job.status)) return job;
+        changed = true;
+        this._waitingForInput.delete(job.id);
+        return {
+          ...job,
+          status: 'queued',
+          nextRunAt: retryAt,
+          queueDeferrals: Number(job.queueDeferrals || 0) + 1,
+          lastError: 'Scheduled run was interrupted by a background restart; queued to retry.',
+          pendingClarify: null,
+          updatedAt: iso(this.now()),
+        };
+      });
+      if (changed) await this._setJobs(next);
+      return next;
     });
-    if (changed) await this._setJobs(normalized);
     const live = new Set(['pending', 'queued']);
     await Promise.all(normalized.filter((job) => live.has(job.status)).map((job) => this._setAlarm(job)));
   }
@@ -311,22 +328,26 @@ export class ScheduledJobManager {
   }
 
   async _saveJob(job) {
-    const jobs = await this._getJobs();
-    const idx = jobs.findIndex((it) => it.id === job.id);
-    if (idx >= 0) jobs[idx] = job; else jobs.push(job);
-    await this._setJobs(jobs);
-    return job;
+    return this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const idx = jobs.findIndex((it) => it.id === job.id);
+      if (idx >= 0) jobs[idx] = job; else jobs.push(job);
+      await this._setJobs(jobs);
+      return job;
+    });
   }
 
   async _updateJobIf(jobId, predicate, updater) {
-    const jobs = await this._getJobs();
-    const idx = jobs.findIndex((it) => it.id === jobId);
-    if (idx < 0) return null;
-    if (typeof predicate === 'function' && !predicate(jobs[idx])) return null;
-    const updated = { ...jobs[idx], ...updater(jobs[idx]), updatedAt: iso(this.now()) };
-    jobs[idx] = updated;
-    await this._setJobs(jobs);
-    return updated;
+    return this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const idx = jobs.findIndex((it) => it.id === jobId);
+      if (idx < 0) return null;
+      if (typeof predicate === 'function' && !predicate(jobs[idx])) return null;
+      const updated = { ...jobs[idx], ...updater(jobs[idx]), updatedAt: iso(this.now()) };
+      jobs[idx] = updated;
+      await this._setJobs(jobs);
+      return updated;
+    });
   }
 
   async _updateJob(jobId, updater) {
@@ -437,17 +458,20 @@ export class ScheduledJobManager {
   async deleteJob(jobId) {
     await this._clearAlarm(jobId);
     this._waitingForInput.delete(jobId);
-    const jobs = await this._getJobs();
-    const existing = jobs.find((job) => job.id === jobId);
+    const { existing, removed } = await this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const existing = jobs.find((job) => job.id === jobId);
+      const next = jobs.filter((job) => job.id !== jobId);
+      if (next.length !== jobs.length) await this._setJobs(next);
+      return { existing, removed: next.length !== jobs.length };
+    });
     if (existing && ['running', 'needs_user_input'].includes(existing.status)) {
       const tabId = existing.tabId || existing.target?.tabId;
       if (tabId != null) {
         try { this.agent.abort(tabId); } catch {}
       }
     }
-    const next = jobs.filter((job) => job.id !== jobId);
-    await this._setJobs(next);
-    return { ok: next.length !== jobs.length };
+    return { ok: removed };
   }
 
   async pauseJob(jobId) {
@@ -487,64 +511,74 @@ export class ScheduledJobManager {
   }
 
   async cancelForTab(tabId, reason = 'tab closed') {
-    const jobs = await this._getJobs();
-    const next = [];
-    const alarmsToSet = [];
-    for (const job of jobs) {
-      const matches = job.tabId === tabId || job.target?.tabId === tabId;
-      const isUrlTarget = job.kind === 'task' && job.target?.type === 'url';
-      if (matches && isUrlTarget && ['pending', 'queued', 'paused'].includes(job.status)) {
-        next.push({
-          ...job,
-          tabId: null,
-          target: { ...job.target, tabId: null },
-          updatedAt: iso(this.now()),
-        });
-        continue;
+    const { alarmsToSet, alarmsToClear } = await this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const next = [];
+      const alarmsToSet = [];
+      const alarmsToClear = [];
+      for (const job of jobs) {
+        const matches = job.tabId === tabId || job.target?.tabId === tabId;
+        const isUrlTarget = job.kind === 'task' && job.target?.type === 'url';
+        if (matches && isUrlTarget && ['pending', 'queued', 'paused'].includes(job.status)) {
+          next.push({
+            ...job,
+            tabId: null,
+            target: { ...job.target, tabId: null },
+            updatedAt: iso(this.now()),
+          });
+          continue;
+        }
+        if (matches && isUrlTarget && job.status === 'needs_user_input') {
+          this._waitingForInput.delete(job.id);
+          const queued = {
+            ...job,
+            status: 'queued',
+            tabId: null,
+            target: { ...job.target, tabId: null },
+            nextRunAt: iso(this.now() + QUEUE_RETRY_MS),
+            lastError: 'Scheduled URL task tab closed while waiting for input; queued to retry.',
+            pendingClarify: null,
+            updatedAt: iso(this.now()),
+          };
+          next.push(queued);
+          alarmsToSet.push(queued);
+          continue;
+        }
+        if (matches && ['pending', 'queued', 'paused', 'needs_user_input'].includes(job.status)) {
+          alarmsToClear.push(job.id);
+          this._waitingForInput.delete(job.id);
+          next.push({ ...job, status: 'cancelled', lastError: reason, pendingClarify: null, updatedAt: iso(this.now()) });
+        } else {
+          next.push(job);
+        }
       }
-      if (matches && isUrlTarget && job.status === 'needs_user_input') {
-        this._waitingForInput.delete(job.id);
-        const queued = {
-          ...job,
-          status: 'queued',
-          tabId: null,
-          target: { ...job.target, tabId: null },
-          nextRunAt: iso(this.now() + QUEUE_RETRY_MS),
-          lastError: 'Scheduled URL task tab closed while waiting for input; queued to retry.',
-          pendingClarify: null,
-          updatedAt: iso(this.now()),
-        };
-        next.push(queued);
-        alarmsToSet.push(queued);
-        continue;
-      }
-      if (matches && ['pending', 'queued', 'paused', 'needs_user_input'].includes(job.status)) {
-        await this._clearAlarm(job.id);
-        this._waitingForInput.delete(job.id);
-        next.push({ ...job, status: 'cancelled', lastError: reason, pendingClarify: null, updatedAt: iso(this.now()) });
-      } else {
-        next.push(job);
-      }
-    }
-    await this._setJobs(next);
+      await this._setJobs(next);
+      return { alarmsToSet, alarmsToClear };
+    });
+    await Promise.all(alarmsToClear.map((id) => this._clearAlarm(id)));
     await Promise.all(alarmsToSet.map((job) => this._setAlarm(job)));
   }
 
   async cancelForConversation(tabId, conversationId, reason = 'conversation cleared') {
-    const jobs = await this._getJobs();
-    const next = [];
-    for (const job of jobs) {
-      const matches = (job.tabId === tabId || job.target?.tabId === tabId) &&
-        (!conversationId || job.conversationId === conversationId || job.target?.conversationId === conversationId);
-      if (matches && ['pending', 'queued', 'paused', 'needs_user_input'].includes(job.status)) {
-        await this._clearAlarm(job.id);
-        this._waitingForInput.delete(job.id);
-        next.push({ ...job, status: 'cancelled', lastError: reason, pendingClarify: null, updatedAt: iso(this.now()) });
-      } else {
-        next.push(job);
+    const alarmsToClear = await this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const next = [];
+      const alarmsToClear = [];
+      for (const job of jobs) {
+        const matches = (job.tabId === tabId || job.target?.tabId === tabId) &&
+          (!conversationId || job.conversationId === conversationId || job.target?.conversationId === conversationId);
+        if (matches && ['pending', 'queued', 'paused', 'needs_user_input'].includes(job.status)) {
+          alarmsToClear.push(job.id);
+          this._waitingForInput.delete(job.id);
+          next.push({ ...job, status: 'cancelled', lastError: reason, pendingClarify: null, updatedAt: iso(this.now()) });
+        } else {
+          next.push(job);
+        }
       }
-    }
-    await this._setJobs(next);
+      await this._setJobs(next);
+      return alarmsToClear;
+    });
+    await Promise.all(alarmsToClear.map((id) => this._clearAlarm(id)));
   }
 
   async handleAlarm(alarmName) {

@@ -268,6 +268,10 @@ export function hostForCapability(capability, args, currentUrlOrHost, toolName) 
     }
     return normalizeHost(currentUrlOrHost);
   }
+  if (capability === Capability.SCHEDULE && toolName === 'schedule_task' && args?.target?.type === 'url') {
+    const h = resolveHostAgainst(args.target.url, currentUrlOrHost);
+    if (h) return h;
+  }
   return normalizeHost(currentUrlOrHost);
 }
 
