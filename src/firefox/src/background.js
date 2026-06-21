@@ -43,6 +43,7 @@ async function loadMaxSteps() {
   if (stored.maxAgentSteps === 0) agent.maxSteps = Infinity;
   else if (stored.maxAgentSteps) agent.maxSteps = stored.maxAgentSteps;
 }
+loadMaxSteps();
 
 async function loadAutoScreenshot() {
   const stored = await browser.storage.local.get('autoScreenshot');
