@@ -456,6 +456,18 @@
   "blogPost": [
     {
       "@type": "BlogPosting",
+      "headline": "MiniMax M3 and WebBrain Cloud 1.0 enter the frozen WebBrain planner benchmark",
+      "url": "https://webbrain.one/blog/minimax-m3-webbrain-cloud-tool-calling",
+      "datePublished": "2026-06-21",
+      "description": "We ran MiniMax M3 through OpenRouter and WebBrain Cloud 1.0 through api.webbrain.one against WebBrain's frozen 100-case browser-agent first-tool benchmark, then updated the Sonnet 4.6 comparison table.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
       "headline": "Gemma 4 12B QAT is fast enough for WebBrain, but Qwen 3.5 9B still routes a little better",
       "url": "https://webbrain.one/blog/gemma-4-12b-qat-planner-benchmark",
       "datePublished": "2026-06-20",
@@ -655,7 +667,12 @@
     <p class="page-sub">Short write-ups on design decisions, failure modes, and benchmarks from building an open-source AI browser agent.</p>
 
     <div class="post-list">
-      <a href="/blog/gemma-4-12b-qat-planner-benchmark" class="post-card">
+      <a href="/blog/minimax-m3-webbrain-cloud-tool-calling" class="post-card">
+        <div class="post-meta">June 21, 2026 &middot; 6 min read</div>
+        <div class="post-title">MiniMax M3 and WebBrain Cloud 1.0 enter the frozen WebBrain planner benchmark</div>
+        <div class="post-excerpt">MiniMax M3 landed at 75% Sonnet first-tool alignment, below the older MiniMax M2.7 run. WebBrain Cloud 1.0 reached 73% alignment with a much lower run cost, but higher latency in this test path.</div>
+      </a>
+<a href="/blog/gemma-4-12b-qat-planner-benchmark" class="post-card">
         <div class="post-meta">June 20, 2026 &middot; 6 min read</div>
         <div class="post-title">Gemma 4 12B QAT is fast enough for WebBrain, but Qwen 3.5 9B still routes a little better</div>
         <div class="post-excerpt">Gemma 4 12B QAT lands as a very fast local WebBrain planner: 92/100 parsed calls, 14% exact, 33% tool-name match, 0.43s median per request, and a working but imperfect vision probe.</div>

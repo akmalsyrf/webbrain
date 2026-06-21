@@ -1020,7 +1020,7 @@ function blogStyle() {
     }
     @media (max-width: 420px) {
       .nav-inner { gap: 12px; }
-      .nav-links a[href="https://github.com/esokullu/webbrain"] { display: none; }
+      .nav-links a[href="https://github.com/webbrain-one/webbrain"] { display: none; }
       .theme-toggle { width: 28px; height: 28px; }
     }
   </style>`;
@@ -1112,7 +1112,7 @@ function navHtml() {
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
           </svg>
         </button>
-        <a href="https://github.com/esokullu/webbrain" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/webbrain-one/webbrain" target="_blank" rel="noopener">GitHub</a>
       </div>
     </div>
   </nav>`;
@@ -1209,7 +1209,7 @@ ${sharedHead({
 ${post.bodyHtml}
 
     <div class="author-box">
-      Written by <a href="${escAttr(post.authorUrl)}" target="_blank" rel="noopener">${escHtml(post.author)}</a>. WebBrain is MIT-licensed and open on <a href="https://github.com/esokullu/webbrain" target="_blank" rel="noopener">GitHub</a>.
+      Written by <a href="${escAttr(post.authorUrl)}" target="_blank" rel="noopener">${escHtml(post.author)}</a>. WebBrain is MIT-licensed and open on <a href="https://github.com/webbrain-one/webbrain" target="_blank" rel="noopener">GitHub</a>.
     </div>
   </article>
 
@@ -1285,7 +1285,7 @@ ${sharedHead({
 function footerHtml() {
   return `<footer>
     <div>&copy; 2026 WebBrain &middot; <a href="/privacy">Privacy</a></div>
-    <div><a href="https://github.com/esokullu/webbrain" target="_blank" rel="noopener">GitHub</a></div>
+    <div><a href="https://github.com/webbrain-one/webbrain" target="_blank" rel="noopener">GitHub</a></div>
   </footer>`;
 }
 
