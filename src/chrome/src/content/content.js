@@ -1788,7 +1788,8 @@
                   beforeUrl: location.href,
                   beforeScrollY: Math.round(window.scrollY || 0),
                 };
-                const lowerHref = href.trim().toLowerCase();
+                const trimmedHref = href.trim();
+                const lowerHref = trimmedHref.toLowerCase();
                 if (!lowerHref.startsWith('javascript:')) {
                   try {
                     const before = new URL(anchorMeta.beforeUrl);
@@ -1796,7 +1797,7 @@
                     const sameDocumentBase = target.origin === before.origin &&
                       target.pathname === before.pathname &&
                       target.search === before.search;
-                    const anchorTarget = target.hash || (href.trim().startsWith('#') ? '#' : '');
+                    const anchorTarget = target.hash || (trimmedHref.startsWith('#') && trimmedHref.length > 1 ? trimmedHref : '');
                     anchorMeta.targetUrl = target.href;
                     if (sameDocumentBase && anchorTarget) {
                       anchorMeta.sameDocumentAnchor = true;
