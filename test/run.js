@@ -4294,6 +4294,32 @@ test('agent preserves active progress ledger for ongoing-action continuation wor
   }
 });
 
+test('agent preserves keyed rows for ledger continuation wording', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 804;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+    ]);
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'pending' }],
+    });
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+      { role: 'assistant', content: 'Paused with one row unresolved.' },
+      { role: 'user', content: 'Continue the existing ledger.' },
+    ]);
+
+    assert.equal(agent._currentTaskHasProgressIntent(tabId), true, `${AgentClass.name}: ledger continuation lost progress intent`);
+    assert.equal(agent._currentTaskIsProgressContinuation(tabId), true, `${AgentClass.name}: ledger continuation was not recognized`);
+    assert.equal(agent._shouldBlockDoneForProgress(tabId), true, `${AgentClass.name}: ledger continuation did not block unresolved done`);
+    assert.deepEqual(agent._progressDoneBlock(tabId).unresolved.map(row => row.id), ['octocat']);
+  }
+});
+
 test('progress ledger done-blocking only applies in Act mode', () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });

@@ -3460,6 +3460,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (/^(?:please\s+)?(?:continue|keep\s+going|go\s+on|proceed|resume|carry\s+on|next|do\s+the\s+rest|finish\s+(?:the\s+)?(?:rest|remaining)|keep\s+working)(?:\s+(?:please|with\s+(?:it|this|that|them|those|the\s+(?:task|list|queue|rest|remaining))))?[.!?]*$/.test(text)) {
       return true;
     }
+    if (/^(?:please\s+)?(?:continue|go\s+on|proceed|resume|carry\s+on|keep\s+(?:going|working))\s+(?:with\s+)?(?:the\s+)?(?:(?:existing|current|active|open|pending|progress)\s+)?(?:ledger|progress\s+ledger|task|work|list|queue|rows?|items?)[.!?]*$/.test(text)) {
+      return true;
+    }
     return /^(?:please\s+)?(?:continue|go\s+on|proceed|resume|carry\s+on|keep\s+(?:going|working))\s+(?:with\s+)?(?:(?:the\s+)?(?:rest|remaining)\s+)?(?:following|unfollowing|starring|unstarring|watching|unwatching|connecting|subscribing|unsubscribing|saving|unsaving|liking|unliking|blocking|unblocking|reporting|sending|submitting|adding|removing|processing|collecting|scraping|visiting|opening)\b[\s\S]{0,120}\b(?:remaining|rest|rows|items|profiles|users|people|members|followers|following|stargazers|results|links|pages|contacts|accounts|repos|repositories|entries|records|comments|messages|emails|names|handles)\b[.!?]*$/.test(text);
   }
 
