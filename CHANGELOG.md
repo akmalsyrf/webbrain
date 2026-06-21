@@ -6,6 +6,17 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [14.1.2] - 2026-06-21
+
+### Added
+- Slash command autocomplete in the Chrome and Firefox side panels, with keyboard navigation, Tab / Enter completion, Escape dismissal, mouse selection, and accessible listbox metadata for all supported slash commands.
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 14.1.2.
+
+### Tests
+- Added static Chrome + Firefox coverage to keep the slash command parser and autocomplete command list in sync.
+
 ## [14.1.0] - 2026-06-21
 
 ### Added
