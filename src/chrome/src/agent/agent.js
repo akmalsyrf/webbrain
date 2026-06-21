@@ -3265,6 +3265,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return c.startsWith('[Site guidance')
       || c.startsWith('[Site context changed')
       || c.startsWith('[Context window was trimmed')
+      || c.startsWith('[Context was too large')
       || c.startsWith('[Agent scratchpad')
       || c.startsWith('[Agent progress ledger')
       || c.startsWith('[NAVIGATION OCCURRED')
@@ -3349,6 +3350,26 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (this._currentTaskHasProgressIntent(tabId)) return true;
     return this._activeProgressLedgerRows(tabId).length > 0
       && this._currentTaskIsProgressContinuation(tabId);
+  }
+
+  _progressRowMatchesTaskText(row, text) {
+    const action = String(row?.action || '').toLowerCase();
+    if (!action) return true;
+    const taskWords = new Set(String(text || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+    if (!taskWords.size) return false;
+    return action
+      .split(/[^a-z0-9]+/g)
+      .filter(Boolean)
+      .some(word => taskWords.has(word));
+  }
+
+  _currentTaskProgressRows(tabId) {
+    const rows = this._activeProgressLedgerRows(tabId);
+    if (!rows.length) return [];
+    if (this._currentTaskIsProgressContinuation(tabId)) return rows;
+    if (!this._currentTaskHasProgressIntent(tabId)) return [];
+    const text = this._latestTaskText(tabId);
+    return rows.filter(row => this._progressRowMatchesTaskText(row, text));
   }
 
   _currentTaskIsProgressContinuation(tabId) {
@@ -3467,13 +3488,12 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   _progressDoneBlock(tabId) {
-    return ledgerDoneBlock(this.progressLedgers.get(tabId) || [], { limit: 12 });
+    return ledgerDoneBlock(this._currentTaskProgressRows(tabId), { limit: 12 });
   }
 
   _shouldBlockDoneForProgress(tabId) {
     if ((this.conversationModes.get(tabId) || 'ask') !== 'act') return false;
-    if (this._activeProgressLedgerRows(tabId).length === 0) return false;
-    return this._hasProgressLedgerContext(tabId);
+    return this._currentTaskProgressRows(tabId).length > 0;
   }
 
   _appendProgressLedgerToFinal(tabId, summary) {

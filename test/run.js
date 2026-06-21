@@ -3139,6 +3139,24 @@ test('agent skips synthetic screenshot and document turns before inferring progr
   }
 });
 
+test('agent skips emergency trim notices before inferring progress intent', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 790;
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+      {
+        role: 'user',
+        content: '[Context was too large for the model. Older intermediate steps were removed, but recent context remains.]',
+      },
+    ]);
+
+    assert.equal(agent._latestTaskText(tabId), 'Follow every stargazer on this page.', `${AgentClass.name}: emergency trim notice hid latest task`);
+    assert.equal(agent._currentTaskHasProgressIntent(tabId), true, `${AgentClass.name}: emergency trim notice disabled progress intent`);
+  }
+});
+
 test('agent ignores stale terminal follow rows when observing stargazers', async () => {
   const page = `
     button "Follow ChJus" [ref_13]
@@ -3312,6 +3330,34 @@ test('progress ledger done-blocking only applies in Act mode', () => {
   }
 });
 
+test('progress ledger done-blocking only applies to current task rows', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 791;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+      { role: 'assistant', content: 'Paused with one row unresolved.' },
+      { role: 'user', content: 'Collect email addresses for every stargazer on this page.' },
+    ]);
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'pending' }],
+    });
+
+    assert.equal(agent._hasProgressLedgerContext(tabId), true, `${AgentClass.name}: setup should still have generic progress context`);
+    assert.equal(agent._shouldBlockDoneForProgress(tabId), false, `${AgentClass.name}: stale follow row blocked a collect-email task`);
+    assert.equal(agent._progressDoneBlock(tabId), null, `${AgentClass.name}: stale follow row appeared in current done block`);
+
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'email:rafi', label: 'rafi', action: 'collect_email', status: 'pending' }],
+    });
+    const block = agent._progressDoneBlock(tabId);
+    assert.equal(agent._shouldBlockDoneForProgress(tabId), true, `${AgentClass.name}: current collect-email row did not block done`);
+    assert.deepEqual(block.unresolved.map(row => row.id), ['email:rafi'], `${AgentClass.name}: done block included stale rows`);
+  }
+});
+
 test('progress warning only counts acted rows', () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
@@ -3373,6 +3419,8 @@ test('progress ledger pins app-owned rows and survives compaction (chrome & fire
     assert.ok(idx2 >= 0, `${AgentClass.name}: progress ledger lost in compaction`);
     assert.match(messages[idx2].content, /myxvisual/, `${AgentClass.name}: processed row lost`);
     assert.match(messages[idx2].content, /octocat/, `${AgentClass.name}: acted row lost`);
+    messages.push({ role: 'assistant', content: 'Paused with one row unresolved.' });
+    messages.push({ role: 'user', content: 'continue' });
     const block = agent._progressDoneBlock(tabId);
     assert.ok(block?.blocked, `${AgentClass.name}: unresolved row should block done`);
 
