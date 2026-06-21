@@ -3307,7 +3307,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   _hasProgressLedgerContext(tabId) {
-    return this._currentTaskHasProgressIntent(tabId);
+    if (this._currentTaskHasProgressIntent(tabId)) return true;
+    return this._activeProgressLedgerRows(tabId).length > 0
+      && this._currentTaskIsProgressContinuation(tabId);
+  }
+
+  _currentTaskIsProgressContinuation(tabId) {
+    const text = this._latestTaskText(tabId).toLowerCase();
+    if (!text) return false;
+    return /^(?:please\s+)?(?:continue|keep\s+going|go\s+on|proceed|resume|carry\s+on|next|do\s+the\s+rest|finish\s+(?:the\s+)?(?:rest|remaining)|keep\s+working)(?:\s+(?:please|with\s+(?:it|this|that|them|those|the\s+(?:task|list|queue|rest|remaining))))?[.!?]*$/.test(text);
   }
 
   _currentTaskHasProgressIntent(tabId) {
@@ -3329,7 +3337,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   _hasGithubStargazerFollowContext(tabId) {
     const rows = this._activeProgressLedgerRows(tabId);
     const hasFollowRows = rows.some(row => String(row?.action || '').toLowerCase() === 'follow');
-    if (hasFollowRows && this._currentTaskHasProgressIntent(tabId)) return true;
+    if (hasFollowRows && this._hasProgressLedgerContext(tabId)) return true;
     const text = this._latestTaskText(tabId).toLowerCase();
     return /\bfollow\b/.test(text) && this._hasProgressLedgerContext(tabId);
   }
@@ -3420,7 +3428,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   _shouldBlockDoneForProgress(tabId) {
     if ((this.conversationModes.get(tabId) || 'ask') !== 'act') return false;
     if (this._activeProgressLedgerRows(tabId).length === 0) return false;
-    return this._currentTaskHasProgressIntent(tabId);
+    return this._hasProgressLedgerContext(tabId);
   }
 
   _appendProgressLedgerToFinal(tabId, summary) {

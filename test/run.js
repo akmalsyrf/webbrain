@@ -3132,6 +3132,43 @@ test('agent does not seed GitHub follow rows for non-follow stargazer list work'
   }
 });
 
+test('agent preserves active progress ledger for bare continuation turns', async () => {
+  const page = `
+    button "Follow rafi" [ref_31]
+  `;
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = 786;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Follow every stargazer on this page.' },
+      { role: 'assistant', content: 'Paused with one row unresolved.' },
+      { role: 'user', content: 'continue' },
+    ]);
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'pending' }],
+    });
+
+    assert.equal(agent._hasProgressLedgerContext(tabId), true, `${AgentClass.name}: bare continuation did not keep ledger context`);
+    assert.equal(agent._shouldBlockDoneForProgress(tabId), true, `${AgentClass.name}: bare continuation did not block unresolved done`);
+
+    const recorded = agent._autoRecordProgressAction(
+      tabId,
+      'click',
+      { text: 'Follow monalisa' },
+      { success: true, text: 'Follow monalisa', href: '/monalisa' },
+    );
+    assert.equal(recorded?.item.id, 'monalisa', `${AgentClass.name}: continuation click was not recorded`);
+
+    agent._currentUrl = async () => 'https://github.com/foo/bar/stargazers';
+    const result = { success: true, pageContent: page };
+    const note = await agent._recordProgressObservation(tabId, 'get_accessibility_tree', result);
+    assert.equal(note.addedPending, 1, `${AgentClass.name}: continuation stargazer observation did not seed rows`);
+    assert.ok(agent.progressLedgers.get(tabId).some(row => row.id === 'rafi' && row.status === 'pending'));
+  }
+});
+
 test('progress ledger done-blocking only applies in Act mode', () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
