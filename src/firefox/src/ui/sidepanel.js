@@ -285,12 +285,27 @@ const modeAskBtn = document.getElementById('btn-mode-ask');
 const modeActBtn = document.getElementById('btn-mode-act');
 const actWarning = document.getElementById('act-warning');
 const inputArea = document.getElementById('input-area');
+const slashCommandMenuEl = document.getElementById('slash-command-menu');
 const recommendedActionsEl = document.getElementById('recommended-actions');
 const recommendedActionsToggleEl = document.getElementById('recommended-actions-toggle');
 const recommendedActionsListEl = document.getElementById('recommended-actions-list');
 const scheduledJobsEl = document.getElementById('scheduled-jobs');
 const stopBtn = document.getElementById('btn-stop');
 const RECOMMENDED_ACTIONS_COLLAPSED_KEY = 'recommendedActionsCollapsed';
+const SLASH_COMMANDS = [
+  { value: '/help', descriptionKey: 'sp.slash.help' },
+  { value: '/schedule', descriptionKey: 'sp.slash.schedule' },
+  { value: '/list-schedules', descriptionKey: 'sp.slash.list_schedules' },
+  { value: '/show-scratchpad', descriptionKey: 'sp.slash.show_scratchpad' },
+  { value: '/allow-api', descriptionKey: 'sp.slash.allow_api' },
+  { value: '/compact', descriptionKey: 'sp.slash.compact' },
+  { value: '/reset', descriptionKey: 'sp.slash.reset' },
+  { value: '/screenshot', descriptionKey: 'sp.slash.screenshot' },
+  { value: '/export', descriptionKey: 'sp.slash.export' },
+  { value: '/profile', descriptionKey: 'sp.slash.profile' },
+  { value: '/vision', descriptionKey: 'sp.slash.vision' },
+];
+const SLASH_COMMAND_OPTION_ID_PREFIX = 'slash-command-option-';
 
 let currentTabId = null;
 let isProcessing = false;
@@ -300,6 +315,8 @@ let agentMode = 'ask'; // 'ask' or 'act'
 let abortRequested = false;
 let recommendationsRequestId = 0;
 let recommendedActionsCollapsed = false;
+let slashCommandMatches = [];
+let slashCommandSelectedIndex = 0;
 
 // Act-mode risk banner is only meaningful when the permission gate is OFF.
 // With "Ask before consequential actions" ON (the default) the user is
@@ -1082,6 +1099,155 @@ async function testConnection(options = {}) {
   }
 }
 
+function getSlashCommandQuery() {
+  if (!inputEl) return null;
+  const value = inputEl.value;
+  const selectionStart = inputEl.selectionStart ?? value.length;
+  const selectionEnd = inputEl.selectionEnd ?? selectionStart;
+  if (selectionStart !== selectionEnd) return null;
+
+  const beforeCursor = value.slice(0, selectionStart);
+  const afterCursor = value.slice(selectionStart);
+  if (!/^\/[a-z-]*$/i.test(beforeCursor)) return null;
+  if (afterCursor.trim()) return null;
+  return beforeCursor.toLowerCase();
+}
+
+function updateSlashCommandActiveOption() {
+  const options = slashCommandMenuEl?.querySelectorAll('.slash-command-option') || [];
+  options.forEach((option, index) => {
+    const selected = index === slashCommandSelectedIndex;
+    option.classList.toggle('selected', selected);
+    option.setAttribute('aria-selected', String(selected));
+  });
+  const activeId = `${SLASH_COMMAND_OPTION_ID_PREFIX}${slashCommandSelectedIndex}`;
+  inputEl?.setAttribute('aria-activedescendant', activeId);
+}
+
+function renderSlashCommandAutocomplete() {
+  if (!slashCommandMenuEl || !inputEl || slashCommandMatches.length === 0) return;
+  slashCommandMenuEl.replaceChildren();
+  slashCommandMenuEl.setAttribute('aria-label', t('sp.slash.commands_label'));
+
+  slashCommandMatches.forEach((command, index) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.id = `${SLASH_COMMAND_OPTION_ID_PREFIX}${index}`;
+    option.className = 'slash-command-option';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(index === slashCommandSelectedIndex));
+
+    const name = document.createElement('span');
+    name.className = 'slash-command-name';
+    name.textContent = command.value;
+
+    const description = document.createElement('span');
+    description.className = 'slash-command-description';
+    description.textContent = t(command.descriptionKey);
+
+    option.append(name, description);
+    option.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      applySlashCommandCompletion(index);
+    });
+    option.addEventListener('mousemove', () => setSlashCommandSelectedIndex(index));
+    slashCommandMenuEl.appendChild(option);
+  });
+
+  slashCommandMenuEl.classList.remove('hidden');
+  inputEl.setAttribute('aria-autocomplete', 'list');
+  inputEl.setAttribute('aria-controls', slashCommandMenuEl.id);
+  inputEl.setAttribute('aria-expanded', 'true');
+  updateSlashCommandActiveOption();
+}
+
+function hideSlashCommandAutocomplete() {
+  slashCommandMatches = [];
+  slashCommandSelectedIndex = 0;
+  slashCommandMenuEl?.classList.add('hidden');
+  slashCommandMenuEl?.replaceChildren();
+  inputEl?.setAttribute('aria-expanded', 'false');
+  inputEl?.removeAttribute('aria-activedescendant');
+}
+
+function updateSlashCommandAutocomplete() {
+  const query = getSlashCommandQuery();
+  if (!query) {
+    hideSlashCommandAutocomplete();
+    return;
+  }
+
+  const previouslySelected = slashCommandMatches[slashCommandSelectedIndex]?.value;
+  const matches = SLASH_COMMANDS.filter((command) => command.value.startsWith(query));
+  if (matches.length === 0) {
+    hideSlashCommandAutocomplete();
+    return;
+  }
+
+  slashCommandMatches = matches;
+  const selectedIndex = matches.findIndex((command) => command.value === previouslySelected);
+  slashCommandSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  renderSlashCommandAutocomplete();
+}
+
+function setSlashCommandSelectedIndex(index) {
+  if (slashCommandMatches.length === 0) return;
+  slashCommandSelectedIndex = (index + slashCommandMatches.length) % slashCommandMatches.length;
+  updateSlashCommandActiveOption();
+}
+
+function applySlashCommandCompletion(index = slashCommandSelectedIndex) {
+  const command = slashCommandMatches[index];
+  if (!command || !inputEl) return false;
+  inputEl.value = `${command.value} `;
+  inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+  hideSlashCommandAutocomplete();
+  autoResizeInput();
+  inputEl.focus();
+  return true;
+}
+
+function isExactSlashCommandQuery() {
+  const query = getSlashCommandQuery();
+  return !!query && SLASH_COMMANDS.some((command) => command.value === query);
+}
+
+function handleSlashCommandKeydown(e) {
+  if (!slashCommandMatches.length || slashCommandMenuEl?.classList.contains('hidden')) {
+    return false;
+  }
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setSlashCommandSelectedIndex(slashCommandSelectedIndex + 1);
+    return true;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setSlashCommandSelectedIndex(slashCommandSelectedIndex - 1);
+    return true;
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    return applySlashCommandCompletion();
+  }
+  if (e.key === 'Enter' && !isExactSlashCommandQuery()) {
+    e.preventDefault();
+    return applySlashCommandCompletion();
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    hideSlashCommandAutocomplete();
+    return true;
+  }
+  return false;
+}
+
+function handleInput() {
+  autoResizeInput();
+  updateSlashCommandAutocomplete();
+}
+
 // --- Message Sending ---
 
 // Per-conversation API mutation override (set via /allow-api).
@@ -1247,6 +1413,7 @@ function updateApiBadge() {
 async function sendMessage() {
   let text = inputEl.value.trim();
   if (!text || isProcessing) return;
+  hideSlashCommandAutocomplete();
 
   if (text.startsWith('/')) {
     inputEl.value = '';
@@ -2180,13 +2347,19 @@ stopBtn.addEventListener('click', async () => {
 sendBtn.addEventListener('click', sendMessage);
 
 inputEl.addEventListener('keydown', (e) => {
+  if (handleSlashCommandKeydown(e)) return;
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
   }
 });
 
-inputEl.addEventListener('input', autoResizeInput);
+inputEl.addEventListener('input', handleInput);
+inputEl.addEventListener('focus', updateSlashCommandAutocomplete);
+inputEl.addEventListener('blur', () => setTimeout(hideSlashCommandAutocomplete, 120));
+document.addEventListener('wb-locale-changed', () => {
+  if (slashCommandMatches.length) renderSlashCommandAutocomplete();
+});
 
 clearBtn.addEventListener('click', async () => {
   await sendToBackground('clear_conversation', { tabId: currentTabId });

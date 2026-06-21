@@ -1849,6 +1849,44 @@ test('sidepanel exposes show-scratchpad slash command in both builds', () => {
   }
 });
 
+test('sidepanel slash commands are autocompletable in both builds', () => {
+  const commands = [
+    '/help',
+    '/schedule',
+    '/list-schedules',
+    '/show-scratchpad',
+    '/allow-api',
+    '/compact',
+    '/reset',
+    '/screenshot',
+    '/export',
+    '/profile',
+    '/vision',
+  ];
+
+  for (const [label, panelRel, htmlRel, cssRel, localeRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/sidepanel.html', 'src/chrome/styles/sidepanel.css', 'src/chrome/src/ui/locales/en.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/sidepanel.html', 'src/firefox/styles/sidepanel.css', 'src/firefox/src/ui/locales/en.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, cssRel), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+
+    assert.match(html, /id="slash-command-menu"/, `${label}: autocomplete menu markup missing`);
+    assert.match(css, /\.slash-command-menu/, `${label}: autocomplete menu styles missing`);
+    assert.match(panel, /const SLASH_COMMANDS = \[/, `${label}: autocomplete command list missing`);
+    assert.match(panel, /handleSlashCommandKeydown/, `${label}: autocomplete keyboard handler missing`);
+    assert.match(panel, /applySlashCommandCompletion/, `${label}: autocomplete completion handler missing`);
+    assert.match(panel, /inputEl\.addEventListener\('input', handleInput\)/, `${label}: input handler should refresh autocomplete`);
+    assert.match(locale, /sp\.slash\.commands_label/, `${label}: autocomplete aria label missing`);
+
+    for (const command of commands) {
+      assert.match(panel, new RegExp(`value: '${command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${label}: ${command} missing from autocomplete list`);
+    }
+  }
+});
+
 test('download_social_media exposes merged DOM/vision strategy in act tiers only', () => {
   for (const [label, getTools] of [
     ['chrome', getToolsForModeCh],
