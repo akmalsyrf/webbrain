@@ -540,11 +540,24 @@ function findScheduledClarifyCardForJob(jobId) {
 function findScheduledAssistantMessageForJob(jobId) {
   const id = String(jobId || '');
   if (!id) return null;
+  for (const msgEl of messagesEl?.querySelectorAll?.('.message.assistant[data-scheduled-job-id]') || []) {
+    if (msgEl.dataset.scheduledJobId === id) return msgEl;
+  }
   const card = findScheduledClarifyCardForJob(id);
   const msgEl = card?.closest?.('.message.assistant');
   if (msgEl) return msgEl;
   if (currentAssistantEl?.dataset?.scheduledJobId === id) return currentAssistantEl;
   return null;
+}
+
+function ensureScheduledTerminalMessage(job) {
+  const jobId = job?.id ? String(job.id) : '';
+  if (!jobId || !isUrlTargetScheduledJob(job)) return null;
+  const existing = findScheduledAssistantMessageForJob(jobId);
+  if (existing) return existing;
+  const msgEl = addMessage('assistant', '');
+  msgEl.dataset.scheduledJobId = jobId;
+  return msgEl;
 }
 
 function ensureScheduledClarifyCards(jobs = []) {
@@ -648,11 +661,14 @@ function settleScheduledRun(event, job) {
       addMessageCopyButton(assistantEl);
     }
   }
-  isProcessing = false;
-  sendBtn.disabled = false;
-  hideActivity();
-  if (!job?.id || currentAssistantEl === assistantEl) currentAssistantEl = null;
-  abortRequested = false;
+  const ownsActiveRun = !currentAssistantEl || currentAssistantEl === assistantEl;
+  if (ownsActiveRun) {
+    isProcessing = false;
+    sendBtn.disabled = false;
+    hideActivity();
+    if (currentAssistantEl === assistantEl) currentAssistantEl = null;
+    abortRequested = false;
+  }
   if (event === 'completed') playCompletionSound();
 }
 
@@ -667,7 +683,7 @@ function handleScheduledJobEvent(data, tabId) {
   const terminalScheduledEvent = ['completed', 'failed'].includes(event);
   const crossPanelScheduledEvent = isUrlTargetScheduledJob(job) && (
     event === 'needs_user_input' ||
-    (terminalScheduledEvent && jobId && (crossPanelScheduledJobIds.has(jobId) || findScheduledClarifyCardForJob(jobId)))
+    terminalScheduledEvent
   );
   if (!sameTab && !crossPanelScheduledEvent) return;
 
@@ -683,6 +699,7 @@ function handleScheduledJobEvent(data, tabId) {
     if (jobId) currentAssistantEl.dataset.scheduledJobId = jobId;
     showActivity(t('sp.scheduled.running', { title }));
   } else if (event === 'completed') {
+    ensureScheduledTerminalMessage(job);
     settleScheduledRun(event, job);
   } else if (event === 'failed') {
     settleScheduledRun(event, job);

@@ -1798,6 +1798,9 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
     assert.match(panel, /isUrlTargetScheduledJob/, `${label}: URL-target scheduled prompts should be visible across panels`);
     assert.match(panel, /crossPanelScheduledJobIds/, `${label}: cross-panel scheduled jobs should stay tracked until terminal events`);
     assert.match(panel, /terminalScheduledEvent/, `${label}: cross-panel scheduled terminal events should settle the panel`);
+    assert.match(panel, /event === 'needs_user_input' \|\|\s*terminalScheduledEvent/, `${label}: URL-target terminal events should return to the scheduling panel without a prior clarify card`);
+    assert.match(panel, /ensureScheduledTerminalMessage/, `${label}: URL-target terminal events should create a visible result message`);
+    assert.match(panel, /const ownsActiveRun = !currentAssistantEl \|\| currentAssistantEl === assistantEl/, `${label}: scheduled terminal events should not clear unrelated active replies`);
     assert.match(panel, /isScheduledClarify/, `${label}: scheduled clarify answers should resume the active run`);
     assert.match(panel, /findScheduledAssistantMessageForJob/, `${label}: scheduled terminal events should target their own assistant message`);
     assert.match(panel, /let assistantEl = currentAssistantEl/, `${label}: forced scheduled clarify cards should not overwrite the active assistant bubble`);
