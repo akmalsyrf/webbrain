@@ -524,18 +524,21 @@ export async function readPageSource(url, opts = {}, ctx = {}) {
       if (!v2.ok) {
         return { success: false, error: `Redirect to blocked URL: ${v2.error}`, finalUrl: res.url };
       }
-      if (attachCookies && tabRegDomain) {
-        try {
-          const finalRegDomain = registrableDomain(new URL(res.url).hostname);
-          if (finalRegDomain !== tabRegDomain) {
-            return {
-              success: false,
-              error: `Redirect crossed registrable-domain boundary (${tabRegDomain} → ${finalRegDomain}); body discarded for safety. Re-call with the explicit final URL if needed.`,
-              finalUrl: res.url,
-            };
-          }
-        } catch {}
-      }
+      // Reject cross-eTLD+1 redirects unconditionally. Cookie attachment makes
+      // cross-domain redirects dangerous (cookies sent to wrong host), but even
+      // without cookies a silent host change is surprising and may expose data
+      // from an unintended host. Surface finalUrl so the caller can re-invoke.
+      try {
+        const initialRegDomain = registrableDomain(new URL(targetUrl).hostname);
+        const finalRegDomain = registrableDomain(new URL(res.url).hostname);
+        if (initialRegDomain && finalRegDomain && finalRegDomain !== initialRegDomain) {
+          return {
+            success: false,
+            error: `Redirect crossed registrable-domain boundary (${initialRegDomain} → ${finalRegDomain}); body discarded for safety. Re-call with the explicit final URL if needed.`,
+            finalUrl: res.url,
+          };
+        }
+      } catch {}
     }
 
     const headerCheck = validatePageSourceResponseHeaders(res.headers);
