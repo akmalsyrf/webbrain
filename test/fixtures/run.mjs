@@ -302,6 +302,36 @@ test('Firefox: indexed shadow-DOM click passes occlusion hit test', async (page)
   if (!clicked) throw new Error('expected shadow button click handler to run');
 });
 
+test('Firefox: type_text returns an error after focus moves to a noneditable element', async (page) => {
+  await setupFirefoxHtml(page, `<!doctype html>
+    <style>
+      body { margin: 0; font: 16px sans-serif; }
+      #field { position: absolute; left: 20px; top: 20px; width: 220px; height: 40px; }
+      #opener { position: absolute; left: 20px; top: 90px; width: 140px; height: 40px; }
+    </style>
+    <input id="field" placeholder="Name">
+    <button id="opener">Open menu</button>`);
+
+  const click = await call(page, 'click', { index: 0 });
+  if (!click?.success) throw new Error(`expected input click success, got: ${JSON.stringify(click)}`);
+
+  const typed = await call(page, 'type', { text: 'Ada' });
+  if (!typed?.success) throw new Error(`expected first type success, got: ${JSON.stringify(typed)}`);
+
+  await page.evaluate(() => document.getElementById('opener').focus());
+  const activeId = await page.evaluate(() => document.activeElement?.id || '');
+  if (activeId !== 'opener') throw new Error(`expected opener focus, got: ${activeId}`);
+
+  const staleType = await call(page, 'type', { text: ' Lovelace' });
+  if (staleType?.success) throw new Error(`expected type failure after button focus, got: ${JSON.stringify(staleType)}`);
+  if (!/Focused element <button> is not an editable field/.test(staleType?.error || '')) {
+    throw new Error(`expected focused button error, got: ${JSON.stringify(staleType)}`);
+  }
+
+  const value = await page.evaluate(() => document.getElementById('field').value);
+  if (value !== 'Ada') throw new Error(`expected stale fallback not to mutate input, got: ${value}`);
+});
+
 // ─── main ─────────────────────────────────────────────────────────────────
 // Social media downloader focus safety
 test('SMD: Instagram auto mode downloads the open dialog image, not the feed', async (page) => {

@@ -1246,15 +1246,11 @@
       // Verify it's actually editable
       const editable = el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
       if (!editable) {
-        const recentEditable = _recentEditableTarget();
-        if (recentEditable) {
-          el = recentEditable;
-        } else {
-          return {
-            success: false,
-            error: `Focused element <${el.tagName.toLowerCase()}> is not an editable field. Click the target input/textarea first, then call type_text again.`,
-          };
-        }
+        _lastEditableTarget = null;
+        return {
+          success: false,
+          error: `Focused element <${el.tagName.toLowerCase()}> is not an editable field. Click the target input/textarea first, then call type_text again.`,
+        };
       }
     }
 
