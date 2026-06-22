@@ -10,7 +10,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Multi-Step Agent** — Autonomous task execution with tool-use loops (configurable, default 60 steps)
 - **Continue from Limit** — When the agent hits the step limit, click Continue to keep going
 - **Multi-Provider LLM** — Supports local and cloud models:
-  - **llama.cpp** (local, default) — No API key needed
+  - **llama.cpp** (local, default) — No API key needed. Also Ollama, LM Studio, Jan, vLLM, and SGLang
   - **OpenAI** (GPT-4o, etc.)
   - **OpenRouter** (default model: `minimax/minimax-m3`; access 100+ models)
   - **Anthropic Claude** (native API)
@@ -56,6 +56,11 @@ llama-server -m your-model.gguf --port 8080
 # Or using Ollama (OpenAI-compatible)
 ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
+
+# Or using Jan, vLLM, or SGLang (OpenAI-compatible)
+# Jan: http://localhost:1337/v1
+# vLLM: http://localhost:8000/v1
+# SGLang: http://localhost:30000/v1
 ```
 
 ### Use it
@@ -81,6 +86,11 @@ Click the gear icon or go to the extension's Options page to configure:
 | Provider | Base URL | API Key |
 |----------|----------|---------|
 | llama.cpp | `http://localhost:8080` | Not needed |
+| Ollama | `http://localhost:11434/v1` | Not needed |
+| LM Studio | `http://localhost:1234/v1` | Not needed |
+| Jan | `http://localhost:1337/v1` | Not needed |
+| vLLM | `http://localhost:8000/v1` | Optional |
+| SGLang | `http://localhost:30000/v1` | Optional |
 | OpenAI | `https://api.openai.com/v1` | Required |
 | OpenRouter | `https://openrouter.ai/api/v1` | Required |
 | Anthropic | `https://api.anthropic.com` | Required |

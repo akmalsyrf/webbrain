@@ -100,7 +100,7 @@ export class ProviderManager {
         model: '',
         contextWindow: 16384,
         // Default ON for local providers: in practice users who reach for
-        // llama.cpp / Ollama / LM Studio in 2026 are running multimodal
+        // local OpenAI-compatible backends in 2026 are running multimodal
         // models (Qwen-VL, Llama 3.2-Vision, etc.). False-positives where a
         // text-only model is loaded with vision=true still work — the agent
         // just sends image_url blocks the model ignores. False-negatives
@@ -130,6 +130,42 @@ export class ProviderManager {
         model: '',
         contextWindow: 16384,
         apiKey: 'lm-studio',
+        supportsVision: true,
+        enabled: true,
+      },
+      jan: {
+        type: 'openai',
+        category: 'local',
+        label: 'Jan (Local)',
+        providerName: 'jan',
+        baseUrl: 'http://localhost:1337/v1',
+        model: '',
+        contextWindow: 16384,
+        apiKey: '',
+        supportsVision: true,
+        enabled: true,
+      },
+      vllm: {
+        type: 'openai',
+        category: 'local',
+        label: 'vLLM (Local)',
+        providerName: 'vllm',
+        baseUrl: 'http://localhost:8000/v1',
+        model: '',
+        contextWindow: 16384,
+        apiKey: '',
+        supportsVision: true,
+        enabled: true,
+      },
+      sglang: {
+        type: 'openai',
+        category: 'local',
+        label: 'SGLang (Local)',
+        providerName: 'sglang',
+        baseUrl: 'http://localhost:30000/v1',
+        model: '',
+        contextWindow: 16384,
+        apiKey: '',
         supportsVision: true,
         enabled: true,
       },
@@ -314,7 +350,7 @@ export class ProviderManager {
    */
   static categoryFor(id, config) {
     if (config && config.category) return config.category;
-    if (['llamacpp', 'ollama', 'lmstudio'].includes(id)) return 'local';
+    if (['llamacpp', 'ollama', 'lmstudio', 'jan', 'vllm', 'sglang'].includes(id)) return 'local';
     if (id === 'openrouter') return 'router';
     return 'cloud';
   }
@@ -483,13 +519,13 @@ export class ProviderManager {
 
   /**
    * Fetch selectable models for local providers. Ollama uses its native
-   * /api/tags endpoint; llama.cpp and LM Studio use OpenAI-compatible
-   * /v1/models.
+   * /api/tags endpoint; llama.cpp, LM Studio, Jan, vLLM, and SGLang use
+   * OpenAI-compatible /v1/models.
    */
   async listProviderModels(id) {
     const provider = this.providers.get(id);
     if (!provider) return { ok: false, error: 'Provider not found' };
-    if (!['llamacpp', 'ollama', 'lmstudio'].includes(id)) {
+    if (!['llamacpp', 'ollama', 'lmstudio', 'jan', 'vllm', 'sglang'].includes(id)) {
       return { ok: false, error: 'Model loading is only supported for local providers' };
     }
 
@@ -504,10 +540,12 @@ export class ProviderManager {
     // if nothing is loaded we fall back to the full chat-model list so JIT
     // loading still works. If the native endpoint is unavailable (older LM
     // Studio), we fall through to /v1/models below.
+    const headers = this._modelListHeaders(provider);
+
     if (id === 'lmstudio') {
       const host = rawBaseUrl.replace(/\/v1\/?$/, '');
       try {
-        const res = await fetch(`${host}/api/v0/models`, { method: 'GET' });
+        const res = await fetch(`${host}/api/v0/models`, { method: 'GET', headers });
         if (res.ok) {
           const models = this._extractLmStudioModels(await res.json());
           if (models.length) return { ok: true, models };
@@ -521,7 +559,7 @@ export class ProviderManager {
     if (!baseUrl) return { ok: false, error: 'Base URL is empty' };
     const url = id === 'ollama' ? `${baseUrl}/api/tags` : `${baseUrl}/models`;
     try {
-      const res = await fetch(url, { method: 'GET' });
+      const res = await fetch(url, { method: 'GET', headers });
       if (!res.ok) {
         const errBody = await res.text();
         if (res.status === 403) {
@@ -543,6 +581,13 @@ export class ProviderManager {
 
   async listOllamaModels(id) {
     return this.listProviderModels(id);
+  }
+
+  _modelListHeaders(provider) {
+    const headers = { 'Accept': 'application/json' };
+    const apiKey = provider?.config?.apiKey;
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    return headers;
   }
 
   _extractModelIds(id, data) {

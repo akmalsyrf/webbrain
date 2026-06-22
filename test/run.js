@@ -2928,11 +2928,11 @@ test('reason is informative', () => {
 
 console.log('\nprovider categorization');
 
-test('categoryFor: local family (llamacpp / ollama / lmstudio)', () => {
+test('categoryFor: local family', () => {
   for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
-    assert.equal(PM.categoryFor('llamacpp', { type: 'llamacpp' }), 'local');
-    assert.equal(PM.categoryFor('ollama', { type: 'openai' }), 'local');
-    assert.equal(PM.categoryFor('lmstudio', { type: 'openai' }), 'local');
+    for (const id of ['llamacpp', 'ollama', 'lmstudio', 'jan', 'vllm', 'sglang']) {
+      assert.equal(PM.categoryFor(id, { type: id === 'llamacpp' ? 'llamacpp' : 'openai' }), 'local');
+    }
   }
 });
 
@@ -2972,7 +2972,9 @@ test('categoryFor: unknown id with no category defaults to cloud', () => {
 
 test('inferContextWindow: model-aware cloud/router defaults and local 16k fallback', () => {
   for (const infer of [inferContextWindowCh, inferContextWindowFx]) {
-    assert.equal(infer({ category: 'local', providerName: 'lmstudio', model: 'qwen3.7-plus' }), 16384);
+    for (const providerName of ['lmstudio', 'jan', 'vllm', 'sglang']) {
+      assert.equal(infer({ category: 'local', providerName, model: 'qwen3.7-plus' }), 16384);
+    }
     assert.equal(infer({ category: 'cloud', providerName: 'openai', model: 'gpt-5.5-pro' }), 1050000);
     assert.equal(infer({ category: 'cloud', providerName: 'openai', model: 'gpt-5.5' }), 400000);
     assert.equal(infer({ category: 'cloud', providerName: 'anthropic', model: 'claude-opus-4-8' }), 1000000);
@@ -3019,6 +3021,47 @@ test('_extractModelIds: OpenAI-compatible /v1/models format', () => {
       mgr._extractModelIds('llamacpp', { data: ['qwen2.5-coder', 'llama.cpp-model'] }),
       ['llama.cpp-model', 'qwen2.5-coder']
     );
+    assert.deepEqual(
+      mgr._extractModelIds('vllm', {
+        data: [{ id: 'Qwen/Qwen3-4B' }, { id: 'NousResearch/Meta-Llama-3-8B-Instruct' }, { id: 'Qwen/Qwen3-4B' }],
+      }),
+      ['NousResearch/Meta-Llama-3-8B-Instruct', 'Qwen/Qwen3-4B']
+    );
+  }
+});
+
+test('listProviderModels sends saved API keys for auth-enabled OpenAI-compatible local providers', async () => {
+  const originalFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, options = {}) => {
+    seen.push({ url: String(url), headers: options.headers || {} });
+    return new Response(JSON.stringify({ data: [{ id: 'local-model' }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+      for (const id of ['jan', 'vllm', 'sglang']) {
+        const mgr = new PM();
+        const config = {
+          ...mgr._defaultConfigs()[id],
+          apiKey: `${id}-secret`,
+        };
+        mgr.providers.set(id, mgr._createProvider(id, config));
+
+        const result = await mgr.listProviderModels(id);
+        assert.deepEqual(result, { ok: true, models: ['local-model'] });
+
+        const call = seen.pop();
+        assert.equal(call.url, `${config.baseUrl.replace(/\/$/, '')}/models`);
+        assert.equal(call.headers.Authorization, `Bearer ${id}-secret`);
+        assert.equal(call.headers.Accept, 'application/json');
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
@@ -3050,6 +3093,20 @@ test('_defaultConfigs: new cloud providers present and disabled by default', () 
       assert.equal(defaults[id].enabled, false, `${PM.name}: ${id} should default to disabled`);
       assert.ok(defaults[id].baseUrl, `${PM.name}: ${id} missing baseUrl`);
       assert.ok(defaults[id].model, `${PM.name}: ${id} missing default model`);
+    }
+  }
+});
+
+test('_defaultConfigs: new offline providers present and enabled by default', () => {
+  for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
+    const mgr = new PM();
+    const defaults = mgr._defaultConfigs();
+    for (const id of ['jan', 'vllm', 'sglang']) {
+      assert.ok(defaults[id], `${PM.name}: missing default config for ${id}`);
+      assert.equal(defaults[id].type, 'openai', `${PM.name}: ${id} should use OpenAI-compatible provider`);
+      assert.equal(defaults[id].category, 'local', `${PM.name}: ${id} should be local`);
+      assert.equal(defaults[id].enabled, true, `${PM.name}: ${id} should default to enabled`);
+      assert.ok(defaults[id].baseUrl?.startsWith('http://localhost:'), `${PM.name}: ${id} should use localhost by default`);
     }
   }
 });
@@ -3130,12 +3187,33 @@ test('OpenAI-compatible local streams do not request usage metadata', () => {
     for (const config of [
       { category: 'local', providerName: 'ollama' },
       { category: 'local', providerName: 'lmstudio' },
+      { category: 'local', providerName: 'jan' },
+      { category: 'local', providerName: 'vllm' },
+      { category: 'local', providerName: 'sglang' },
       { category: 'local', providerName: 'openai' },
     ]) {
       const provider = new Provider(config);
       const body = { stream: true };
       provider._addStreamUsageOptions(body);
       assert.equal(body.stream_options, undefined);
+    }
+  }
+});
+
+test('OpenAI-compatible local providers always use legacy request token fields', () => {
+  for (const Provider of [OpenAIProviderCh, OpenAIProviderFx]) {
+    for (const providerName of ['ollama', 'lmstudio', 'jan', 'vllm', 'sglang']) {
+      const provider = new Provider({
+        category: 'local',
+        providerName,
+        model: 'gpt-5-local',
+      });
+      const body = {};
+      provider._addTemperature(body, { temperature: 0.2 });
+      provider._addMaxTokens(body, { maxTokens: 123 });
+      assert.equal(body.temperature, 0.2, `${providerName} should keep temperature`);
+      assert.equal(body.max_tokens, 123, `${providerName} should use max_tokens`);
+      assert.equal(body.max_completion_tokens, undefined, `${providerName} should not use max_completion_tokens`);
     }
   }
 });

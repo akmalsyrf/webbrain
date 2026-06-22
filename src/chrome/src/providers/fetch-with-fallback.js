@@ -17,8 +17,8 @@ import { ensureOffscreen } from '../offscreen/ensure.js';
 // User-configurable connection-phase timeout for LLM HTTP requests.
 //
 // Lives in chrome.storage.local under `requestTimeoutMs`. Default 120s —
-// errs on the local-model side (llama.cpp / Ollama / LM Studio with a
-// large model + long context can take 60–180s before the first byte).
+// errs on the local-model side (llama.cpp / Ollama / LM Studio / Jan / vLLM /
+// SGLang with a large model + long context can take 60–180s before the first byte).
 // Cloud providers (OpenAI / Anthropic / Gemini) start their SSE stream
 // within a couple seconds, so the higher default costs them nothing —
 // the timer only ever fires for genuinely stalled endpoints. Users bump

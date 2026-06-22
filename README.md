@@ -18,7 +18,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Continue from Limit** — When the agent hits the step limit, click Continue to keep going
 - **Multi-Provider LLM** — Supports local and cloud models:
   - **WebBrain Cloud 1.0** (cloud, default) — Built-in managed cloud option; no local setup required
-  - **llama.cpp** (local) — No API key needed. Also **Ollama** and **LM Studio**
+  - **llama.cpp** (local) — No API key needed. Also **Ollama**, **LM Studio**, **Jan**, **vLLM**, and **SGLang**
   - **OpenAI** (GPT-5.5, etc.)
   - **Anthropic Claude** (native API)
   - **Google Gemini**, **Mistral AI**, **DeepSeek**, **xAI Grok**, **Groq**
@@ -68,6 +68,13 @@ llama-server -m your-model.gguf --port 8080
 # Or using Ollama (OpenAI-compatible)
 ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
+
+# Or using Jan (OpenAI-compatible)
+# Start Jan's local API server and use http://localhost:1337/v1
+
+# Or using vLLM / SGLang (OpenAI-compatible)
+vllm serve your-model --port 8000
+python -m sglang.launch_server --model-path your-model --port 30000
 ```
 
 > **Context window:** For reliable agent runs, load a local model with **at least a 16k-token context window** (the usable minimum). 8k can work with **Compact mode** enabled (Settings → per-provider checkbox); 4k is too small to hold the system prompt + tool schemas. WebBrain auto-compacts the conversation as it nears the window — it assumes 16k for local models unless you set an explicit context size, so give the model server (e.g. `llama-server -c 16384`) enough room.
@@ -97,6 +104,9 @@ Click the gear icon or go to the extension's Options page to configure:
 | llama.cpp | `http://localhost:8080` | Not needed | (your loaded model) |
 | Ollama | `http://localhost:11434/v1` | Not needed | (your loaded model) |
 | LM Studio | `http://localhost:1234/v1` | Not needed | (your loaded model) |
+| Jan | `http://localhost:1337/v1` | Not needed | (your loaded model) |
+| vLLM | `http://localhost:8000/v1` | Optional | (your served model) |
+| SGLang | `http://localhost:30000/v1` | Optional | (your served model) |
 | OpenAI | `https://api.openai.com/v1` | Required | gpt-5.5 |
 | Anthropic Claude | `https://api.anthropic.com` | Required | claude-sonnet-4-6 |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | Required | gemini-3.1-flash |
@@ -180,7 +190,7 @@ Deeper docs live in [`docs/`](docs/): [architecture](docs/architecture.md), [sit
 | `solve_captcha` | -- | Yes | Yes | Solve CAPTCHAs via CapSolver API (optional, requires API key) |
 | `done` | Yes | Yes | Yes | Signal task completion |
 
-**Compact mode** is a reduced tool set + shorter system prompt designed for small local models (2B-8B). In both Chrome and Firefox builds, it cuts the Act-mode schema from 40+ tools to about 20, reducing decision surface and hallucination. Enable it per-provider in Settings (checkbox on llama.cpp, Ollama, LM Studio; off by default).
+**Compact mode** is a reduced tool set + shorter system prompt designed for small local models (2B-8B). In both Chrome and Firefox builds, it cuts the Act-mode schema from 40+ tools to about 20, reducing decision surface and hallucination. Enable it per-provider in Settings (checkbox on local providers; off by default).
 
 > **Shadow DOM note:** The accessibility tree only traverses light DOM. On Web Component-heavy pages (Stripe, Salesforce, Shopify), use `get_interactive_elements` (pierces open shadow roots) or `get_shadow_dom` / `shadow_dom_query` for targeted reads.
 
