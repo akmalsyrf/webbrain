@@ -1447,6 +1447,12 @@ async function parseSlashCommands(text) {
     return '';
   }
 
+  // /record — not supported in Firefox
+  if (/^\/record(?:\s|$)/i.test(text)) {
+    addMessage('system', t('sp.record.error', { error: 'Tab recording is not supported in Firefox.' }));
+    return '';
+  }
+
   // /export — export conversation as markdown
   if (/^\/export\b\s*/i.test(text)) {
     const messages = messagesEl.querySelectorAll('.message');
