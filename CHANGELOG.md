@@ -6,6 +6,17 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [15.0.0] - 2026-06-22
+
+### Added
+- Added a Chrome `/record` slash command that starts current-tab recording directly from the side panel with video and microphone capture, plus matching Chrome autocomplete and `/help` text.
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 15.0.0.
+
+### Fixed
+- Tightened `/record` slash parsing so longer words beginning with `/record` are not treated as recording commands, surfaced recording startup and microphone-capture failures in the Chrome side panel, and made manually typed `/record` in Firefox report that tab recording is unsupported without advertising it in Firefox slash autocomplete or help.
+
 ## [14.2.2] - 2026-06-22
 
 ### Changed
