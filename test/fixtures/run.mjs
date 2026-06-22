@@ -21,6 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..', '..');
 const accessibilityTreeJsPath = path.join(root, 'src', 'chrome', 'src', 'content', 'accessibility-tree.js');
 const contentJsPath = path.join(root, 'src', 'chrome', 'src', 'content', 'content.js');
+const firefoxContentJsPath = path.join(root, 'src', 'firefox', 'src', 'content', 'content.js');
 const smdJsPath = path.join(root, 'src', 'chrome', 'src', 'agent', 'social-media-downloader.js');
 
 function fixtureUrl(name) {
@@ -37,6 +38,15 @@ const stubChrome = `
   };
 `;
 
+const stubFirefoxBrowser = `
+  window.browser = window.browser || {};
+  window.browser.runtime = window.browser.runtime || {};
+  window.browser.runtime.getURL = (path) => path;
+  window.browser.runtime.onMessage = {
+    addListener: (fn) => { window.__wb_handler = fn; }
+  };
+`;
+
 async function setup(page, fixture) {
   await page.addInitScript(stubChrome);
   await page.goto(fixtureUrl(fixture));
@@ -45,6 +55,14 @@ async function setup(page, fixture) {
   const src = await readFile(contentJsPath, 'utf-8');
   await page.addScriptTag({ content: src });
   // Ensure handler is registered.
+  await page.waitForFunction(() => typeof window.__wb_handler === 'function');
+}
+
+async function setupFirefoxHtml(page, html) {
+  await page.setContent(html, { waitUntil: 'domcontentloaded' });
+  await page.addScriptTag({ content: stubFirefoxBrowser });
+  const src = await readFile(firefoxContentJsPath, 'utf-8');
+  await page.addScriptTag({ content: src });
   await page.waitForFunction(() => typeof window.__wb_handler === 'function');
 }
 
@@ -222,6 +240,36 @@ test('click_ax: hash popup anchor keeps popup guidance', async (page) => {
 
   const opened = await page.evaluate(() => window.__hashMenuOpened);
   if (opened !== true) throw new Error('expected hash popup click handler to run');
+});
+
+// ─── Firefox index/focus parity ───────────────────────────────────────────
+test('Firefox: click({index}) matches full interactive ordering and preserves type focus', async (page) => {
+  await setupFirefoxHtml(page, `<!doctype html>
+    <style>
+      body { margin: 0; font: 16px sans-serif; }
+      #late { position: absolute; left: 20px; top: 180px; width: 120px; height: 40px; }
+      #search { position: absolute; left: 20px; top: 20px; width: 240px; height: 40px; }
+    </style>
+    <button id="late" onclick="window.__clicked='late'">Later button</button>
+    <input id="search" role="combobox" placeholder="Search">`);
+
+  const elements = await call(page, 'get_interactive_elements_cdp', {});
+  if (elements?.[0]?.id !== 'search') {
+    throw new Error(`expected visually first element to be search input, got: ${JSON.stringify(elements?.[0])}`);
+  }
+
+  const click = await call(page, 'click', { index: 0 });
+  if (!click?.success) throw new Error(`expected click success, got: ${JSON.stringify(click)}`);
+  if (click.tag !== 'INPUT') throw new Error(`expected click index 0 to hit INPUT, got: ${JSON.stringify(click)}`);
+
+  const activeId = await page.evaluate(() => document.activeElement?.id || '');
+  if (activeId !== 'search') throw new Error(`expected search input focus after click, got: ${activeId}`);
+
+  const typed = await call(page, 'type', { text: 'mchiang0610' });
+  if (!typed?.success) throw new Error(`expected type success, got: ${JSON.stringify(typed)}`);
+
+  const value = await page.evaluate(() => document.getElementById('search').value);
+  if (value !== 'mchiang0610') throw new Error(`expected typed value, got: ${value}`);
 });
 
 // ─── main ─────────────────────────────────────────────────────────────────

@@ -469,7 +469,7 @@
     });
   }
 
-  function getInteractiveElementsFull() {
+  function queryInteractiveFull() {
     const collected = [];
     const seen = new Set();
 
@@ -525,7 +525,19 @@
       return a.rect.left - b.rect.left;
     });
 
-    return collected.map((c, i) => {
+    return collected;
+  }
+
+  function queryInteractiveForToolIndex() {
+    // Firefox's agent maps get_interactive_elements to the full/CDP-like
+    // collector below, so index-based follow-up actions must resolve against
+    // that same ordering. The legacy queryInteractive() order is still used
+    // by the plain content handler but it is not the list the agent sees.
+    return queryInteractiveFull().map(c => c.el);
+  }
+
+  function getInteractiveElementsFull() {
+    return queryInteractiveFull().map((c, i) => {
       const el = c.el;
       return {
         index: i,
@@ -621,6 +633,34 @@
   }
 
   let _lastClickIdent = null;
+  let _lastEditableTarget = null;
+
+  function _isTypeableElement(el) {
+    return !!(el && (
+      el.isContentEditable ||
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement
+    ));
+  }
+
+  function _rememberEditableTarget(el) {
+    if (!_isTypeableElement(el)) return;
+    _lastEditableTarget = {
+      el,
+      href: location.href,
+      ts: Date.now(),
+    };
+  }
+
+  function _recentEditableTarget() {
+    if (!_lastEditableTarget) return null;
+    const { el, href, ts } = _lastEditableTarget;
+    if (!el || !el.isConnected || href !== location.href) return null;
+    if (Date.now() - ts > 30000) return null;
+    if (!_isTypeableElement(el) || !isVisiblyInteractive(el)) return null;
+    return el;
+  }
 
   /**
    * Click an element by selector or coordinates.
@@ -880,8 +920,7 @@
     } else if (params.selector) {
       el = safeQuerySelector(params.selector);
     } else if (params.index != null) {
-      // Same traversal as getInteractiveElements — index stability.
-      const interactive = queryInteractive();
+      const interactive = queryInteractiveForToolIndex();
       el = interactive[params.index];
       if (!el) return _staleIndexError(params.index, interactive);
     } else if (params.x != null && params.y != null) {
@@ -992,12 +1031,26 @@
       } catch {}
     }
 
+    if (_isTypeableElement(el)) {
+      try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch {} }
+      _rememberEditableTarget(el);
+    } else {
+      _lastEditableTarget = null;
+    }
+
     const clickedRect = rememberInteractionPoint(el, 'click');
     el.click();
 
     // Post-click SELECT detection: the click may have activated a <select>
     // via a label, wrapper, or overlapping element. Return error, not success.
     const postActive = document.activeElement;
+    if (_isTypeableElement(postActive)) {
+      _rememberEditableTarget(postActive);
+    } else if (_isTypeableElement(el)) {
+      try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch {} }
+      _rememberEditableTarget(el);
+    }
+
     if (postActive && postActive !== el && postActive instanceof HTMLSelectElement) {
       postActive.blur();
       postActive.focus(); // close native popup, keep focus
@@ -1014,7 +1067,7 @@
     // Skip for editable targets — re-clicking a text field / contenteditable
     // is legitimate (positions cursor / re-focuses) and "no page change" is
     // the expected outcome there, not a failure signal.
-    const isEditableTarget = el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+    const isEditableTarget = _isTypeableElement(el);
     const ident = `${el.tagName}|${(el.innerText || '').slice(0, 50)}|${location.href}`;
     let warning;
     if (_lastClickIdent === ident && !isEditableTarget) {
@@ -1136,7 +1189,7 @@
     if (params.selector) {
       el = safeQuerySelector(params.selector);
     } else if (params.index != null) {
-      const interactive = queryInteractive();
+      const interactive = queryInteractiveForToolIndex();
       el = interactive[params.index];
       if (!el) return _staleIndexError(params.index, interactive);
     } else {
@@ -1144,28 +1197,29 @@
       // Most reliable for click-then-type flows on forms with weird selectors.
       el = document.activeElement;
       if (!el || el === document.body || el === document.documentElement) {
+        el = _recentEditableTarget();
+      }
+      if (!el || el === document.body || el === document.documentElement) {
         return { success: false, error: 'No editable element is currently focused. Click the target input/textarea first, then call type_text again with no selector.' };
       }
       // Verify it's actually editable
       const editable = el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
       if (!editable) {
-        return {
-          success: false,
-          error: `Focused element <${el.tagName.toLowerCase()}> is not an editable field. Click the target input/textarea first, then call type_text again.`,
-        };
+        const recentEditable = _recentEditableTarget();
+        if (recentEditable) {
+          el = recentEditable;
+        } else {
+          return {
+            success: false,
+            error: `Focused element <${el.tagName.toLowerCase()}> is not an editable field. Click the target input/textarea first, then call type_text again.`,
+          };
+        }
       }
     }
 
     if (!el) return { success: false, error: 'Element not found' };
 
-    // Guard: only INPUT, TEXTAREA, SELECT, and contenteditable are typeable.
-    // Calling HTMLInputElement's native value setter on anything else throws
-    // "Illegal invocation" because the setter requires `this` to be an input.
-    const isTypeable = el.isContentEditable
-      || el instanceof HTMLInputElement
-      || el instanceof HTMLTextAreaElement
-      || el instanceof HTMLSelectElement;
-    if (!isTypeable) {
+    if (!_isTypeableElement(el)) {
       const tag = (el.tagName || '').toLowerCase();
       return {
         success: false,
