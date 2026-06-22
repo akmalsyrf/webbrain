@@ -186,6 +186,63 @@ Background relays these via `chrome.runtime.sendMessage` to the side panel, whic
 
 ## Key Subsystems
 
+### Scheduled Tasks (`scheduler.js`)
+
+The scheduler lets the agent defer work to a future browser session using the browser's `alarms` API. It lives in `src/chrome/src/agent/scheduler.js` (and the Firefox mirror) and is instantiated as `ScheduledJobManager` in the background script.
+
+**Job kinds**
+
+| Kind | Created by | Behavior |
+|---|---|---|
+| `resume` | `schedule_resume` tool | Continues the current conversation in the same tab at a future time. Terminal tool — the current run ends when it fires. |
+| `task` | `schedule_task` tool | Runs a standalone user-authored prompt at a future time, optionally recurring. |
+
+**Job lifecycle**
+
+```
+pending → running → completed
+       ↘ queued ↗ ↘ needs_user_input
+                    ↓
+               failed / cancelled / paused
+```
+
+- `pending` — alarm is set; waiting to fire.
+- `queued` — alarm fired but the tab was busy; retries every 30 s (up to 120 deferrals before failing).
+- `running` — agent is actively executing the job.
+- `needs_user_input` — agent issued a `clarify` mid-run; waiting for the user's reply.
+- `paused` — user or settings paused the job; no alarm is set.
+- `cancelled` / `failed` / `completed` — terminal states.
+
+**Targets**
+
+- `current_tab` — runs against the tab that was active when the job was created; fails if the tab is gone or has navigated away.
+- `url` — opens (or reuses) a tab for a given http(s) URL at run time.
+
+**Schedule**
+
+- `once` — fires at a single `run_at` or `after_seconds` time.
+- `recurring` — fires repeatedly at `interval_minutes` (1 min – 1 year); after each run completes, `nextRunAt` is advanced and the next alarm is set.
+
+**Persistence**
+
+Jobs are stored in `chrome.storage.local` under the key `wb_scheduled_jobs` as a JSON array. On background restart, any jobs in `running`/`needs_user_input` are demoted to `queued` and retried, so no run is silently lost.
+
+**Settings**
+
+| Key | Default | Effect |
+|---|---|---|
+| `scheduledTasksEnabled` | `true` | If false, pending jobs are paused instead of executed when their alarm fires. |
+| `scheduledRequireConsequentialConfirmation` | `true` | Passes a policy flag to the agent requiring explicit user confirmation before consequential scheduled actions. |
+
+**LLM tools**
+
+| Tool | When to use |
+|---|---|
+| `schedule_resume({after_seconds\|run_at, reason, resume_instruction})` | Durable pause for the *current* task when blocked on an external event (CI build, email, deploy). Terminal — the run ends after calling it. |
+| `schedule_task({title, prompt, schedule, target, mode})` | Create a standalone one-shot or recurring future task. Only when the user explicitly asks for scheduled future work. |
+
+---
+
 ### Site Adapters (`adapters.js`)
 
 58+ adapters inject site-specific guidance into the first user message (and re-inject on navigation to a different matched site). Only ONE adapter fires at a time (`getActiveAdapter(url)` returns the first match). See `docs/site-adapters.md` for how to write one.
@@ -272,7 +329,7 @@ src/
 ├── chrome/           # Chromium build (MV3)
 │   ├── manifest.json
 │   └── src/
-│       ├── agent/    # agent.js, tools.js, adapters.js, ...
+│       ├── agent/    # agent.js, tools.js, adapters.js, scheduler.js, ...
 │       ├── cdp/      # CDP client (Chrome only)
 │       ├── content/  # accessibility-tree.js, content.js, ...
 │       ├── network/  # network-tools.js

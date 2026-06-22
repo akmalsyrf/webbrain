@@ -1,6 +1,6 @@
 # WebBrain Firefox Extension — Architecture
 
-> Version 15.0.0 · Manifest V2 · Background Page
+> Version 15.1.0 · Manifest V2 · Background Page
 
 ## How Firefox Differs from Chrome
 
@@ -56,7 +56,8 @@ src/firefox/
 │   ├── agent/
 │   │   ├── agent.js                # Core agent loop
 │   │   ├── tools.js                # Tool schemas + system prompts (incl. 4 AX tools)
-│   │   └── adapters.js             # Per-site guidance (identical to Chrome)
+│   │   ├── adapters.js             # Per-site guidance (identical to Chrome)
+│   │   └── scheduler.js            # ScheduledJobManager — alarms-backed deferred tasks
 │   ├── content/
 │   │   ├── accessibility-tree.js   # AX tree builder + ref_id registry (NEW in 3.6.8)
 │   │   └── content.js              # DOM reader / typer / clicker + AX handlers
@@ -339,6 +340,17 @@ Identical to Chrome. Same five providers (OpenAI, Anthropic, llama.cpp, Ollama, 
 Uses `browser.storage.local` instead of `chrome.storage.local` for config persistence.
 
 **No fetch-with-fallback.** Chrome has a `providers/fetch-with-fallback.js` layer that catches direct-fetch failures (typically CORS/PNA on localhost LLM servers) and retries through an offscreen document. Firefox has no equivalent — all provider fetches go directly from the background page, and the local LLM server must set `Access-Control-Allow-Origin: *` (or the extension's `moz-extension://…` origin) itself.
+
+---
+
+## Scheduled Tasks (`scheduler.js`)
+
+Firefox ships the same `ScheduledJobManager` class (`src/firefox/src/agent/scheduler.js`), using `browser.alarms` instead of `chrome.alarms`. Feature parity with the Chrome build except for two differences:
+
+- **No service-worker keepalive.** Chrome pings `chrome.runtime.getPlatformInfo` every 20 s during a job run to prevent the MV3 service worker from dying mid-run. Firefox has a persistent background page (MV2) that is always alive, so no keepalive is needed.
+- **URL-target tabs open active.** On Firefox, URL-target tasks open their tab with `active: true` (Chrome opens them in the background). This is a cosmetic difference with no behavioural impact.
+
+All job kinds (`resume`, `task`), lifecycle states, retry/deferral logic, schedule types (`once`, `recurring`), LLM tools (`schedule_resume`, `schedule_task`), and storage key (`wb_scheduled_jobs`) are identical to Chrome. See `docs/architecture.md § Scheduled Tasks` for the full reference.
 
 ---
 

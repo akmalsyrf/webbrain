@@ -1,6 +1,6 @@
 # WebBrain Chrome Extension — Architecture
 
-> Version 15.0.0 · Manifest V3 · Service Worker background
+> Version 15.1.0 · Manifest V3 · Service Worker background
 
 ## High-Level Overview
 
@@ -38,7 +38,8 @@ src/chrome/
 │   ├── agent/
 │   │   ├── agent.js            # Core agent loop (~2000 lines)
 │   │   ├── tools.js            # Tool schemas + system prompts
-│   │   └── adapters.js         # Per-site guidance
+│   │   ├── adapters.js         # Per-site guidance
+│   │   └── scheduler.js        # ScheduledJobManager — alarms-backed deferred tasks
 │   ├── cdp/
 │   │   └── cdp-client.js       # Chrome DevTools Protocol wrapper
 │   ├── content/
@@ -389,6 +390,29 @@ OpenAI format → Anthropic blocks: system → separate `system` field; `assista
 ### fetch-with-fallback
 
 `providers/fetch-with-fallback.js` tries a direct `fetch` first. On failure (typically a `TypeError: Failed to fetch` against localhost), it lazily creates an offscreen document and proxies through it. This is the only reason the `offscreen` permission exists.
+
+---
+
+## Scheduled Tasks (`scheduler.js`)
+
+`ScheduledJobManager` (Chrome build: `src/chrome/src/agent/scheduler.js`) is instantiated in `background.js` and uses `chrome.alarms` to fire deferred work.
+
+**Chrome-specific behavior vs Firefox:**
+
+- URL-target tasks open their tab in the **background** (`active: false`) so the user isn't interrupted.
+- A **service-worker keepalive** (`startChromeAlarmKeepAlive`) pings `chrome.runtime.getPlatformInfo` every 20 s while a scheduled job is executing, keeping the MV3 service worker alive for the duration of the run.
+- Alarm names are prefixed `wb_scheduled_job:<jobId>`; restored on service-worker startup via `restoreAlarms()`.
+
+**Job kinds, lifecycle, and tools** are identical to the shared design — see `docs/architecture.md § Scheduled Tasks`.
+
+| Limits | Value |
+|---|---|
+| Min delay (`schedule_resume`) | 30 s |
+| Min delay (`schedule_task`) | 60 s |
+| Max delay (both) | 7 days |
+| Min recurring interval | 1 min |
+| Max recurring interval | 1 year (525 600 min) |
+| Max queue deferrals before failure | 120 (≈ 1 h of retries) |
 
 ---
 

@@ -17,7 +17,8 @@
 - **多步骤智能体** — 通过工具调用循环自主执行任务（可配置，默认 130 步）
 - **从限制处继续** — 当智能体达到步数限制时，点击「继续」即可接着运行
 - **多 LLM 提供商** — 支持本地与云端模型：
-  - **llama.cpp**（本地，默认）— 无需 API 密钥。同时支持 **Ollama** 和 **LM Studio**
+  - **WebBrain Cloud 1.0**（云端，默认）— 内置托管云选项，无需本地配置
+  - **llama.cpp**（本地）— 无需 API 密钥。同时支持 **Ollama** 和 **LM Studio**
   - **OpenAI**（GPT-5.5 等）
   - **Anthropic Claude**（原生 API）
   - **Google Gemini**、**Mistral AI**、**DeepSeek**、**xAI Grok**、**Groq**

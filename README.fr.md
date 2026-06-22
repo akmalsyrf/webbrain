@@ -17,7 +17,8 @@ Agent de navigation IA open source pour Chrome et Firefox. Discutez avec n'impor
 - **Agent multi-étapes** — Exécution autonome de tâches via des boucles d'utilisation d'outils (configurable, 130 étapes par défaut)
 - **Continuer depuis la limite** — Lorsque l'agent atteint la limite d'étapes, cliquez sur Continuer pour poursuivre
 - **LLM multi-fournisseurs** — Prend en charge les modèles locaux et cloud :
-  - **llama.cpp** (local, par défaut) — Aucune clé API requise. Également **Ollama** et **LM Studio**
+  - **WebBrain Cloud 1.0** (cloud, par défaut) — Option cloud gérée intégrée, aucune configuration locale requise
+  - **llama.cpp** (local) — Aucune clé API requise. Également **Ollama** et **LM Studio**
   - **OpenAI** (GPT-5.5, etc.)
   - **Anthropic Claude** (API native)
   - **Google Gemini**, **Mistral AI**, **DeepSeek**, **xAI Grok**, **Groq**
