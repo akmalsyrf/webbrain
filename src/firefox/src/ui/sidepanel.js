@@ -1409,7 +1409,7 @@ async function parseSlashCommands(text) {
   }
 
   // /record — not supported in Firefox
-  if (/^\/record\b\s*/i.test(text)) {
+  if (/^\/record(?:\s|$)/i.test(text)) {
     addMessage('system', t('sp.record.error', { error: 'Tab recording is not supported in Firefox.' }));
     return '';
   }

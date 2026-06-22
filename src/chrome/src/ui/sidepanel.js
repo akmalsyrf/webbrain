@@ -1576,7 +1576,7 @@ async function parseSlashCommands(text) {
   }
 
   // /record — start recording the current tab without LLM involvement
-  if (/^\/record\b\s*/i.test(text)) {
+  if (/^\/record(?:\s|$)/i.test(text)) {
     const res = await sendToBackground('start_tab_recording', {
       tabId: currentTabId,
       options: { video: true, mic: true },
