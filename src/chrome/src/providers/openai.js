@@ -57,11 +57,12 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
    * contract from the gpt-4o-and-earlier line:
    *   - reject `max_tokens`, require `max_completion_tokens` instead
    *   - reject any `temperature` other than the default (1)
-   * Local OpenAI-compatible servers (LM Studio) and OpenRouter still use
+   * Local OpenAI-compatible servers and OpenRouter still use
    * the legacy contract. Detect by model name + provider type.
    */
   _isNewOpenAIContract() {
     const m = (this.config.model || '').toLowerCase();
+    if (this.config.category === 'local') return false;
     if (this.config.providerName === 'lmstudio') return false;
     return /^(gpt-5|gpt-4\.1|o1|o3|o4)/.test(m);
   }

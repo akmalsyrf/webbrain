@@ -25,7 +25,7 @@ The user's message, the current page content (AX tree, screenshot, or extracted 
 The user chooses their provider in Settings. Options include:
 
 - **Cloud providers**: OpenAI, Anthropic, Google Gemini, Mistral, DeepSeek, xAI, Groq, OpenRouter, etc. — data leaves the user's machine for these
-- **Local providers**: llama.cpp, Ollama, LM Studio — data stays on the user's machine
+- **Local providers**: llama.cpp, Ollama, LM Studio, Jan, vLLM, SGLang — data stays on the user's machine
 
 The extension itself never receives or stores user data on any remote server.
 

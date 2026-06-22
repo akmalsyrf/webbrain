@@ -6,6 +6,19 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [15.2.0] - 2026-06-22
+
+### Added
+- Jan, vLLM, and SGLang as built-in local providers (Chrome + Firefox). All three use OpenAI-compatible `/v1` endpoints (Jan on port 1337, vLLM on port 8000, SGLang on port 30000), support model listing via `/v1/models`, accept an optional API key for auth-enabled servers, and default to enabled with vision on and a 16 K context window.
+
+### Changed
+- Onboarding local-model detection copy now lists Jan, vLLM, and SGLang alongside LM Studio, Ollama, and llama.cpp.
+- LLM request-timeout settings description and provider info panel updated to cover all six local backends.
+- Updated documentation (README, architecture docs, providers guide) to reflect the expanded local-provider lineup.
+
+### Tests
+- Added coverage for `categoryFor` and `listProviderModels` with Jan, vLLM, and SGLang — including auth header forwarding and model-list deduplication — and for `_defaultConfigs` asserting all three new providers are present, enabled, local-categorized, and localhost-defaulted.
+
 ## [15.1.1] - 2026-06-22
 
 ### Changed

@@ -38,6 +38,9 @@ class BaseLLMProvider {
 | `llamacpp` | `llamacpp` | local | (loaded model) | Yes (default on) |
 | `ollama` | `openai` | local | (loaded model) | Yes (default on) |
 | `lmstudio` | `openai` | local | (loaded model) | Yes (default on) |
+| `jan` | `openai` | local | (loaded model) | Yes (default on) |
+| `vllm` | `openai` | local | (loaded model) | Yes (default on) |
+| `sglang` | `openai` | local | (loaded model) | Yes (default on) |
 | `openai` | `openai` | cloud | `gpt-5.5` | Model-name regex |
 | `anthropic` | `anthropic` | cloud | `claude-sonnet-4-6` | Model-name regex |
 | `claude_subscription` | `anthropic_oauth` | cloud | `claude-sonnet-4-6` | Yes |
@@ -53,13 +56,17 @@ class BaseLLMProvider {
 
 ### Local Providers
 
-Three local providers are enabled by default with no API key needed:
+Six local providers are enabled by default with no API key needed unless the
+local server was started with auth:
 
 - **llama.cpp**: `http://localhost:8080` — runs `llama-server -m model.gguf`
 - **Ollama**: `http://localhost:11434/v1` — `ollama serve`
 - **LM Studio**: `http://localhost:1234/v1` — LM Studio's local inference server
+- **Jan**: `http://localhost:1337/v1` — Jan's local OpenAI-compatible API server
+- **vLLM**: `http://localhost:8000/v1` — vLLM's OpenAI-compatible server
+- **SGLang**: `http://localhost:30000/v1` — SGLang's OpenAI-compatible server
 
-All three default `supportsVision: true` since most models loaded locally in 2026 are multimodal.
+All six default `supportsVision: true` since most models loaded locally in 2026 are multimodal.
 
 **Context window.** Load local models with **at least a 16k-token context window** for reliable agent runs — that's the usable minimum. 8k can work with Compact mode enabled; 4k is too small to hold the system prompt + tool schemas. The agent reads the window from `provider.contextWindow` (`providers/base.js`) to drive auto-compaction; when a provider config doesn't set `contextWindow`, local providers default to a conservative **16k** (cloud/router default to 128k). Set `config.contextWindow` explicitly to match a larger local window, and make sure the model server is actually started with that much context (e.g. `llama-server -c 16384`).
 
@@ -74,7 +81,7 @@ filters the exposed tools through `COMPACT_TOOL_NAMES`; Ask mode is unchanged.
 | OpenAI-compatible | Regex against model name (`gpt-4o`, `gpt-5`, `claude-3`, `claude-sonnet-4`, `gemini-2.0-flash`, etc.) |
 | Anthropic | `claude-(3\|sonnet-4\|opus-4)` patterns |
 | llama.cpp | Explicit `supportsVision` config toggle |
-| Ollama / LM Studio | Explicit `supportsVision` config toggle (via OpenAI provider) |
+| Ollama / LM Studio / Jan / vLLM / SGLang | Explicit `supportsVision` config toggle (via OpenAI provider) |
 
 ### Anthropic Conversion
 

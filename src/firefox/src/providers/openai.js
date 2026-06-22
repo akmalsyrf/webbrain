@@ -56,6 +56,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
    */
   _isNewOpenAIContract() {
     const m = (this.config.model || '').toLowerCase();
+    if (this.config.category === 'local') return false;
     if (this.config.providerName === 'lmstudio') return false;
     return /^(gpt-5|gpt-4\.1|o1|o3|o4)/.test(m);
   }
