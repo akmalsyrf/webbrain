@@ -50,7 +50,7 @@ if (globalThis.chrome?.storage?.onChanged) {
   const localModels = document.getElementById('ob-local-models');
   const localModelSelect = document.getElementById('ob-local-model-select');
   const totalSteps = steps.length;
-  const LOCAL_PROVIDER_ORDER = ['lmstudio', 'ollama', 'llamacpp'];
+  const LOCAL_PROVIDER_ORDER = ['jan', 'lmstudio', 'ollama', 'llamacpp', 'vllm', 'sglang'];
   let current = 0;
   let localScanStarted = false;
   let localModelChoices = [];
@@ -124,7 +124,11 @@ if (globalThis.chrome?.storage?.onChanged) {
       providerBody.textContent = 'WebBrain Cloud is ready with a free daily allowance. Requests go through api.webbrain.one; debug and quota logs store metadata only by default, not prompt text, screenshots, or responses.';
     }
     if (providerStatus) {
-      providerStatus.innerHTML = 'Using WebBrain Cloud. <a href="https://webbrain.one/privacy" target="_blank" rel="noopener noreferrer">Privacy</a> | <a href="https://webbrain.one/subscribe" target="_blank" rel="noopener noreferrer">Subscribe</a>.';
+      const settingsUrl = chrome.runtime.getURL('src/ui/settings.html#providers');
+      providerStatus.innerHTML = `Using WebBrain Cloud. <a href="${settingsUrl}" target="_blank" rel="noopener noreferrer" id="ob-change-provider">Change</a>.`;
+      providerStatus.querySelector('#ob-change-provider')?.addEventListener('click', () => {
+        dismissOnboarding();
+      });
     }
     providerList?.classList.add('hidden');
     localModels?.classList.add('hidden');
@@ -187,8 +191,8 @@ if (globalThis.chrome?.storage?.onChanged) {
         showLocalChoices(choices);
       } else if (errors.length > 0) {
         // A local server was probed but unreadable. By far the most common
-        // cause is CORS being disabled on the local server (LM Studio /
-        // Ollama / llama.cpp): curl works but the browser blocks the
+        // cause is CORS being disabled on the local server (Jan / LM Studio /
+        // Ollama / llama.cpp / vLLM / SGLang): curl works but the browser blocks the
         // cross-origin request. The browser reports "blocked" and "not
         // running" as the same generic network error, so we can't tell them
         // apart — the hint is phrased conditionally. Log the real underlying
