@@ -379,7 +379,8 @@
    * Detect the topmost modal/overlay/dialog on the page. Returns the modal
    * container element, or null if no overlay is detected.
    */
-  function _findTopmostModal() {
+  function _findTopmostModal(opts = {}) {
+    const includeNonModalDialogs = opts.includeNonModalDialogs !== false;
     const dialogs = document.querySelectorAll('dialog[open]');
     if (dialogs.length > 0) return dialogs[dialogs.length - 1];
 
@@ -389,14 +390,17 @@
       if (r.width > 0 && r.height > 0) return ariaModals[i];
     }
 
-    const roleDialogs = document.querySelectorAll('[role="dialog"]');
-    for (let i = roleDialogs.length - 1; i >= 0; i--) {
-      const r = roleDialogs[i].getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) return roleDialogs[i];
+    if (includeNonModalDialogs) {
+      const roleDialogs = document.querySelectorAll('[role="dialog"]');
+      for (let i = roleDialogs.length - 1; i >= 0; i--) {
+        const r = roleDialogs[i].getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return roleDialogs[i];
+      }
     }
 
     const candidates = document.querySelectorAll(
-      '[data-overlay], [data-state="open"][role="dialog"], ' +
+      '[data-overlay], ' +
+      (includeNonModalDialogs ? '[data-state="open"][role="dialog"], ' : '') +
       '.modal.show, .modal-overlay, .overlay, [class*="modal"][class*="open"], ' +
       '[class*="overlay"][class*="active"], [class*="DialogOverlay"], ' +
       '[class*="ModalOverlay"]'
@@ -409,9 +413,13 @@
     return null;
   }
 
+  function _findTopmostBlockingModal() {
+    return _findTopmostModal({ includeNonModalDialogs: false });
+  }
+
   function queryInteractive() {
     const all = document.querySelectorAll(INTERACTIVE_SELECTORS.join(', '));
-    const modal = _findTopmostModal();
+    const modal = _findTopmostBlockingModal();
     const out = [];
     for (const el of all) {
       if (!isVisiblyInteractive(el)) continue;
@@ -506,7 +514,7 @@
   function queryInteractiveFull() {
     const collected = [];
     const seen = new Set();
-    const modal = _findTopmostModal();
+    const modal = _findTopmostBlockingModal();
 
     const isUsable = (el, rect) => {
       if (_hasComposedClosest(el, '[aria-hidden="true"], [inert]')) return false;

@@ -371,6 +371,38 @@ test('Firefox: full indexed elements exclude inert background controls', async (
   }
 });
 
+test('Firefox: non-modal dialogs do not hide full indexed page controls', async (page) => {
+  await setupFirefoxHtml(page, `<!doctype html>
+    <style>
+      body { margin: 0; font: 16px sans-serif; }
+      #page-action { position: absolute; left: 20px; top: 20px; width: 160px; height: 40px; }
+      #help-widget { position: absolute; left: 20px; top: 90px; width: 220px; padding: 16px; border: 1px solid #888; background: white; }
+      #help-action { width: 160px; height: 40px; }
+    </style>
+    <button id="page-action" onclick="window.__pageClicked = true">Save page</button>
+    <aside id="help-widget" role="dialog" aria-label="Help">
+      <button id="help-action" onclick="window.__helpClicked = true">Open help</button>
+    </aside>`);
+
+  const elements = await call(page, 'get_interactive_elements_cdp', {});
+  const pageIndex = elements.findIndex(e => e.id === 'page-action');
+  const helpIndex = elements.findIndex(e => e.id === 'help-action');
+  if (pageIndex < 0 || helpIndex < 0) {
+    throw new Error(`expected page and non-modal dialog controls in elements, got: ${JSON.stringify(elements)}`);
+  }
+
+  const click = await call(page, 'click', { index: pageIndex });
+  if (!click?.success) throw new Error(`expected page action click success, got: ${JSON.stringify(click)}`);
+
+  const state = await page.evaluate(() => ({
+    page: window.__pageClicked === true,
+    help: window.__helpClicked === true,
+  }));
+  if (!state.page || state.help) {
+    throw new Error(`expected only page action to run, got: ${JSON.stringify(state)}`);
+  }
+});
+
 test('Firefox: type_text rejects non-text input after it receives focus', async (page) => {
   await setupFirefoxHtml(page, `<!doctype html>
     <style>
