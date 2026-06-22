@@ -6,6 +6,21 @@ This changelog was generated from the repository Git history and release tags. V
 
 ## [Unreleased]
 
+## [15.1.0] - 2026-06-22
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 15.1.0.
+- Updated README and architecture docs to describe WebBrain Cloud 1.0 as the default managed cloud option and document the scheduled-task system.
+- Refreshed release artwork and regenerated packaged Chrome / Firefox submission archives.
+
+### Fixed
+- Firefox indexed click and typing actions now resolve against the same full interactive-element ordering shown to the agent, keeping click-by-index and type-by-index stable.
+- Firefox indexed actions now handle shadow DOM controls, blocking modal/native dialogs, non-modal dialogs, inert or hidden background controls, stale editable focus, and disabled text inputs more reliably.
+- Chrome and Firefox side panels now surface a clear error when the background script returns no response, and avoid dereferencing missing response content while rendering assistant messages.
+
+### Tests
+- Added regression coverage for Firefox shadow-DOM indexed clicks and typing, modal and non-modal dialog indexing, disabled/stale editable fallbacks, and missing side-panel background responses.
+
 ## [15.0.0] - 2026-06-22
 
 ### Added
