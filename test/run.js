@@ -2185,6 +2185,34 @@ test('sidepanel drains scheduled-run context-menu prompts after pending tab swit
   }
 });
 
+test('sidepanel keeps scheduled job action errors on the initiating tab', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const start = panel.indexOf('async function scheduledJobAction(action, jobId)');
+    const end = panel.indexOf('function drainQueuedContextMenuPromptsAfterPendingTabSwitch', start);
+    assert.notEqual(start, -1, `${label}: scheduledJobAction missing`);
+    assert.notEqual(end, -1, `${label}: scheduledJobAction boundary missing`);
+    const body = panel.slice(start, end);
+    const captureIdx = body.indexOf('const tabId = currentTabId;');
+    const sendIdx = body.indexOf('const response = await sendToBackground(bgAction, { jobId });');
+    const responseErrorIdx = body.indexOf("response.error || 'Scheduled job action failed.'");
+    const responseGuardIdx = body.lastIndexOf('if (currentTabId === tabId) {', responseErrorIdx);
+    const catchIdx = body.indexOf('} catch (e) {');
+    const catchGuardIdx = body.indexOf('if (currentTabId === tabId) {', catchIdx);
+    assert.notEqual(captureIdx, -1, `${label}: scheduled job actions should capture the initiating tab`);
+    assert.notEqual(sendIdx, -1, `${label}: scheduled job action background call missing`);
+    assert.notEqual(responseErrorIdx, -1, `${label}: scheduled job action response error path missing`);
+    assert.notEqual(responseGuardIdx, -1, `${label}: scheduled job action response errors should be tab-scoped`);
+    assert.notEqual(catchIdx, -1, `${label}: scheduled job action catch block missing`);
+    assert.notEqual(catchGuardIdx, -1, `${label}: scheduled job action thrown errors should be tab-scoped`);
+    assert.equal(captureIdx < sendIdx && sendIdx < responseGuardIdx && responseGuardIdx < responseErrorIdx, true, `${label}: response errors must be guarded after the async action returns`);
+    assert.equal(sendIdx < catchIdx && catchIdx < catchGuardIdx, true, `${label}: thrown errors must be guarded after the async action returns`);
+  }
+});
+
 test('background awaits context-menu prompt clear before agent chat starts', () => {
   for (const [label, bgRel] of [
     ['chrome', 'src/chrome/src/background.js'],

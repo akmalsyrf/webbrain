@@ -761,14 +761,19 @@ async function scheduledJobAction(action, jobId) {
   };
   const bgAction = actionMap[action];
   if (!bgAction || !jobId) return;
+  const tabId = currentTabId;
   try {
     const response = await sendToBackground(bgAction, { jobId });
     if (response && (response.ok === false || response.success === false)) {
-      addMessage('error', t('sp.error_prefix', { msg: response.error || 'Scheduled job action failed.' }));
+      if (currentTabId === tabId) {
+        addMessage('error', t('sp.error_prefix', { msg: response.error || 'Scheduled job action failed.' }));
+      }
     }
     await refreshScheduledJobs();
   } catch (e) {
-    addMessage('error', t('sp.error_prefix', { msg: e.message }));
+    if (currentTabId === tabId) {
+      addMessage('error', t('sp.error_prefix', { msg: e.message }));
+    }
   }
 }
 
