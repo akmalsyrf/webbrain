@@ -147,6 +147,15 @@ function scheduledJobPayloadKey(job) {
   return canonicalText(job?.prompt);
 }
 
+function scheduledJobIsImmediate(job) {
+  if (job?.kind !== 'task') return false;
+  if (job.immediate === true) return true;
+  if (job.immediate === false) return false;
+  const created = Date.parse(job?.createdAt || '');
+  const scheduled = Date.parse(job?.scheduledAt || job?.schedule?.run_at || '');
+  return Number.isFinite(created) && Number.isFinite(scheduled) && scheduled <= created + 1000;
+}
+
 function scheduledJobScheduleType(job) {
   return String(job?.schedule?.type || 'once');
 }
@@ -171,6 +180,7 @@ function sameScheduledIntent(a, b) {
     scheduledJobConversationKey(a) === scheduledJobConversationKey(b) &&
     String(a?.mode || 'act') === String(b?.mode || 'act') &&
     scheduledJobPayloadKey(a) === scheduledJobPayloadKey(b) &&
+    scheduledJobIsImmediate(a) === scheduledJobIsImmediate(b) &&
     scheduledJobScheduleType(a) === scheduledJobScheduleType(b) &&
     scheduledJobIntervalMinutes(a) === scheduledJobIntervalMinutes(b) &&
     scheduledTimesAreNear(a, b);
@@ -409,14 +419,21 @@ export class ScheduledJobManager {
   }
 
   _coalesceDuplicateJobs(jobs) {
-    const liveJobs = jobs.filter(isLiveScheduledJob);
+    const keptLiveJobs = [];
+    const cancelIds = new Set();
+    for (const job of jobs.filter(isLiveScheduledJob).sort(compareScheduledJobCreation)) {
+      const canonical = findDuplicateScheduledJob(job, keptLiveJobs);
+      if (canonical) {
+        cancelIds.add(job.id);
+      } else {
+        keptLiveJobs.push(job);
+      }
+    }
     const alarmsToClear = [];
     let changed = false;
     const updatedAt = iso(this.now());
     const next = jobs.map((job) => {
-      if (!isLiveScheduledJob(job)) return job;
-      const canonical = findDuplicateScheduledJob(job, liveJobs);
-      if (!canonical || canonical.id === job.id) return job;
+      if (!cancelIds.has(job.id)) return job;
       changed = true;
       alarmsToClear.push(job.id);
       this._waitingForInput.delete(job.id);
@@ -592,6 +609,7 @@ export class ScheduledJobManager {
       source,
       scheduledAt: parsed.scheduledAt,
       nextRunAt: parsed.immediate ? iso(this.now() + 1000) : parsed.scheduledAt,
+      immediate: parsed.immediate,
       createdAt,
       updatedAt: createdAt,
       queueDeferrals: 0,
