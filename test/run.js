@@ -4908,6 +4908,35 @@ test('agent clearConversation drops /allow-api override in both builds', () => {
   }
 });
 
+test('agent clearConversation drops transient page-run state in both builds', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({});
+    const tabId = 4892;
+    agent.conversations.set(tabId, [{ role: 'system', content: 'sys' }]);
+    agent.lastAutoScreenshotTs.set(tabId, Date.now());
+    agent.lastSeenAdapter.set(tabId, 'GitHub');
+
+    agent.clearConversation(tabId);
+
+    assert.equal(agent.lastAutoScreenshotTs.has(tabId), false, `${AgentClass.name}: stale screenshot debounce survived clearConversation`);
+    assert.equal(agent.lastSeenAdapter.has(tabId), false, `${AgentClass.name}: stale site adapter survived clearConversation`);
+  }
+});
+
+test('agent tab cleanup drops active run trace state in both builds', () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({});
+    const tabId = 4893;
+    agent._runningTabs.add(tabId);
+    agent.currentRunId.set(tabId, 'run_stale');
+
+    agent._cleanupTab(tabId);
+
+    assert.equal(agent._runningTabs.has(tabId), false, `${AgentClass.name}: running tab guard survived tab cleanup`);
+    assert.equal(agent.currentRunId.has(tabId), false, `${AgentClass.name}: stale trace run id survived tab cleanup`);
+  }
+});
+
 test('capabilityFor: screenshot is read-only, but save:true is a download', () => {
   assert.equal(capabilityFor('screenshot', {}), null);
   assert.equal(capabilityFor('full_page_screenshot', {}), null);

@@ -2242,10 +2242,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._isPdfTabCache.delete(tabId);
     this.progressPageScopes.delete(tabId);
     this.progressSessions.delete(tabId);
+    this.lastAutoScreenshotTs.delete(tabId);
+    this.lastSeenAdapter.delete(tabId);
     this._doneBlockCount.delete(tabId);
     this._recentSubmitClicks.delete(tabId);
     if (!preserveRunGuard) {
       this._runningTabs.delete(tabId);
+      this.currentRunId.delete(tabId);
     }
     this._clearLoopState(tabId);
   }
