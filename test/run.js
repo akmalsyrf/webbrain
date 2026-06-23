@@ -166,6 +166,7 @@ const { Agent: AgentFx } = await import(
 const {
   COMPACT_TOOL_NAMES: COMPACT_TOOL_NAMES_CH,
   SYSTEM_PROMPT_ACT: SYSTEM_PROMPT_ACT_CH,
+  SYSTEM_PROMPT_ASK: SYSTEM_PROMPT_ASK_CH,
   SYSTEM_PROMPT_ACT_COMPACT: SYSTEM_PROMPT_ACT_COMPACT_CH,
   SYSTEM_PROMPT_ACT_MID: SYSTEM_PROMPT_ACT_MID_CH,
   getToolsForMode: getToolsForModeCh,
@@ -175,6 +176,7 @@ const {
 const {
   COMPACT_TOOL_NAMES: COMPACT_TOOL_NAMES_FX,
   SYSTEM_PROMPT_ACT: SYSTEM_PROMPT_ACT_FX,
+  SYSTEM_PROMPT_ASK: SYSTEM_PROMPT_ASK_FX,
   SYSTEM_PROMPT_ACT_COMPACT: SYSTEM_PROMPT_ACT_COMPACT_FX,
   SYSTEM_PROMPT_ACT_MID: SYSTEM_PROMPT_ACT_MID_FX,
   getToolsForMode: getToolsForModeFx,
@@ -1829,6 +1831,42 @@ test('getToolsForMode: compact mode restricts act tools in both browsers', () =>
     assert.ok(compactNamesActual.includes('solve_captcha'), `[${label}] compact mode must keep solve_captcha`);
     assert.equal(compactNamesActual.includes('execute_js'), false, `[${label}] compact mode must omit execute_js`);
   }
+});
+
+test('Chrome model-facing tools and prompts do not advertise execute_js', () => {
+  const chromePromptTexts = [
+    ['ask', SYSTEM_PROMPT_ASK_CH],
+    ['act:full', SYSTEM_PROMPT_ACT_CH],
+    ['act:mid', SYSTEM_PROMPT_ACT_MID_CH],
+    ['act:compact', SYSTEM_PROMPT_ACT_COMPACT_CH],
+  ];
+  for (const [label, prompt] of chromePromptTexts) {
+    assert.doesNotMatch(prompt, /\bexecute_js\b/, `chrome ${label} prompt must not mention execute_js`);
+  }
+
+  const chromeToolSets = [
+    ['ask', getToolsForModeCh('ask')],
+    ['act:full', getToolsForModeCh('act')],
+    ['act:mid', getToolsForModeCh('act', { tier: 'mid' })],
+    ['act:compact', getToolsForModeCh('act', { tier: 'compact' })],
+  ];
+  for (const [label, tools] of chromeToolSets) {
+    const names = tools.map(t => t.function?.name).filter(Boolean);
+    assert.equal(names.includes('execute_js'), false, `chrome ${label} tools must not expose execute_js`);
+    for (const tool of tools) {
+      assert.doesNotMatch(
+        JSON.stringify(tool.function),
+        /\bexecute_js\b/,
+        `chrome ${label} tool ${tool.function?.name} must not mention execute_js`
+      );
+    }
+  }
+});
+
+test('Firefox full act mode still exposes execute_js', () => {
+  const firefoxFullNames = getToolsForModeFx('act').map(t => t.function.name);
+  assert.equal(firefoxFullNames.includes('execute_js'), true);
+  assert.match(SYSTEM_PROMPT_ASK_FX + SYSTEM_PROMPT_ACT_FX, /\bexecute_js\b/);
 });
 
 test('getToolsForMode: compact flag does not shrink ask mode', () => {
