@@ -8,9 +8,12 @@ export const MIN_DELAY_MS = 60 * 1000;
 export const MAX_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 export const QUEUE_RETRY_MS = 30 * 1000;
 export const MAX_QUEUE_DEFERRALS = 120;
+export const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 export const MIN_INTERVAL_MINUTES = 1;
 export const MAX_INTERVAL_MINUTES = 525600; // one year
 const ALARM_KEEPALIVE_INTERVAL_MS = 20 * 1000;
+const LIVE_SCHEDULED_STATUSES = new Set(['pending', 'queued', 'running', 'needs_user_input', 'paused']);
+const DUPLICATE_COALESCED_ERROR = 'Duplicate scheduled job coalesced into an existing live job.';
 
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -75,6 +78,96 @@ function normalizePendingClarify(data, now = Date.now()) {
 
 function isActiveRunError(error) {
   return /agent run is already in progress|active WebBrain run/i.test(String(error?.message || error || ''));
+}
+
+function canonicalText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function canonicalUrl(value) {
+  try {
+    return new URL(String(value || '').trim()).href;
+  } catch {
+    return String(value || '').trim();
+  }
+}
+
+function scheduledTimeMs(job) {
+  const ms = Date.parse(job?.scheduledAt || job?.schedule?.run_at || job?.nextRunAt || '');
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function scheduledJobCreatedMs(job) {
+  const created = Date.parse(job?.createdAt || '');
+  if (Number.isFinite(created)) return created;
+  const scheduled = scheduledTimeMs(job);
+  return scheduled == null ? 0 : scheduled;
+}
+
+function compareScheduledJobCreation(a, b) {
+  const diff = scheduledJobCreatedMs(a) - scheduledJobCreatedMs(b);
+  if (diff) return diff;
+  return String(a?.id || '').localeCompare(String(b?.id || ''));
+}
+
+function isLiveScheduledJob(job) {
+  return LIVE_SCHEDULED_STATUSES.has(job?.status);
+}
+
+function scheduledJobTargetKey(job) {
+  if (!job) return null;
+  if (job.kind === 'task' && job.target?.type === 'url') {
+    const url = canonicalUrl(job.target.url);
+    return url ? `url:${url}` : null;
+  }
+  const tabId = job.target?.tabId ?? job.tabId;
+  return tabId == null ? null : `tab:${tabId}`;
+}
+
+function scheduledJobConversationKey(job) {
+  return String(job?.conversationId ?? job?.target?.conversationId ?? '');
+}
+
+function scheduledJobPayloadKey(job) {
+  if (job?.kind === 'resume') {
+    return `${canonicalText(job.reason)}\n${canonicalText(job.resumeInstruction)}`;
+  }
+  return canonicalText(job?.prompt);
+}
+
+function scheduledJobScheduleType(job) {
+  return String(job?.schedule?.type || 'once');
+}
+
+function scheduledJobIntervalMinutes(job) {
+  const interval = Number(job?.schedule?.interval_minutes ?? job?.intervalMinutes);
+  return Number.isFinite(interval) ? Math.floor(interval) : null;
+}
+
+function scheduledTimesAreNear(a, b) {
+  const left = scheduledTimeMs(a);
+  const right = scheduledTimeMs(b);
+  return left != null && right != null && Math.abs(left - right) <= DUPLICATE_WINDOW_MS;
+}
+
+function sameScheduledIntent(a, b) {
+  const targetA = scheduledJobTargetKey(a);
+  const targetB = scheduledJobTargetKey(b);
+  return !!targetA &&
+    targetA === targetB &&
+    a?.kind === b?.kind &&
+    scheduledJobConversationKey(a) === scheduledJobConversationKey(b) &&
+    String(a?.mode || 'act') === String(b?.mode || 'act') &&
+    scheduledJobPayloadKey(a) === scheduledJobPayloadKey(b) &&
+    scheduledJobScheduleType(a) === scheduledJobScheduleType(b) &&
+    scheduledJobIntervalMinutes(a) === scheduledJobIntervalMinutes(b) &&
+    scheduledTimesAreNear(a, b);
+}
+
+function findDuplicateScheduledJob(job, jobs) {
+  return jobs
+    .filter((candidate) => isLiveScheduledJob(candidate) && sameScheduledIntent(candidate, job))
+    .sort(compareScheduledJobCreation)[0] || null;
 }
 
 function startChromeAlarmKeepAlive(api) {
@@ -314,12 +407,61 @@ export class ScheduledJobManager {
     try { await this.api.alarms.clear(this._alarmName(jobId)); } catch {}
   }
 
+  _coalesceDuplicateJobs(jobs) {
+    const liveJobs = jobs.filter(isLiveScheduledJob);
+    const alarmsToClear = [];
+    let changed = false;
+    const updatedAt = iso(this.now());
+    const next = jobs.map((job) => {
+      if (!isLiveScheduledJob(job)) return job;
+      const canonical = findDuplicateScheduledJob(job, liveJobs);
+      if (!canonical || canonical.id === job.id) return job;
+      changed = true;
+      alarmsToClear.push(job.id);
+      this._waitingForInput.delete(job.id);
+      return {
+        ...job,
+        status: 'cancelled',
+        lastError: DUPLICATE_COALESCED_ERROR,
+        pendingClarify: null,
+        updatedAt,
+      };
+    });
+    return { jobs: next, alarmsToClear, changed };
+  }
+
+  async _saveJobUnlessDuplicate(job) {
+    return this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const duplicate = findDuplicateScheduledJob(job, jobs);
+      if (duplicate) return { job: duplicate, deduped: true };
+      jobs.push(job);
+      await this._setJobs(jobs);
+      return { job, deduped: false };
+    });
+  }
+
+  _nextQueueRetryMs(job, jobs) {
+    let retryAt = this.now() + QUEUE_RETRY_MS;
+    const targetKey = scheduledJobTargetKey(job);
+    if (!targetKey) return retryAt;
+    for (const other of jobs) {
+      if (other?.id === job?.id || other?.status !== 'queued') continue;
+      if (scheduledJobTargetKey(other) !== targetKey) continue;
+      const queuedAt = Date.parse(other.nextRunAt || other.scheduledAt || '');
+      if (Number.isFinite(queuedAt) && queuedAt >= retryAt) {
+        retryAt = queuedAt + QUEUE_RETRY_MS;
+      }
+    }
+    return retryAt;
+  }
+
   async restoreAlarms() {
     const retryAt = iso(this.now() + QUEUE_RETRY_MS);
-    const normalized = await this._withJobMutation(async () => {
+    const { jobs: normalized, alarmsToClear } = await this._withJobMutation(async () => {
       const jobs = await this._getJobs();
       let changed = false;
-      const next = jobs.map((job) => {
+      const recovered = jobs.map((job) => {
         if (!['running', 'needs_user_input'].includes(job.status)) return job;
         changed = true;
         this._waitingForInput.delete(job.id);
@@ -333,9 +475,12 @@ export class ScheduledJobManager {
           updatedAt: iso(this.now()),
         };
       });
-      if (changed) await this._setJobs(next);
-      return next;
+      const coalesced = this._coalesceDuplicateJobs(recovered);
+      changed = changed || coalesced.changed;
+      if (changed) await this._setJobs(coalesced.jobs);
+      return { jobs: coalesced.jobs, alarmsToClear: coalesced.alarmsToClear };
     });
+    await Promise.all(alarmsToClear.map((id) => this._clearAlarm(id)));
     const live = new Set(['pending', 'queued']);
     await Promise.all(normalized.filter((job) => live.has(job.status)).map((job) => this._setAlarm(job)));
   }
@@ -404,16 +549,19 @@ export class ScheduledJobManager {
       queueDeferrals: 0,
       runCount: 0,
     };
-    await this._saveJob(job);
-    await this._setAlarm(job);
-    this._emit(job, 'created');
+    const saved = await this._saveJobUnlessDuplicate(job);
+    if (!saved.deduped) {
+      await this._setAlarm(saved.job);
+      this._emit(saved.job, 'created');
+    }
     return {
       success: true,
       scheduled: true,
-      jobId: job.id,
-      scheduledAt: job.scheduledAt,
-      summary: `Scheduled a resume for ${job.scheduledAt}.`,
+      jobId: saved.job.id,
+      scheduledAt: saved.job.scheduledAt,
+      summary: `Scheduled a resume for ${saved.job.scheduledAt}.`,
       done: true,
+      ...(saved.deduped ? { deduped: true, existingJobId: saved.job.id } : {}),
     };
   }
 
@@ -448,15 +596,18 @@ export class ScheduledJobManager {
       queueDeferrals: 0,
       runCount: 0,
     };
-    await this._saveJob(job);
-    await this._setAlarm(job);
-    this._emit(job, 'created');
+    const saved = await this._saveJobUnlessDuplicate(job);
+    if (!saved.deduped) {
+      await this._setAlarm(saved.job);
+      this._emit(saved.job, 'created');
+    }
     return {
       success: true,
       scheduled: true,
-      jobId: job.id,
-      scheduledAt: job.scheduledAt,
-      summary: `Scheduled "${job.title}" for ${job.scheduledAt}.`,
+      jobId: saved.job.id,
+      scheduledAt: saved.job.scheduledAt,
+      summary: `Scheduled "${saved.job.title}" for ${saved.job.scheduledAt}.`,
+      ...(saved.deduped ? { deduped: true, existingJobId: saved.job.id } : {}),
     };
   }
 
@@ -655,23 +806,40 @@ export class ScheduledJobManager {
   }
 
   async _requeue(job, reason) {
-    const deferrals = Number(job.queueDeferrals || 0) + 1;
-    if (deferrals > MAX_QUEUE_DEFERRALS) {
-      await this._markFailed(job, `Timed out waiting to run: ${reason}`);
-      return;
-    }
-    const queued = await this._updateJobIf(job.id, (prev) => (
-      ['pending', 'queued', 'running', 'needs_user_input'].includes(prev.status)
-    ), () => ({
-      status: 'queued',
-      nextRunAt: iso(this.now() + QUEUE_RETRY_MS),
-      queueDeferrals: deferrals,
-      lastError: reason,
-      pendingClarify: null,
-    }));
-    if (queued) {
-      await this._setAlarm(queued);
-      this._emit(queued, 'queued');
+    const result = await this._withJobMutation(async () => {
+      const jobs = await this._getJobs();
+      const idx = jobs.findIndex((it) => it.id === job.id);
+      if (idx < 0) return null;
+      const prev = jobs[idx];
+      if (!['pending', 'queued', 'running', 'needs_user_input'].includes(prev.status)) return null;
+      const deferrals = Number(prev.queueDeferrals || 0) + 1;
+      const updated = deferrals > MAX_QUEUE_DEFERRALS
+        ? {
+          ...prev,
+          status: 'failed',
+          lastError: `Timed out waiting to run: ${reason}`,
+          pendingClarify: null,
+          updatedAt: iso(this.now()),
+        }
+        : {
+          ...prev,
+          status: 'queued',
+          nextRunAt: iso(this._nextQueueRetryMs(prev, jobs)),
+          queueDeferrals: deferrals,
+          lastError: reason,
+          pendingClarify: null,
+          updatedAt: iso(this.now()),
+        };
+      jobs[idx] = updated;
+      await this._setJobs(jobs);
+      return updated;
+    });
+    if (!result) return;
+    if (result.status === 'queued') {
+      await this._setAlarm(result);
+      this._emit(result, 'queued');
+    } else if (result.status === 'failed') {
+      this._emit(result, 'failed');
     }
   }
 

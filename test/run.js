@@ -2149,6 +2149,109 @@ test('scheduler computes recurring next run times', () => {
   }
 });
 
+test('ScheduledJobManager dedupes near-matching resume jobs', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, { now });
+    const args = { after_seconds: 60, reason: 'wait for account page', resume_instruction: 'continue the next batch' };
+    const first = await h.manager.createResumeJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      mode: 'act',
+      args,
+    });
+    const second = await h.manager.createResumeJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      mode: 'act',
+      args,
+    });
+
+    assert.equal(first.success, true, `${label}: first resume should schedule`);
+    assert.equal(second.success, true, `${label}: duplicate resume should still report success`);
+    assert.equal(second.deduped, true, `${label}: duplicate resume should be marked deduped`);
+    assert.equal(second.existingJobId, first.jobId, `${label}: duplicate resume should point at existing job`);
+    assert.equal(second.jobId, first.jobId, `${label}: duplicate resume should reuse existing job id`);
+    assert.equal(h.jobs().length, 1, `${label}: duplicate resume should not create a second stored job`);
+    assert.equal(h.updates.filter((u) => u.type === 'scheduled_job' && u.data?.event === 'created').length, 1, `${label}: duplicate resume should only emit one created event`);
+  }
+});
+
+test('ScheduledJobManager dedupes near-matching task jobs', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, { now });
+    const first = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: {
+        title: 'Check inbox A',
+        prompt: 'Look for new priority mail.',
+        schedule: { type: 'once', after_seconds: 60 },
+        target: { type: 'current_tab' },
+        mode: 'act',
+      },
+      source: 'user',
+      currentUrl: 'https://example.com/',
+      currentTitle: 'Example',
+    });
+    const second = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: {
+        title: 'Check inbox B',
+        prompt: '  Look   for new priority mail.  ',
+        schedule: { type: 'once', after_seconds: 60 },
+        target: { type: 'current_tab' },
+        mode: 'act',
+      },
+      source: 'agent',
+      currentUrl: 'https://example.com/',
+      currentTitle: 'Example',
+    });
+
+    assert.equal(first.success, true, `${label}: first task should schedule`);
+    assert.equal(second.deduped, true, `${label}: duplicate task should be marked deduped`);
+    assert.equal(second.jobId, first.jobId, `${label}: duplicate task should reuse existing job id`);
+    assert.equal(h.jobs().length, 1, `${label}: duplicate task should not create a second stored job`);
+    assert.equal(h.jobs()[0].title, 'Check inbox A', `${label}: duplicate task should preserve the original title`);
+  }
+});
+
+test('ScheduledJobManager allows same intent outside the duplicate window', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, { now });
+    const args = {
+      title: 'Check status',
+      prompt: 'Check the deploy status.',
+      schedule: { type: 'once', after_seconds: 60 },
+      target: { type: 'current_tab' },
+      mode: 'ask',
+    };
+    const first = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args,
+      source: 'user',
+      currentUrl: 'https://example.com/',
+    });
+    h.setNow(now + SchedulerMod.DUPLICATE_WINDOW_MS + 1000);
+    const second = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args,
+      source: 'user',
+      currentUrl: 'https://example.com/',
+    });
+
+    assert.equal(first.success, true, `${label}: first task should schedule`);
+    assert.equal(second.success, true, `${label}: later same task should schedule`);
+    assert.equal(second.deduped, undefined, `${label}: later same task should not be deduped`);
+    assert.equal(h.jobs().length, 2, `${label}: later same task should create a separate job`);
+  }
+});
+
 test('ScheduledJobManager requeues when the target tab is already running', async () => {
   const now = Date.UTC(2026, 0, 1, 12, 0, 0);
   for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
@@ -2165,6 +2268,34 @@ test('ScheduledJobManager requeues when the target tab is already running', asyn
     assert.equal(job.status, 'queued', `${label}: busy tab should queue`);
     assert.match(job.lastError, /active WebBrain run/, `${label}: queue reason should be recorded`);
     assert.equal(h.alarms.get(h.alarmName(created.jobId)).when, now + SchedulerMod.QUEUE_RETRY_MS);
+  }
+});
+
+test('ScheduledJobManager staggers distinct same-target busy retries', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, { now, isRunning: () => true });
+    const first = await h.manager.createResumeJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: { after_seconds: 60, reason: 'first batch', resume_instruction: 'retry first batch' },
+    });
+    const second = await h.manager.createResumeJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: { after_seconds: 60, reason: 'second batch', resume_instruction: 'retry second batch' },
+    });
+
+    await h.manager.handleAlarm(h.alarmName(first.jobId));
+    await h.manager.handleAlarm(h.alarmName(second.jobId));
+
+    const firstJob = h.jobs().find((job) => job.id === first.jobId);
+    const secondJob = h.jobs().find((job) => job.id === second.jobId);
+    assert.equal(firstJob.status, 'queued', `${label}: first busy job should queue`);
+    assert.equal(secondJob.status, 'queued', `${label}: second busy job should queue`);
+    assert.equal(Date.parse(firstJob.nextRunAt), now + SchedulerMod.QUEUE_RETRY_MS, `${label}: first retry should use the base retry delay`);
+    assert.equal(Date.parse(secondJob.nextRunAt), now + SchedulerMod.QUEUE_RETRY_MS * 2, `${label}: second retry should be staggered after the first`);
+    assert.equal(h.alarms.get(h.alarmName(second.jobId)).when, now + SchedulerMod.QUEUE_RETRY_MS * 2, `${label}: second retry alarm should be staggered`);
   }
 });
 
@@ -2274,6 +2405,55 @@ test('ScheduledJobManager restoreAlarms requeues stranded transient jobs', async
       assert.equal(Date.parse(job.nextRunAt), retryAt, `${label}: ${job.id} should retry soon`);
       assert.equal(h.alarms.get(h.alarmName(job.id)).when, retryAt, `${label}: ${job.id} should have a restored alarm`);
     }
+  }
+});
+
+test('ScheduledJobManager restoreAlarms coalesces stored near duplicates', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  const scheduledAt = new Date(now + 60000).toISOString();
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, {
+      now,
+      jobs: [
+        {
+          id: 'resume_late',
+          kind: 'resume',
+          status: 'pending',
+          tabId: 77,
+          conversationId: 'conv-1',
+          mode: 'act',
+          reason: 'wait for account page',
+          resumeInstruction: 'continue the next batch',
+          scheduledAt,
+          nextRunAt: scheduledAt,
+          createdAt: new Date(now + 1000).toISOString(),
+        },
+        {
+          id: 'resume_early',
+          kind: 'resume',
+          status: 'pending',
+          tabId: 77,
+          conversationId: 'conv-1',
+          mode: 'act',
+          reason: 'wait for account page',
+          resumeInstruction: 'continue the next batch',
+          scheduledAt,
+          nextRunAt: scheduledAt,
+          createdAt: new Date(now).toISOString(),
+        },
+      ],
+    });
+    h.alarms.set(h.alarmName('resume_late'), { when: Date.parse(scheduledAt) });
+    h.alarms.set(h.alarmName('resume_early'), { when: Date.parse(scheduledAt) });
+
+    await h.manager.restoreAlarms();
+
+    const byId = Object.fromEntries(h.jobs().map((job) => [job.id, job]));
+    assert.equal(byId.resume_early.status, 'pending', `${label}: earliest duplicate should remain live`);
+    assert.equal(byId.resume_late.status, 'cancelled', `${label}: later duplicate should be cancelled`);
+    assert.match(byId.resume_late.lastError, /Duplicate scheduled job coalesced/, `${label}: duplicate cancellation should explain coalescing`);
+    assert.equal(h.alarms.has(h.alarmName('resume_late')), false, `${label}: later duplicate alarm should be cleared`);
+    assert.equal(h.alarms.get(h.alarmName('resume_early')).when, Date.parse(scheduledAt), `${label}: canonical job alarm should remain scheduled`);
   }
 });
 
