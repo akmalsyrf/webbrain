@@ -336,6 +336,7 @@ const SLASH_COMMANDS = [
 const SLASH_COMMAND_OPTION_ID_PREFIX = 'slash-command-option-';
 
 let currentTabId = null;
+let pendingTabSwitch = null; // tab the user switched to while isProcessing was true
 let isProcessing = false;
 let currentAssistantEl = null;
 let verboseMode = false;
@@ -1060,7 +1061,11 @@ if (verboseBtn) {
 
 function switchToTab(newTabId) {
   if (newTabId === currentTabId) return;
-  if (isProcessing) return; // don't switch while agent is running
+  if (isProcessing) {
+    pendingTabSwitch = newTabId; // apply after the run ends
+    return;
+  }
+  pendingTabSwitch = null;
 
   // Save current tab's chat
   if (currentTabId != null) {
@@ -1682,6 +1687,11 @@ async function sendMessage(extraChatParams) {
     currentAssistantEl = null;
     scrollToBottom();
     refreshRecommendedActions();
+    if (pendingTabSwitch != null) {
+      const pending = pendingTabSwitch;
+      pendingTabSwitch = null;
+      switchToTab(pending);
+    }
     drainQueuedContextMenuPrompts();
   }
   return accepted;

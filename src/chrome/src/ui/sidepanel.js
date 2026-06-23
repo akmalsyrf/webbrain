@@ -356,6 +356,7 @@ const recordingTimerEl = document.getElementById('recording-timer');
 const recordingStopBtn = document.getElementById('btn-recording-stop');
 
 let currentTabId = null;
+let pendingTabSwitch = null; // tab the user switched to while isProcessing was true
 let isProcessing = false;
 let currentAssistantEl = null;
 let verboseMode = false;
@@ -1177,7 +1178,11 @@ if (verboseBtn) {
 
 async function switchToTab(newTabId) {
   if (newTabId === currentTabId) return;
-  if (isProcessing) return; // don't switch while agent is running
+  if (isProcessing) {
+    pendingTabSwitch = newTabId; // apply after the run ends
+    return;
+  }
+  pendingTabSwitch = null;
 
   // Save current tab's chat (in-memory + storage).
   if (currentTabId != null) {
@@ -1873,6 +1878,11 @@ async function sendMessage(extraChatParams) {
     scrollToBottom();
     if (!wasAborted) playCompletionSound();
     refreshRecommendedActions();
+    if (pendingTabSwitch != null) {
+      const pending = pendingTabSwitch;
+      pendingTabSwitch = null;
+      await switchToTab(pending);
+    }
     drainQueuedContextMenuPrompts();
   }
   return accepted;
