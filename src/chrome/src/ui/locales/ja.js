@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'スケジュールタスクを更新しました。',
   'sp.schedule_form.none': '有効なスケジュールタスクはありません。',
   'sp.schedule_form.error_prompt': '先にタスクを入力してください。',
-  'sp.schedule_form.error_time': '今から 1 分以上先の有効な時刻を入力してください。',
+  'sp.schedule_form.error_time': '有効な時刻を入力するか、今すぐ開始するには 0 分を入力してください。',
   'sp.schedule_form.error_interval': '有効な繰り返し間隔を入力してください。',
   'sp.schedule_form.error_url': '有効な http(s) URL を入力してください。',
   'sp.scratchpad.title_html': '<strong>現在のスクラッチパッド</strong>',

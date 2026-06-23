@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': '예약된 작업 목록이 새로고침되었습니다.',
   'sp.schedule_form.none': '활성 예약 작업이 없습니다.',
   'sp.schedule_form.error_prompt': '먼저 작업을 입력하세요.',
-  'sp.schedule_form.error_time': '지금부터 최소 1분 이후의 유효한 시간을 입력하세요.',
+  'sp.schedule_form.error_time': '유효한 시간을 입력하거나 지금 시작하려면 0분을 입력하세요.',
   'sp.schedule_form.error_interval': '유효한 반복 간격을 입력하세요.',
   'sp.schedule_form.error_url': '유효한 http(s) URL을 입력하세요.',
   'sp.scratchpad.title_html': '<strong>현재 스크래치패드</strong>',

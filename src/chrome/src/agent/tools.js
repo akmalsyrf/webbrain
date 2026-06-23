@@ -418,7 +418,7 @@ export const AGENT_TOOLS = [
             properties: {
               type: { type: 'string', enum: ['once', 'recurring'], description: 'Use once for one-shot tasks or recurring for interval tasks.' },
               run_at: { type: 'string', description: 'Absolute date/time for the first run, preferably ISO 8601. Provide exactly one of run_at or after_seconds.' },
-              after_seconds: { type: 'number', description: 'Delay from now in seconds for the first run. Minimum 60, maximum 604800 (7 days). Provide exactly one of after_seconds or run_at.' },
+              after_seconds: { type: 'number', description: 'Delay from now in seconds for the first run. Use 0 to start now; otherwise minimum 60, maximum 604800 (7 days). Provide exactly one of after_seconds or run_at.' },
               interval_minutes: { type: 'number', description: 'Required when type is recurring. Simple interval in minutes; no cron syntax in v1.' },
             },
             required: ['type'],

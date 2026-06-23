@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Список запланованих завдань оновлено.',
   'sp.schedule_form.none': 'Немає активних запланованих завдань.',
   'sp.schedule_form.error_prompt': 'Спочатку введіть завдання.',
-  'sp.schedule_form.error_time': 'Введіть дійсний час щонайменше за одну хвилину від зараз.',
+  'sp.schedule_form.error_time': 'Введіть дійсний час або 0 хвилин, щоб почати зараз.',
   'sp.schedule_form.error_interval': 'Введіть дійсний інтервал повторення.',
   'sp.schedule_form.error_url': 'Введіть дійсний http(s) URL.',
   'sp.scratchpad.title_html': '<strong>Поточний чернетник</strong>',

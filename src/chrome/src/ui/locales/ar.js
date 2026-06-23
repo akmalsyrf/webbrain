@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'تم تحديث المهام المجدوَلة.',
   'sp.schedule_form.none': 'لا توجد مهام مجدوَلة نشطة.',
   'sp.schedule_form.error_prompt': 'أدخل مهمة أولًا.',
-  'sp.schedule_form.error_time': 'أدخل وقتًا صالحًا لا يقل عن دقيقة واحدة من الآن.',
+  'sp.schedule_form.error_time': 'أدخل وقتًا صالحًا، أو 0 دقيقة للبدء الآن.',
   'sp.schedule_form.error_interval': 'أدخل فترة تكرار صالحة.',
   'sp.schedule_form.error_url': 'أدخل رابط URL صالحًا يبدأ بـ http(s).',
   'sp.scratchpad.title_html': '<strong>منطقة المسودة الحالية</strong>',

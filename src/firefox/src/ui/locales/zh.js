@@ -412,7 +412,7 @@ export default {
   'sp.schedule_form.list_refreshed': '定时任务列表已刷新。',
   'sp.schedule_form.none': '暂无活跃的定时任务。',
   'sp.schedule_form.error_prompt': '请先输入任务内容。',
-  'sp.schedule_form.error_time': '请输入距现在至少一分钟后的有效时间。',
+  'sp.schedule_form.error_time': '请输入有效时间，或输入 0 分钟立即开始。',
   'sp.schedule_form.error_interval': '请输入有效的重复间隔。',
   'sp.schedule_form.error_url': '请输入有效的 http(s) URL。',
   'sp.scratchpad.title_html': '<strong>当前草稿板</strong>',

@@ -758,7 +758,7 @@ function renderScheduleComposer(prefillPrompt = '') {
 
   const afterInput = document.createElement('input');
   afterInput.type = 'number';
-  afterInput.min = '1';
+  afterInput.min = '0';
   afterInput.max = '10080';
   afterInput.step = '1';
   afterInput.value = '10';
@@ -833,7 +833,7 @@ function renderScheduleComposer(prefillPrompt = '') {
     const schedule = { type: scheduleType.value };
     if (timeMode.value === 'after') {
       const minutes = Number(afterInput.value);
-      if (!Number.isFinite(minutes) || minutes < 1) {
+      if (!Number.isFinite(minutes) || minutes < 0) {
         errorEl.textContent = t('sp.schedule_form.error_time');
         return;
       }

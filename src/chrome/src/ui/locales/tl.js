@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Na-refresh ang mga naka-iskedyul na gawain.',
   'sp.schedule_form.none': 'Walang aktibong naka-iskedyul na gawain.',
   'sp.schedule_form.error_prompt': 'Maglagay muna ng gawain.',
-  'sp.schedule_form.error_time': 'Maglagay ng wastong oras na hindi bababa sa isang minuto mula ngayon.',
+  'sp.schedule_form.error_time': 'Maglagay ng wastong oras, o 0 minuto para magsimula ngayon.',
   'sp.schedule_form.error_interval': 'Maglagay ng wastong paulit-ulit na agwat.',
   'sp.schedule_form.error_url': 'Maglagay ng wastong http(s) URL.',
   'sp.scratchpad.title_html': '<strong>Kasalukuyang scratchpad</strong>',
