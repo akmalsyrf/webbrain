@@ -495,8 +495,8 @@ function clearCachedTabChat(tabId) {
     persistTimer = null;
     persistTimerTabId = null;
   }
+  tabChats.delete(tabId);
   return enqueueTabChatOperation(tabId, async (numericTabId) => {
-    tabChats.delete(numericTabId);
     try {
       await chrome.storage.session?.remove(TAB_CHAT_PREFIX + numericTabId).catch(() => {});
     } catch (e) { /* ignore */ }
@@ -1425,8 +1425,9 @@ function setRecommendedActionsCollapsed(collapsed, { persist = true } = {}) {
 
 if (recommendedActionsToggleEl) {
   recommendedActionsToggleEl.addEventListener('click', async () => {
-    await chrome.storage.local.set({ [RECOMMENDED_ACTIONS_COLLAPSED_KEY]: !recommendedActionsCollapsed }).catch(() => {});
-    setRecommendedActionsCollapsed(!recommendedActionsCollapsed, { persist: false });
+    const next = !recommendedActionsCollapsed;
+    await chrome.storage.local.set({ [RECOMMENDED_ACTIONS_COLLAPSED_KEY]: next }).catch(() => {});
+    setRecommendedActionsCollapsed(next, { persist: false });
   });
 }
 

@@ -2613,8 +2613,9 @@ test('chrome sidepanel serializes tab-chat storage writes with clears and reads'
   const clearStart = panel.indexOf('function clearCachedTabChat(tabId) {');
   assert.notEqual(clearStart, -1, 'chrome: clearCachedTabChat missing');
   const clearBody = panel.slice(clearStart, panel.indexOf('\n}\n\nfunction renderClearedConversationForTab', clearStart) + 2);
+  assert.match(clearBody, /tabChats\.delete\(tabId\);/, 'chrome: clearing tab chat should delete the cached HTML before queuing storage removal');
   assert.match(clearBody, /return enqueueTabChatOperation\(tabId, async \(numericTabId\) => \{/, 'chrome: clearing tab chat should be serialized through the queue');
-  assert.match(clearBody, /tabChats\.delete\(numericTabId\);[\s\S]*?chrome\.storage\.session\?\.remove\(TAB_CHAT_PREFIX \+ numericTabId\)/, 'chrome: clearing tab chat should remove the stored HTML after queued writes settle');
+  assert.match(clearBody, /chrome\.storage\.session\?\.remove\(TAB_CHAT_PREFIX \+ numericTabId\)/, 'chrome: clearing tab chat should remove the stored HTML after queued writes settle');
 });
 
 test('chrome sidepanel cancels stale tab-chat persistence when clearing a tab', () => {
@@ -2635,7 +2636,7 @@ test('chrome sidepanel cancels stale tab-chat persistence when clearing a tab', 
   const clearBody = panel.slice(clearStart, panel.indexOf('\n}\n\nfunction renderClearedConversationForTab', clearStart) + 2);
   assert.match(
     clearBody,
-    /if \(persistTimer && persistTimerTabId === tabId\) \{[\s\S]*?clearTimeout\(persistTimer\);[\s\S]*?persistTimer = null;[\s\S]*?persistTimerTabId = null;[\s\S]*?\}[\s\S]*?return enqueueTabChatOperation\(tabId, async \(numericTabId\) => \{[\s\S]*?tabChats\.delete\(numericTabId\);[\s\S]*?chrome\.storage\.session\?\.remove\(TAB_CHAT_PREFIX \+ numericTabId\)/,
+    /if \(persistTimer && persistTimerTabId === tabId\) \{[\s\S]*?clearTimeout\(persistTimer\);[\s\S]*?persistTimer = null;[\s\S]*?persistTimerTabId = null;[\s\S]*?\}[\s\S]*?tabChats\.delete\(tabId\);[\s\S]*?return enqueueTabChatOperation\(tabId, async \(numericTabId\) => \{[\s\S]*?chrome\.storage\.session\?\.remove\(TAB_CHAT_PREFIX \+ numericTabId\)/,
     'chrome: clearing a tab should cancel any pending stale write before removing cached chat',
   );
 });
@@ -3188,8 +3189,8 @@ test('sidepanel awaits recommended-actions collapse persistence', () => {
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
     assert.match(
       panel,
-      /recommendedActionsToggleEl\.addEventListener\('click', async \(\) => \{[\s\S]*?await (chrome|browser)\.storage\.local\.set\(\{ \[RECOMMENDED_ACTIONS_COLLAPSED_KEY\]: !recommendedActionsCollapsed \}\)\.catch\(\(\) => \{\}\);[\s\S]*?setRecommendedActionsCollapsed\(!recommendedActionsCollapsed, \{ persist: false \}\);[\s\S]*?\}\);/,
-      `${label}: recommended-actions collapse should await persistence`,
+      /recommendedActionsToggleEl\.addEventListener\('click', async \(\) => \{[\s\S]*?const next = !recommendedActionsCollapsed;[\s\S]*?await (chrome|browser)\.storage\.local\.set\(\{ \[RECOMMENDED_ACTIONS_COLLAPSED_KEY\]: next \}\)\.catch\(\(\) => \{\}\);[\s\S]*?setRecommendedActionsCollapsed\(next, \{ persist: false \}\);[\s\S]*?\}\);/,
+      `${label}: recommended-actions collapse should capture the target state before awaiting persistence`,
     );
   }
 });
