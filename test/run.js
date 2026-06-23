@@ -2657,7 +2657,7 @@ test('sidepanel does not miss startup tab switches before consuming tab-scoped s
     const testConnectionIdx = body.indexOf("await testConnection({ skipWebBrainCloud: true });");
     const resyncQueryIdx = body.lastIndexOf('tabs.query({ active: true, currentWindow: true })');
     const resyncSwitchIdx = body.indexOf('await switchToTab(activeTab.id);');
-    const refreshJobsIdx = body.indexOf('refreshScheduledJobs();', resyncSwitchIdx);
+    const refreshJobsIdx = body.indexOf('refreshScheduledJobs({ tabId: currentTabId });', resyncSwitchIdx);
     const refreshActionsIdx = body.indexOf('refreshRecommendedActions();', resyncSwitchIdx);
     const consumeIdx = body.indexOf('await consumePendingContextMenuPrompt();', resyncSwitchIdx);
     assert.notEqual(listenerIdx, -1, `${label}: startup should register tab activation listener`);
@@ -3092,12 +3092,12 @@ test('sidepanel scopes allow-api override to the tab conversation', () => {
 
     const switchStart = panel.indexOf('function switchToTab(newTabId)');
     assert.notEqual(switchStart, -1, `${label}: switchToTab missing`);
-    const switchBody = panel.slice(switchStart, panel.indexOf('refreshScheduledJobs();', switchStart));
+    const switchBody = panel.slice(switchStart, panel.indexOf('refreshScheduledJobs({', switchStart));
     assert.match(switchBody, /currentTabId = newTabId;[\s\S]*?syncApiMutationsAllowedForCurrentTab\(\);/, `${label}: switching tabs should load the selected tab's /allow-api state`);
 
     const resetStart = panel.indexOf('function renderClearedConversationForTab(tabId)');
     assert.notEqual(resetStart, -1, `${label}: renderClearedConversationForTab missing`);
-    const resetBody = panel.slice(resetStart, panel.indexOf('refreshScheduledJobs();', resetStart));
+    const resetBody = panel.slice(resetStart, panel.indexOf('refreshScheduledJobs({', resetStart));
     assert.match(resetBody, /clearCachedTabChat\(tabId\);[\s\S]*?setApiMutationsAllowedForTab\(tabId, false\);[\s\S]*?if \(currentTabId !== tabId\) return;/, `${label}: reset should clear the target tab's /allow-api state before visible-tab guards`);
 
     const allowIdx = panel.indexOf('// /allow-api');
@@ -3120,6 +3120,7 @@ test('sidepanel scopes async tab commands to the original tab', () => {
     assert.notEqual(helperStart, -1, `${label}: clear helper missing`);
     const helperBody = panel.slice(helperStart, panel.indexOf('\n}', helperStart) + 2);
     assert.match(helperBody, /clearCachedTabChat\(tabId\);[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?messagesEl\.innerHTML = '';/, `${label}: clear helper should clear cached target tab and only mutate visible UI for the same tab`);
+    assert.match(helperBody, /refreshScheduledJobs\(\{ tabId \}\);/, `${label}: clear helper should scope async scheduled-job refresh to the cleared tab`);
 
     const resetIdx = panel.indexOf("// /reset");
     const resetBody = panel.slice(resetIdx, panel.indexOf("// /screenshot", resetIdx));
@@ -3136,7 +3137,10 @@ test('sidepanel scopes async tab commands to the original tab', () => {
 
     const listIdx = panel.indexOf('// /list-schedules');
     const listBody = panel.slice(listIdx, panel.indexOf('// /show-scratchpad', listIdx));
-    assert.match(listBody, /const jobs = await refreshScheduledJobs\(\);[\s\S]*?if \(currentTabId !== tabId\) return '';/, `${label}: /list-schedules should not render a result into a different tab`);
+    assert.match(listBody, /const jobs = await refreshScheduledJobs\(\{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return '';/, `${label}: /list-schedules should not render or refresh results into a different tab`);
+
+    assert.match(panel, /async function refreshScheduledJobs\(\{ tabId = null \} = \{\}\) \{[\s\S]*?const jobs = response\?\.jobs \|\| \[\];[\s\S]*?if \(tabId != null && currentTabId !== tabId\) return jobs;[\s\S]*?renderScheduledJobs\(jobs\);/, `${label}: scheduled-job refreshes should be able to drop stale tab completions before rendering`);
+    assert.match(panel, /await refreshScheduledJobs\(\{ tabId \}\);/, `${label}: tab-scoped scheduled-job actions should not repaint a later visible tab`);
 
     assert.match(panel, /async function showScratchpad\(tabId = currentTabId\) \{[\s\S]*?sendToBackground\('get_scratchpad', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?catch \(e\) \{[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?sp\.scratchpad\.error/, `${label}: /show-scratchpad should not render success or error results into a different tab`);
     assert.match(panel, /\/\/ \/show-scratchpad[\s\S]*?await showScratchpad\(tabId\);/, `${label}: /show-scratchpad should use the initiating tab id from the parser`);
@@ -3241,6 +3245,23 @@ test('sidepanel sends residual slash-command prompts to the initiating tab', () 
       /sendToBackground\('chat', \{[\s\S]*?tabId: currentTabId/,
       `${label}: chat dispatch should not read currentTabId after slash parsing`,
     );
+  }
+});
+
+test('sidepanel continue runs use the initiating tab state', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const match = panel.match(/async function continueAgent\(\) \{[\s\S]*?\n\}/);
+    assert.ok(match, `${label}: continueAgent missing`);
+    const body = match[0];
+    assert.match(body, /const tabId = currentTabId;[\s\S]*?const modeForSend = agentMode;[\s\S]*?sendToBackground\('continue', \{[\s\S]*?tabId,[\s\S]*?mode: modeForSend,/, `${label}: Continue should send with the tab and mode captured before awaiting`);
+    assert.doesNotMatch(body, /sendToBackground\('continue', \{[\s\S]*?tabId: currentTabId/, `${label}: Continue should not read currentTabId inside the async send payload`);
+    assert.doesNotMatch(body, /sendToBackground\('continue', \{[\s\S]*?mode: agentMode/, `${label}: Continue should not read agentMode inside the async send payload`);
+    assert.match(body, /const assistantEl = addMessage\('assistant', ''\);[\s\S]*?currentAssistantEl = assistantEl;[\s\S]*?if \(currentTabId === tabId && res\?\.content && assistantEl\) \{[\s\S]*?addMessageCopyButton\(assistantEl\);/, `${label}: Continue should render only into its captured assistant bubble for the initiating tab`);
+    assert.match(body, /if \(currentTabId === tabId\) finalizeSteps\(assistantEl\);[\s\S]*?if \(currentAssistantEl === assistantEl\) currentAssistantEl = null;/, `${label}: Continue should finalize and clear only its captured assistant bubble`);
   }
 });
 

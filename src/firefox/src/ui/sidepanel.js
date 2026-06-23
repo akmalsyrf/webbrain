@@ -402,7 +402,7 @@ function renderClearedConversationForTab(tabId) {
   if (currentTabId !== tabId) return;
   messagesEl.innerHTML = '';
   addMessage('system', t('sp.cleared_message'));
-  refreshScheduledJobs();
+  refreshScheduledJobs({ tabId });
   refreshRecommendedActions();
 }
 
@@ -648,11 +648,12 @@ function renderScheduledJobs(jobs = []) {
   ensureScheduledClarifyCards(visible);
 }
 
-async function refreshScheduledJobs() {
+async function refreshScheduledJobs({ tabId = null } = {}) {
   if (!scheduledJobsEl) return;
   try {
     const response = await sendToBackground('list_scheduled_jobs', { all: true });
     const jobs = response?.jobs || [];
+    if (tabId != null && currentTabId !== tabId) return jobs;
     renderScheduledJobs(jobs);
     return jobs;
   } catch (e) {
@@ -679,7 +680,7 @@ async function scheduledJobAction(action, jobId) {
         addMessage('error', t('sp.error_prefix', { msg: response.error || 'Scheduled job action failed.' }));
       }
     }
-    await refreshScheduledJobs();
+    await refreshScheduledJobs({ tabId });
   } catch (e) {
     if (currentTabId === tabId) {
       addMessage('error', t('sp.error_prefix', { msg: e.message }));
@@ -726,7 +727,7 @@ function settleScheduledRun(event, job) {
 }
 
 function handleScheduledJobEvent(data, tabId) {
-  refreshScheduledJobs();
+  refreshScheduledJobs({ tabId: currentTabId });
   const event = data?.event;
   const job = data?.job;
   if (!event || !job) return;
@@ -942,7 +943,7 @@ async function submitScheduleComposer(e, form) {
     if (textEl) {
       textEl.innerHTML = createdHtml;
     }
-    await refreshScheduledJobs();
+    await refreshScheduledJobs({ tabId });
   } catch (err) {
     if (currentTabId !== tabId) {
       updateCachedScheduleComposerError(tabId, form.dataset.composerId, err.message);
@@ -1146,7 +1147,7 @@ async function init() {
   if (activeTab?.id && activeTab.id !== currentTabId) {
     await switchToTab(activeTab.id);
   }
-  refreshScheduledJobs();
+  refreshScheduledJobs({ tabId: currentTabId });
   refreshRecommendedActions();
   await consumePendingContextMenuPrompt();
   drainQueuedContextMenuPrompts();
@@ -1233,7 +1234,7 @@ function switchToTab(newTabId) {
     addMessage('system', t('sp.help_message'));
   }
   scrollToBottom();
-  refreshScheduledJobs();
+  refreshScheduledJobs({ tabId: newTabId });
   refreshRecommendedActions();
   consumePendingContextMenuPrompt().then(() => drainQueuedContextMenuPrompts()).catch(() => {});
 }
@@ -1719,7 +1720,7 @@ async function parseSlashCommands(text, tabId = currentTabId) {
 
   // /list-schedules — refresh the scheduled job strip
   if (/^\/list-schedules\b\s*/i.test(text)) {
-    const jobs = await refreshScheduledJobs();
+    const jobs = await refreshScheduledJobs({ tabId });
     if (currentTabId !== tabId) return '';
     addMessage('system', visibleScheduledJobs(jobs).length
       ? t('sp.schedule_form.list_refreshed')
@@ -2562,40 +2563,43 @@ function showContinueButton() {
 }
 
 async function continueAgent() {
+  const tabId = currentTabId;
+  const modeForSend = agentMode;
   document.querySelectorAll('.continue-bar').forEach(el => el.remove());
 
   isProcessing = true;
   abortRequested = false;
   sendBtn.disabled = true;
 
-  currentAssistantEl = addMessage('assistant', '');
+  const assistantEl = addMessage('assistant', '');
+  currentAssistantEl = assistantEl;
   showActivity(t('sp.activity.continuing'));
 
   try {
     const res = await sendToBackground('continue', {
-      tabId: currentTabId,
-      mode: agentMode,
+      tabId,
+      mode: modeForSend,
     });
 
-    if (res?.content && currentAssistantEl) {
-      const textEl = currentAssistantEl.querySelector('.message-text');
+    if (currentTabId === tabId && res?.content && assistantEl) {
+      const textEl = assistantEl.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
         textEl.innerHTML = formatMarkdown(res.content);
-        addMessageCopyButton(currentAssistantEl);
+        addMessageCopyButton(assistantEl);
       }
     }
   } catch (e) {
-    if (!abortRequested) {
+    if (currentTabId === tabId && !abortRequested) {
       addMessage('error', t('sp.error_prefix', { msg: e.message }));
     }
   } finally {
-    finalizeSteps();
+    if (currentTabId === tabId) finalizeSteps(assistantEl);
     isProcessing = false;
     abortRequested = false;
     sendBtn.disabled = false;
     hideActivity();
-    currentAssistantEl = null;
-    scrollToBottom();
+    if (currentAssistantEl === assistantEl) currentAssistantEl = null;
+    if (currentTabId === tabId) scrollToBottom();
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
 }
