@@ -281,7 +281,7 @@ if (globalThis.chrome?.storage?.onChanged) {
         await sendToBackground('set_active_provider', { providerId: choice.providerId });
         await loadProviders();
         if (providerSelect) providerSelect.value = choice.providerId;
-        await testConnection();
+        await testConnection({ providerId: choice.providerId });
         dismissOnboarding();
         inputEl?.focus();
       } catch (e) {
@@ -363,6 +363,8 @@ let verboseMode = false;
 let agentMode = 'ask'; // 'ask' or 'act'
 let abortRequested = false;
 let recommendationsRequestId = 0;
+let providerSelectionRequestId = 0;
+let providerTestRequestId = 0;
 let recommendedActionsCollapsed = false;
 let slashCommandMatches = [];
 let slashCommandSelectedIndex = 0;
@@ -1565,20 +1567,26 @@ function markSelectedProviderUntested() {
 }
 
 async function testConnection(options = {}) {
-  if (options.skipWebBrainCloud && isWebBrainCloudProviderSelected()) {
-    markSelectedProviderUntested();
+  const providerId = options.providerId || providerSelect.value;
+  const requestId = ++providerTestRequestId;
+  if (options.skipWebBrainCloud && providerId === 'webbrain_cloud') {
+    if (requestId === providerTestRequestId && providerSelect.value === providerId) {
+      markSelectedProviderUntested();
+    }
     return;
   }
   statusDot.className = 'status-dot connecting';
   try {
     const res = await sendToBackground('test_provider', {
-      providerId: providerSelect.value,
+      providerId,
     });
+    if (requestId !== providerTestRequestId || providerSelect.value !== providerId) return;
     statusDot.className = `status-dot ${res.ok ? 'online' : 'offline'}`;
     statusDot.title = res.ok
-      ? t('sp.status.connected', { model: res.model || providerSelect.value })
+      ? t('sp.status.connected', { model: res.model || providerId })
       : t('sp.status.error', { msg: res.error });
   } catch {
+    if (requestId !== providerTestRequestId || providerSelect.value !== providerId) return;
     statusDot.className = 'status-dot offline';
     statusDot.title = t('sp.status.failed');
   }
@@ -3323,8 +3331,17 @@ clearBtn.addEventListener('click', async () => {
 });
 
 providerSelect.addEventListener('change', async () => {
-  await sendToBackground('set_active_provider', { providerId: providerSelect.value });
-  await testConnection();
+  const providerId = providerSelect.value;
+  const requestId = ++providerSelectionRequestId;
+  await sendToBackground('set_active_provider', { providerId });
+  if (requestId !== providerSelectionRequestId || providerSelect.value !== providerId) {
+    const latestProviderId = providerSelect.value;
+    if (latestProviderId && latestProviderId !== providerId) {
+      sendToBackground('set_active_provider', { providerId: latestProviderId }).catch(() => {});
+    }
+    return;
+  }
+  await testConnection({ providerId });
 });
 
 settingsBtn.addEventListener('click', () => {

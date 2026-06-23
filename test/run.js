@@ -2132,6 +2132,39 @@ test('sidepanel drops stale recommended-action clicks after async act confirmati
   }
 });
 
+test('sidepanel drops stale provider selection and connection checks', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    assert.match(panel, /let providerSelectionRequestId = 0;/, `${label}: provider selection requests should be sequenced`);
+    assert.match(panel, /let providerTestRequestId = 0;/, `${label}: provider test requests should be sequenced`);
+
+    const testStart = panel.indexOf('async function testConnection(options = {}) {');
+    assert.notEqual(testStart, -1, `${label}: testConnection missing`);
+    const testBody = panel.slice(testStart, panel.indexOf('\n}\n\nfunction getSlashCommandQuery', testStart) + 2);
+    const captureIdx = testBody.indexOf('const providerId = options.providerId || providerSelect.value;');
+    const requestIdx = testBody.indexOf('const requestId = ++providerTestRequestId;');
+    const sendIdx = testBody.indexOf("sendToBackground('test_provider'");
+    const staleGuardIdx = testBody.indexOf('if (requestId !== providerTestRequestId || providerSelect.value !== providerId) return;');
+    const statusIdx = testBody.indexOf("statusDot.className = `status-dot ${res.ok ? 'online' : 'offline'}`;");
+    assert.notEqual(captureIdx, -1, `${label}: provider test should capture the intended provider`);
+    assert.notEqual(requestIdx, -1, `${label}: provider test should increment a request sequence`);
+    assert.notEqual(sendIdx, -1, `${label}: provider test background request missing`);
+    assert.notEqual(staleGuardIdx, -1, `${label}: stale provider test results should be dropped`);
+    assert.notEqual(statusIdx, -1, `${label}: provider status update missing`);
+    assert.equal(captureIdx < requestIdx && requestIdx < sendIdx && sendIdx < staleGuardIdx && staleGuardIdx < statusIdx, true, `${label}: provider test stale guard must run after the async request and before status updates`);
+    assert.doesNotMatch(testBody, /providerId: providerSelect\.value/, `${label}: provider test should not read the mutable selection after async delay`);
+
+    const changeStart = panel.indexOf("providerSelect.addEventListener('change', async () => {");
+    assert.notEqual(changeStart, -1, `${label}: provider change handler missing`);
+    const changeBody = panel.slice(changeStart, panel.indexOf('\n});', changeStart) + 4);
+    assert.match(changeBody, /const providerId = providerSelect\.value;[\s\S]*?const requestId = \+\+providerSelectionRequestId;[\s\S]*?sendToBackground\('set_active_provider', \{ providerId \}\);[\s\S]*?if \(requestId !== providerSelectionRequestId \|\| providerSelect\.value !== providerId\) \{[\s\S]*?const latestProviderId = providerSelect\.value;[\s\S]*?sendToBackground\('set_active_provider', \{ providerId: latestProviderId \}\)\.catch\(\(\) => \{\}\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?await testConnection\(\{ providerId \}\);/, `${label}: provider changes should drop stale completions and test only the captured provider`);
+    assert.match(panel, /await testConnection\(\{ providerId: choice\.providerId \}\);/, `${label}: onboarding provider enablement should test the selected provider explicitly`);
+  }
+});
+
 test('sidepanel scopes async tab commands to the original tab', () => {
   for (const [label, panelRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js'],
