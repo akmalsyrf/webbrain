@@ -59,9 +59,11 @@ export function createContextMenuStorage(getStore) {
       } catch { /* best effort */ }
     }
     pending.delete(numericTabId);
-    if (store) {
-      try { await store.remove(k); } catch { /* best effort */ }
-    }
+    // Do NOT remove from storage here. The chat handler clears storage via
+    // contextMenuClear once the background has actually received the run request.
+    // Deleting here would permanently lose the prompt if the SW crashes between
+    // this consume response and the chat handler — exactly the pre-acceptance
+    // loss that the contextMenuClear design is meant to prevent.
     return { ok: true, prompt: prompt?.text ? prompt : null };
   }
 
