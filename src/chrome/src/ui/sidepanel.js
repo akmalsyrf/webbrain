@@ -444,10 +444,30 @@ function playCompletionSound() {
 // conversation survives the side panel being closed and reopened.
 const tabChats = new Map();
 const TAB_CHAT_PREFIX = 'tabChat:';
+const tabChatOperations = new Map();
+
+function enqueueTabChatOperation(tabId, fn) {
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return Promise.resolve({ ok: true });
+  const previous = tabChatOperations.get(numericTabId) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(() => fn(numericTabId));
+  tabChatOperations.set(numericTabId, operation);
+  operation.finally(() => {
+    if (tabChatOperations.get(numericTabId) === operation) tabChatOperations.delete(numericTabId);
+  }).catch(() => {});
+  return operation;
+}
+
+async function waitForTabChatOperation(tabId) {
+  const operation = tabChatOperations.get(Number(tabId));
+  if (!operation) return;
+  try { await operation; } catch { /* ignore */ }
+}
 
 async function loadTabChat(tabId) {
   if (tabChats.has(tabId)) return tabChats.get(tabId);
   try {
+    await waitForTabChatOperation(tabId);
     const key = TAB_CHAT_PREFIX + tabId;
     const stored = await chrome.storage.session.get(key);
     const html = stored?.[key];
@@ -461,10 +481,14 @@ async function loadTabChat(tabId) {
 
 function persistTabChat(tabId, html) {
   if (tabId == null) return;
-  tabChats.set(tabId, html);
-  try {
-    chrome.storage.session.set({ [TAB_CHAT_PREFIX + tabId]: html }).catch(() => {});
-  } catch (e) { /* ignore */ }
+  return enqueueTabChatOperation(tabId, async (numericTabId) => {
+    tabChats.set(numericTabId, html);
+    const key = TAB_CHAT_PREFIX + numericTabId;
+    try {
+      await chrome.storage.session.set({ [key]: html }).catch(() => {});
+    } catch (e) { /* ignore */ }
+    return { ok: true };
+  });
 }
 
 function clearCachedTabChat(tabId) {
@@ -474,10 +498,13 @@ function clearCachedTabChat(tabId) {
     persistTimer = null;
     persistTimerTabId = null;
   }
-  tabChats.delete(tabId);
-  try {
-    chrome.storage.session?.remove(TAB_CHAT_PREFIX + tabId).catch(() => {});
-  } catch (e) { /* ignore */ }
+  return enqueueTabChatOperation(tabId, async (numericTabId) => {
+    tabChats.delete(numericTabId);
+    try {
+      await chrome.storage.session?.remove(TAB_CHAT_PREFIX + numericTabId).catch(() => {});
+    } catch (e) { /* ignore */ }
+    return { ok: true };
+  });
 }
 
 function renderClearedConversationForTab(tabId) {
