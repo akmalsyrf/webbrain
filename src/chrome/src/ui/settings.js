@@ -818,7 +818,7 @@ function renderProviders() {
     ollama: {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:11434/v1' },
-        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'llama3.1' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'qwen3.6:35b-a3b' },
         CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
@@ -837,7 +837,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:1337/v1' },
         { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'optional' },
-        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'llama3.2-3b-instruct' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'gemma-4-12b-qat' },
         CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
@@ -847,7 +847,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:8000/v1' },
         { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'optional' },
-        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'NousResearch/Meta-Llama-3-8B-Instruct' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'gemma/gemma4-31b-qat' },
         CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
@@ -857,7 +857,7 @@ function renderProviders() {
       fields: [
         { key: 'baseUrl', labelKey: 'st.provider.field.server_url', type: 'text', placeholder: 'http://localhost:30000/v1' },
         { key: 'apiKey', labelKey: 'st.provider.field.api_key', type: 'password', placeholder: 'optional' },
-        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'Qwen/Qwen3-4B' },
+        { key: 'model', labelKey: 'st.provider.field.model', type: 'text', placeholder: 'gemma/gemma4-31b-qat' },
         CONTEXT_WINDOW_FIELD,
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
         PROMPT_TIER_FIELD,
