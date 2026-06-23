@@ -4,6 +4,32 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / `manifest.json` version.
 
+## [15.6.0] - 2026-06-23
+
+### Changed
+- Filled 22 missing UI locale keys across all 13 supported non-English locales in both Chrome and Firefox.
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 15.6.0.
+
+### Fixed
+- Agent-created scheduled current-tab tasks on HTTP(S) pages now persist as URL targets, so scheduled runs can navigate back to the original page instead of failing after the tab changes.
+- Legacy agent-created current-tab scheduled tasks now migrate to URL targets during alarm restoration while preserving their scheduled alarms.
+
+### Tests
+- Added Chrome + Firefox scheduler coverage for agent-created current-tab URL target normalization, legacy scheduled-task migration on restore, and navigated scheduled task completion.
+
+## [15.5.0] - 2026-06-23
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 15.5.0.
+
+## [15.4.0] - 2026-06-23
+
+### Added
+- Chrome now registers `Alt+Shift+W` as the default extension keyboard shortcut for opening the WebBrain panel.
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 15.4.0.
+
 ## [15.3.0] - 2026-06-23
 
 ### Changed

@@ -1889,6 +1889,11 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
     assert.match(panel, /let assistantEl = currentAssistantEl/, `${label}: forced scheduled clarify cards should not overwrite the active assistant bubble`);
     assert.match(panel, /currentAssistantEl\.dataset\?\.scheduledJobId === scheduledJobId/, `${label}: scheduled clarify submission should not steal an unrelated active reply`);
     assert.match(panel, /res\?\.success === false \|\| res\?\.ok === false \|\| !res\?\.scheduledAt/, `${label}: schedule form should reject failed create responses before showing success`);
+    assert.match(panel, /async function renderScheduleComposer/, `${label}: schedule form should resolve initial defaults before display`);
+    assert.match(panel, /const initialScheduleUrl = await getCurrentScheduleUrl\(\)/, `${label}: schedule form should inspect the active tab URL before rendering`);
+    assert.match(panel, /urlInput\.value = initialScheduleUrl/, `${label}: schedule form should prefill URL targets from the active tab`);
+    assert.match(panel, /targetType\.value = 'url'/, `${label}: schedule form should default http(s) pages to URL targets`);
+    assert.match(panel, /content\.appendChild\(form\)/, `${label}: schedule form should append after initial target defaults are applied`);
     assert.match(locale, /\/schedule/, `${label}: help should mention /schedule`);
     assert.match(locale, /\/list-schedules/, `${label}: help should mention /list-schedules`);
   }
@@ -1930,6 +1935,32 @@ test('chrome /record reports mic denial as a warning, not recording failure', ()
   assert.match(panel, /sp\.record\.mic_unavailable/, 'chrome: /record mic denial should use warning copy');
   assert.match(locale, /sp\.record\.mic_unavailable/, 'chrome: missing mic unavailable locale key');
   assert.match(locale, /Recording started with tab audio and video only/, 'chrome: mic warning should say recording started');
+});
+
+test('chrome sidepanel Escape abort honors slash autocomplete dismissal', () => {
+  const panel = fs.readFileSync(path.join(ROOT, 'src/chrome/src/ui/sidepanel.js'), 'utf8');
+  assert.match(panel, /if \(e\.key === 'Escape'\) \{\s*e\.preventDefault\(\);\s*hideSlashCommandAutocomplete\(\);\s*return true;\s*\}/, 'chrome: slash autocomplete Escape should consume the key event');
+
+  const globalHandlerStart = panel.indexOf('function handleGlobalKeydown(e)');
+  const defaultPreventedGuard = panel.indexOf('if (e.defaultPrevented) return;', globalHandlerStart);
+  const abortCall = panel.indexOf('abortRun();', globalHandlerStart);
+  assert.notEqual(globalHandlerStart, -1, 'chrome: global keydown handler missing');
+  assert.notEqual(defaultPreventedGuard, -1, 'chrome: global keydown handler should honor consumed key events');
+  assert.notEqual(abortCall, -1, 'chrome: Escape abort shortcut missing');
+  assert.equal(defaultPreventedGuard < abortCall, true, 'chrome: consumed slash-menu Escape should not reach abortRun');
+});
+
+test('chrome sidepanel shortcuts are documented in help and README', () => {
+  const locale = fs.readFileSync(path.join(ROOT, 'src/chrome/src/ui/locales/en.js'), 'utf8');
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+
+  for (const shortcut of ['Ctrl/Cmd+/', 'Ctrl/Cmd+Shift+A', 'Ctrl/Cmd+Shift+X', 'Escape']) {
+    assert.match(locale, new RegExp(shortcut.replace(/[+/]/g, '\\$&')), `chrome: /help should mention ${shortcut}`);
+    assert.match(readme, new RegExp(shortcut.replace('Ctrl/Cmd', 'Ctrl.*Cmd').replace(/[+/]/g, '\\$&')), `README should mention ${shortcut}`);
+  }
+  assert.match(locale, /Keyboard Shortcuts/, 'chrome: /help should include a keyboard shortcut section');
+  assert.match(readme, /## Keyboard Shortcuts/, 'README should include a keyboard shortcut section');
+  assert.match(readme, /Stop the active run, unless it is only dismissing slash-command autocomplete/, 'README should document Escape vs slash autocomplete behavior');
 });
 
 test('sidepanel reports missing background responses without res.content crash', () => {
@@ -2266,7 +2297,7 @@ test('ScheduledJobManager dedupes near-matching task jobs', async () => {
         target: { type: 'current_tab' },
         mode: 'act',
       },
-      source: 'agent',
+      source: 'user',
       currentUrl: 'https://example.com/',
       currentTitle: 'Example',
     });
@@ -3092,6 +3123,91 @@ test('ScheduledJobManager fails current-tab tasks after the hash route changes',
     assert.equal(processCalled, false, `${label}: hash-route-changed task must not call agent`);
     assert.equal(job.status, 'failed', `${label}: hash-route-changed task should fail`);
     assert.match(job.lastError, /Target tab changed/, `${label}: failure should explain target staleness`);
+  }
+});
+
+test('ScheduledJobManager stores agent current-tab tasks on HTTP pages as URL targets', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const originalUrl = 'https://example.com/following?source=feed#people';
+    const runUrls = [];
+    let h;
+    h = makeSchedulerHarness(SchedulerMod, {
+      now,
+      processMessage: async (tabId) => {
+        runUrls.push(h.tabs.get(tabId)?.url);
+        return 'followed';
+      },
+    });
+    const created = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: {
+        title: 'Follow accounts',
+        prompt: 'Follow 25 accounts from this page.',
+        schedule: { type: 'once', after_seconds: 60 },
+        target: { type: 'current_tab' },
+      },
+      source: 'agent',
+      currentUrl: originalUrl,
+      currentTitle: 'People',
+    });
+
+    assert.equal(created.success, true, `${label}: agent-created task should schedule`);
+    let job = h.jobs()[0];
+    assert.equal(job.target.type, 'url', `${label}: agent current-tab task should be stored as URL-targeted`);
+    assert.equal(job.target.url, originalUrl, `${label}: URL target should preserve the original page URL`);
+
+    h.tabs.set(77, { id: 77, url: 'https://example.com/elsewhere', title: 'Elsewhere' });
+    await h.manager.handleAlarm(h.alarmName(created.jobId));
+
+    job = h.jobs()[0];
+    assert.equal(runUrls[0], originalUrl, `${label}: URL-targeted agent task should navigate back before running`);
+    assert.equal(job.status, 'completed', `${label}: navigated agent task should complete`);
+  }
+});
+
+test('ScheduledJobManager migrates legacy agent current-tab tasks to URL targets on restore', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const scheduledAt = new Date(now + 60 * 1000).toISOString();
+    const originalUrl = 'https://example.com/following';
+    const h = makeSchedulerHarness(SchedulerMod, {
+      now,
+      jobs: [{
+        id: `task_legacy_${label}`,
+        kind: 'task',
+        status: 'pending',
+        tabId: 77,
+        conversationId: 'conv-1',
+        mode: 'act',
+        title: 'Follow accounts',
+        prompt: 'Follow 25 accounts from this page.',
+        schedule: { type: 'once', run_at: scheduledAt, interval_minutes: null },
+        target: {
+          type: 'current_tab',
+          tabId: 77,
+          conversationId: 'conv-1',
+          originalUrl,
+          originalTitle: 'People',
+        },
+        source: 'agent',
+        scheduledAt,
+        nextRunAt: scheduledAt,
+        createdAt: new Date(now).toISOString(),
+        updatedAt: new Date(now).toISOString(),
+        queueDeferrals: 0,
+        runCount: 0,
+      }],
+    });
+
+    await h.manager.restoreAlarms();
+
+    const job = h.jobs()[0];
+    assert.equal(job.target.type, 'url', `${label}: legacy agent task should be migrated to URL target`);
+    assert.equal(job.target.url, originalUrl, `${label}: migrated target should use the original URL`);
+    assert.equal(job.conversationId, null, `${label}: migrated URL task should not stay conversation-bound`);
+    assert.equal(h.alarms.get(h.alarmName(job.id)).when, Date.parse(scheduledAt), `${label}: restored migrated job should keep its alarm`);
   }
 });
 

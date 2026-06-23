@@ -226,6 +226,17 @@ WebBrain accepts slash commands as the first thing on a line in the input box. T
 
 The default UI-first rule exists because API actions are invisible (you don't see what's being sent), often require separate auth tokens you may not have configured, and can have a much larger blast radius than a visible mis-click. Only use `/allow-api` when you've decided you want that tradeoff for a specific job.
 
+## Keyboard Shortcuts
+
+Chrome side panel shortcuts work when the WebBrain side panel has focus.
+
+| Shortcut | What it does |
+|----------|--------------|
+| `Ctrl+/` or `Cmd+/` | Focus the input |
+| `Ctrl+Shift+A` or `Cmd+Shift+A` | Switch to Ask mode |
+| `Ctrl+Shift+X` or `Cmd+Shift+X` | Switch to Act mode |
+| `Escape` | Stop the active run, unless it is only dismissing slash-command autocomplete |
+
 ## Known Issues
 
 - **Firefox is meaningfully weaker than Chrome.** Firefox has no equivalent to Chrome DevTools Protocol via `chrome.debugger`, so several Chrome-only features are missing in the Firefox build:

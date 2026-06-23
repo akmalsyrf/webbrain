@@ -841,6 +841,25 @@ function datetimeLocalValue(ms) {
   return local.toISOString().slice(0, 16);
 }
 
+function isHttpScheduleUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function getCurrentScheduleUrl() {
+  if (currentTabId == null) return '';
+  try {
+    const tab = await chrome.tabs.get(currentTabId);
+    return tab?.url || '';
+  } catch {
+    return '';
+  }
+}
+
 function addScheduleField(form, labelText, control) {
   const label = document.createElement('label');
   label.className = 'schedule-field';
@@ -852,11 +871,12 @@ function addScheduleField(form, labelText, control) {
   return label;
 }
 
-function renderScheduleComposer(prefillPrompt = '') {
+async function renderScheduleComposer(prefillPrompt = '') {
   const msgEl = addMessage('system', t('sp.schedule_form.opened'));
   const content = msgEl.querySelector('.message-content');
   const form = document.createElement('form');
   form.className = 'schedule-composer';
+  const initialScheduleUrl = await getCurrentScheduleUrl();
 
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
@@ -912,6 +932,10 @@ function renderScheduleComposer(prefillPrompt = '') {
   urlInput.type = 'url';
   urlInput.placeholder = 'https://example.com/';
   const urlField = addScheduleField(form, t('sp.schedule_form.target_url'), urlInput);
+  if (isHttpScheduleUrl(initialScheduleUrl)) {
+    urlInput.value = initialScheduleUrl;
+    targetType.value = 'url';
+  }
 
   const modeInput = document.createElement('select');
   modeInput.innerHTML = `<option value="act">${escapeHtml(t('sp.mode.act'))}</option><option value="ask">${escapeHtml(t('sp.mode.ask'))}</option>`;
@@ -2906,6 +2930,44 @@ function sendToBackground(action, data = {}) {
   });
 }
 
+// --- Keyboard shortcuts ---
+
+function handleGlobalKeydown(e) {
+  if (e.defaultPrevented) return;
+
+  // Don't steal shortcuts from other input elements (e.g. schedule form fields)
+  const tag = e.target?.tagName;
+  if (e.target !== inputEl && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')) return;
+
+  const mod = e.ctrlKey || e.metaKey;
+
+  // Ctrl+/ (Cmd+/ on Mac): focus input
+  if (mod && e.key === '/') {
+    e.preventDefault();
+    inputEl.focus();
+    inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+    return;
+  }
+  // Ctrl+Shift+A: switch to Ask mode (blocked while agent is running)
+  if (mod && e.shiftKey && e.key === 'A' && !isProcessing) {
+    e.preventDefault();
+    setMode('ask');
+    return;
+  }
+  // Ctrl+Shift+X: switch to Act mode (blocked while agent is running)
+  if (mod && e.shiftKey && e.key === 'X' && !isProcessing) {
+    e.preventDefault();
+    ensureActMode();
+    return;
+  }
+  // Escape: abort running agent (only when slash menu is not open)
+  if (e.key === 'Escape' && isProcessing &&
+      slashCommandMenuEl?.classList.contains('hidden')) {
+    e.preventDefault();
+    abortRun();
+  }
+}
+
 // --- Mode Toggle ---
 
 function setMode(mode) {
@@ -2954,7 +3016,7 @@ modeActBtn.addEventListener('click', () => {
 
 // --- Stop / Abort ---
 
-stopBtn.addEventListener('click', async () => {
+async function abortRun() {
   if (!isProcessing) return;
   abortRequested = true;
   showActivity(t('sp.activity.stopping'));
@@ -2982,18 +3044,23 @@ stopBtn.addEventListener('click', async () => {
       abortRequested = false;
     }
   }, 3000); // safety timeout if background takes too long
-});
+}
+
+stopBtn.addEventListener('click', abortRun);
 
 
 // --- Event Listeners ---
 
 sendBtn.addEventListener('click', sendMessage);
 
+document.addEventListener('keydown', handleGlobalKeydown);
+
 inputEl.addEventListener('keydown', (e) => {
   if (handleSlashCommandKeydown(e)) return;
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
+    return;
   }
 });
 

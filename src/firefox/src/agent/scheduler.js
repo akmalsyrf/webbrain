@@ -31,6 +31,16 @@ function isValidUrl(value) {
   }
 }
 
+function normalizeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 function sameDocumentUrl(a, b) {
   try {
     const left = new URL(String(a || ''));
@@ -186,6 +196,35 @@ function sameScheduledIntent(a, b) {
     scheduledJobScheduleType(a) === scheduledJobScheduleType(b) &&
     scheduledJobIntervalMinutes(a) === scheduledJobIntervalMinutes(b) &&
     scheduledTimesAreNear(a, b);
+}
+
+function normalizeAgentTaskTarget(target, source, currentUrl = '') {
+  const base = asObject(target);
+  if (source !== 'agent' || base.type !== 'current_tab') return base;
+  const url = normalizeHttpUrl(currentUrl);
+  return url ? { type: 'url', url } : base;
+}
+
+function normalizeLegacyAgentTaskTarget(job) {
+  if (job?.kind !== 'task' || job.source !== 'agent' || job.target?.type !== 'current_tab') {
+    return { job, changed: false };
+  }
+  const url = normalizeHttpUrl(job.target.originalUrl);
+  if (!url) return { job, changed: false };
+  const tabId = job.target.tabId ?? job.tabId ?? null;
+  return {
+    changed: true,
+    job: {
+      ...job,
+      tabId,
+      conversationId: null,
+      target: {
+        type: 'url',
+        url,
+        ...(tabId != null ? { tabId } : {}),
+      },
+    },
+  };
 }
 
 function findDuplicateScheduledJob(job, jobs) {
@@ -481,7 +520,10 @@ export class ScheduledJobManager {
     const { jobs: normalized, alarmsToClear } = await this._withJobMutation(async () => {
       const jobs = await this._getJobs();
       let changed = false;
-      const recovered = jobs.map((job) => {
+      const recovered = jobs.map((storedJob) => {
+        const normalizedTarget = normalizeLegacyAgentTaskTarget(storedJob);
+        let job = normalizedTarget.job;
+        changed = changed || normalizedTarget.changed;
         if (!['running', 'needs_user_input'].includes(job.status)) return job;
         changed = true;
         this._waitingForInput.delete(job.id);
@@ -589,9 +631,11 @@ export class ScheduledJobManager {
     const parsed = validateTaskArgs(args, this.now());
     if (!parsed.ok) return { success: false, error: parsed.error };
     const createdAt = iso(this.now());
+    const effectiveTarget = normalizeAgentTaskTarget(parsed.target, source, currentUrl);
     const target = {
-      ...parsed.target,
-      ...(parsed.target.type === 'current_tab' ? { tabId, conversationId, originalUrl: currentUrl, originalTitle: currentTitle } : {}),
+      ...effectiveTarget,
+      ...(effectiveTarget.type === 'current_tab' ? { tabId, conversationId, originalUrl: currentUrl, originalTitle: currentTitle } : {}),
+      ...(effectiveTarget.type === 'url' ? { tabId } : {}),
     };
     const job = {
       id: makeScheduledJobId('task', this.now()),
@@ -906,7 +950,7 @@ export class ScheduledJobManager {
     const tab = await this.api.tabs.get(tabId);
     const currentUrl = tab?.url || '';
     if (currentUrl && !sameDocumentUrl(originalUrl, currentUrl)) {
-      throw new Error('Target tab changed before the scheduled task ran.');
+      throw new Error('Target tab changed before the scheduled task ran. Recreate this schedule with Target = URL if it should reopen the original page automatically.');
     }
   }
 
