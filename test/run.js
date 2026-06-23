@@ -2608,7 +2608,7 @@ test('chrome sidepanel serializes tab-chat storage writes with clears and reads'
   const panel = fs.readFileSync(path.join(ROOT, 'src/chrome/src/ui/sidepanel.js'), 'utf8');
   assert.match(panel, /const tabChatOperations = new Map\(\);/, 'chrome: tab-chat operations should be queued per tab');
   assert.match(panel, /function enqueueTabChatOperation\(tabId, fn\) \{[\s\S]*?const previous = tabChatOperations\.get\(numericTabId\) \|\| Promise\.resolve\(\);[\s\S]*?tabChatOperations\.set\(numericTabId, operation\);[\s\S]*?\}/, 'chrome: tab-chat writes should be serialized behind prior operations');
-  assert.match(panel, /async function waitForTabChatOperation\(tabId\) \{[\s\S]*?await operation;[\s\S]*?\}/, 'chrome: tab-chat reads should wait for in-flight operations');
+  assert.match(panel, /async function waitForTabChatOperation\(tabId\) \{[\s\S]*?while \(true\) \{[\s\S]*?const operation = tabChatOperations\.get\(numericTabId\);[\s\S]*?await operation;[\s\S]*?if \(tabChatOperations\.get\(numericTabId\) === operation\) return;[\s\S]*?\}/, 'chrome: tab-chat reads should keep waiting while newer in-flight operations are queued');
   assert.match(panel, /async function loadTabChat\(tabId\) \{[\s\S]*?await waitForTabChatOperation\(tabId\);[\s\S]*?const stored = await chrome\.storage\.session\.get\(key\);/, 'chrome: tab-chat restore should wait before reading session storage');
   assert.match(panel, /return enqueueTabChatOperation\(tabId, async \(numericTabId\) => \{[\s\S]*?await chrome\.storage\.session\.set\(\{ \[key\]: html \}\)\.catch\(\(\) => \{\}\);/, 'chrome: tab-chat persistence should be serialized through the queue');
   const clearStart = panel.indexOf('function clearCachedTabChat(tabId) {');

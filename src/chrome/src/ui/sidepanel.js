@@ -459,9 +459,14 @@ function enqueueTabChatOperation(tabId, fn) {
 }
 
 async function waitForTabChatOperation(tabId) {
-  const operation = tabChatOperations.get(Number(tabId));
-  if (!operation) return;
-  try { await operation; } catch { /* ignore */ }
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return;
+  while (true) {
+    const operation = tabChatOperations.get(numericTabId);
+    if (!operation) return;
+    try { await operation; } catch { /* ignore */ }
+    if (tabChatOperations.get(numericTabId) === operation) return;
+  }
 }
 
 async function loadTabChat(tabId) {
