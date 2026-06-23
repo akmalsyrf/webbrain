@@ -445,12 +445,14 @@ document.getElementById('btn-compare').addEventListener('click', () => {
 
 document.getElementById('btn-export').addEventListener('click', async () => {
   if (!selectedRunId) return alert(t('tr.select_first'));
-  const run = await getRun(selectedRunId);
-  const events = await getRunEvents(selectedRunId);
+  const runId = selectedRunId;
+  const run = await getRun(runId);
+  if (!run) return alert(t('tr.select_first'));
+  const events = await getRunEvents(runId);
   // Resolve screenshot blobs to base64 for portability.
   for (const ev of events) {
     if (ev.kind === 'screenshot') {
-      const shot = await getScreenshot(selectedRunId, ev.seq);
+      const shot = await getScreenshot(runId, ev.seq);
       if (shot?.blob) {
         ev.data = ev.data || {};
         ev.data.screenshot_base64 = await blobToBase64(shot.blob);
@@ -476,12 +478,15 @@ document.getElementById('btn-export').addEventListener('click', async () => {
 
 document.getElementById('btn-delete').addEventListener('click', async () => {
   if (!selectedRunId) return alert(t('tr.select_first'));
+  const runId = selectedRunId;
   if (!confirm(t('tr.confirm_delete'))) return;
-  await deleteRun(selectedRunId);
-  selectedRunId = null;
-  replaceTimelineObjectUrls(new Set());
-  mainPane.innerHTML = `<div id="empty-state"><div><p>${escapeHtml(t('tr.deleted'))}</p></div></div>`;
-  refresh();
+  await deleteRun(runId);
+  if (selectedRunId === runId) {
+    selectedRunId = null;
+    replaceTimelineObjectUrls(new Set());
+    mainPane.innerHTML = `<div id="empty-state"><div><p>${escapeHtml(t('tr.deleted'))}</p></div></div>`;
+  }
+  await refresh();
 });
 
 document.getElementById('btn-clear-all').addEventListener('click', async () => {

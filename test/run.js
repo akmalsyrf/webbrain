@@ -2253,6 +2253,49 @@ test('trace viewer export keeps blob URLs alive until the download is committed'
   }
 });
 
+test('trace viewer toolbar actions use a captured run selection across awaits', () => {
+  for (const [label, tracesRel] of [
+    ['chrome', 'src/chrome/src/ui/traces.js'],
+    ['firefox', 'src/firefox/src/ui/traces.js'],
+  ]) {
+    const traces = fs.readFileSync(path.join(ROOT, tracesRel), 'utf8');
+
+    const exportStart = traces.indexOf("document.getElementById('btn-export').addEventListener('click', async () => {");
+    assert.notEqual(exportStart, -1, `${label}: trace export handler missing`);
+    const exportBody = traces.slice(exportStart, traces.indexOf("document.getElementById('btn-delete')", exportStart));
+    const exportCaptureIdx = exportBody.indexOf('const runId = selectedRunId;');
+    const getRunIdx = exportBody.indexOf('const run = await getRun(runId);');
+    const missingRunGuardIdx = exportBody.indexOf("if (!run) return alert(t('tr.select_first'));");
+    const eventsIdx = exportBody.indexOf('const events = await getRunEvents(runId);');
+    const screenshotIdx = exportBody.indexOf('const shot = await getScreenshot(runId, ev.seq);');
+    assert.notEqual(exportCaptureIdx, -1, `${label}: trace export should capture selectedRunId once`);
+    assert.notEqual(getRunIdx, -1, `${label}: trace export should load the captured run`);
+    assert.notEqual(missingRunGuardIdx, -1, `${label}: trace export should handle a missing captured run`);
+    assert.notEqual(eventsIdx, -1, `${label}: trace export should load events for the captured run`);
+    assert.notEqual(screenshotIdx, -1, `${label}: trace export should load screenshots for the captured run`);
+    assert.equal(exportCaptureIdx < getRunIdx && getRunIdx < missingRunGuardIdx && missingRunGuardIdx < eventsIdx && eventsIdx < screenshotIdx, true, `${label}: trace export should keep the same run id across async work`);
+    assert.doesNotMatch(exportBody, /getRun\(selectedRunId\)|getRunEvents\(selectedRunId\)|getScreenshot\(selectedRunId,/, `${label}: trace export must not reread mutable selectedRunId after starting`);
+
+    const deleteStart = traces.indexOf("document.getElementById('btn-delete').addEventListener('click', async () => {");
+    assert.notEqual(deleteStart, -1, `${label}: trace delete handler missing`);
+    const deleteBody = traces.slice(deleteStart, traces.indexOf("document.getElementById('btn-clear-all')", deleteStart));
+    const deleteCaptureIdx = deleteBody.indexOf('const runId = selectedRunId;');
+    const confirmIdx = deleteBody.indexOf("if (!confirm(t('tr.confirm_delete'))) return;");
+    const deleteIdx = deleteBody.indexOf('await deleteRun(runId);');
+    const guardIdx = deleteBody.indexOf('if (selectedRunId === runId) {');
+    const clearIdx = deleteBody.indexOf('selectedRunId = null;', guardIdx);
+    const refreshIdx = deleteBody.indexOf('await refresh();');
+    assert.notEqual(deleteCaptureIdx, -1, `${label}: trace delete should capture selectedRunId once`);
+    assert.notEqual(confirmIdx, -1, `${label}: trace delete confirmation missing`);
+    assert.notEqual(deleteIdx, -1, `${label}: trace delete should delete the captured run`);
+    assert.notEqual(guardIdx, -1, `${label}: trace delete should guard visible cleanup against selection changes`);
+    assert.notEqual(clearIdx, -1, `${label}: trace delete should clear selection only for the deleted active run`);
+    assert.notEqual(refreshIdx, -1, `${label}: trace delete should refresh after deletion completes`);
+    assert.equal(deleteCaptureIdx < confirmIdx && confirmIdx < deleteIdx && deleteIdx < guardIdx && guardIdx < clearIdx && clearIdx < refreshIdx, true, `${label}: trace delete should not clear a newer selection after async deletion`);
+    assert.doesNotMatch(deleteBody, /deleteRun\(selectedRunId\)/, `${label}: trace delete must not reread mutable selectedRunId after starting`);
+  }
+});
+
 test('sidepanel export keeps blob URLs alive until the download is committed', () => {
   for (const [label, panelRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js'],
