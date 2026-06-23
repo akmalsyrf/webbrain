@@ -80,18 +80,21 @@ export function createContextMenuPromptHandler({
     }
 
     const currentTabId = getCurrentTabId();
+    const clearPayload = { tabId: payload.tabId ?? currentTabId, promptId: payload.id };
+
     if (getAgentMode() !== 'ask') setMode('ask');
     getInputEl().value = payload.text;
     getInputEl().dispatchEvent(new Event('input', { bubbles: true }));
     autoResizeInput();
-    sendMessage();
 
-    // Clear storage after sendMessage() has captured the text, not before,
-    // so a send-time failure doesn't make the prompt unrecoverable from storage.
-    sendToBackground('clear_context_menu_prompt', {
-      tabId: payload.tabId ?? currentTabId,
-      promptId: payload.id,
-    }).catch(() => {});
+    // Only clear storage once sendMessage() settles successfully so that a
+    // background rejection (agent already running) leaves the prompt
+    // recoverable; re-queue it so drainQueuedContextMenuPrompts retries it
+    // when the current run finishes.
+    sendMessage().then(
+      () => sendToBackground('clear_context_menu_prompt', clearPayload).catch(() => {}),
+      () => { queuedContextMenuPrompts.push(payload); },
+    );
   }
 
   async function consumePendingContextMenuPrompt() {
