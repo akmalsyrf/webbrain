@@ -1895,8 +1895,13 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
     assert.match(panel, /let assistantEl = currentAssistantEl/, `${label}: forced scheduled clarify cards should not overwrite the active assistant bubble`);
     assert.match(panel, /currentAssistantEl\.dataset\?\.scheduledJobId === scheduledJobId/, `${label}: scheduled clarify submission should not steal an unrelated active reply`);
     assert.match(panel, /res\?\.success === false \|\| res\?\.ok === false \|\| !res\?\.scheduledAt/, `${label}: schedule form should reject failed create responses before showing success`);
-    assert.match(panel, /async function renderScheduleComposer/, `${label}: schedule form should resolve initial defaults before display`);
-    assert.match(panel, /const initialScheduleUrl = await getCurrentScheduleUrl\(\)/, `${label}: schedule form should inspect the active tab URL before rendering`);
+    assert.match(panel, /async function getCurrentScheduleUrl\(tabId = currentTabId\)/, `${label}: schedule URL lookup should accept a captured tab id`);
+    assert.match(panel, /async function renderScheduleComposer\(prefillPrompt = '', tabId = currentTabId\)/, `${label}: schedule form should capture the requested tab`);
+    assert.match(panel, /const initialScheduleUrl = await getCurrentScheduleUrl\(tabId\);[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?addMessage\('system', t\('sp\.schedule_form\.opened'\)\)/, `${label}: schedule form should resolve target defaults before rendering and drop stale tab switches`);
+    assert.match(panel, /form\.dataset\.tabId = String\(tabId\);/, `${label}: schedule form should retain its captured target tab`);
+    assert.match(panel, /create_scheduled_job'[\s\S]*?\{\s*tabId,[\s\S]*?job:/, `${label}: schedule form should create jobs for the captured tab`);
+    assert.match(panel, /if \(currentTabId !== tabId\) return;[\s\S]*?form\.remove\(\);[\s\S]*?sp\.schedule_form\.created/, `${label}: schedule form should not render completion into a different tab`);
+    assert.match(panel, /renderScheduleComposer\(text\.slice\(mSchedule\[0\]\.length\)\.trim\(\), currentTabId\)/, `${label}: /schedule should pass the initiating tab into the async composer`);
     assert.match(panel, /urlInput\.value = initialScheduleUrl/, `${label}: schedule form should prefill URL targets from the active tab`);
     assert.match(panel, /targetType\.value = 'url'/, `${label}: schedule form should default http(s) pages to URL targets`);
     assert.match(panel, /content\.appendChild\(form\)/, `${label}: schedule form should append after initial target defaults are applied`);

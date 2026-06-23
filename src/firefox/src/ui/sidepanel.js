@@ -788,10 +788,10 @@ function isHttpScheduleUrl(value) {
   }
 }
 
-async function getCurrentScheduleUrl() {
-  if (currentTabId == null) return '';
+async function getCurrentScheduleUrl(tabId = currentTabId) {
+  if (tabId == null) return '';
   try {
-    const tab = await browser.tabs.get(currentTabId);
+    const tab = await browser.tabs.get(tabId);
     return tab?.url || '';
   } catch {
     return '';
@@ -809,12 +809,16 @@ function addScheduleField(form, labelText, control) {
   return label;
 }
 
-async function renderScheduleComposer(prefillPrompt = '') {
+async function renderScheduleComposer(prefillPrompt = '', tabId = currentTabId) {
+  if (tabId == null) return;
+  const initialScheduleUrl = await getCurrentScheduleUrl(tabId);
+  if (currentTabId !== tabId) return;
+
   const msgEl = addMessage('system', t('sp.schedule_form.opened'));
   const content = msgEl.querySelector('.message-content');
   const form = document.createElement('form');
   form.className = 'schedule-composer';
-  const initialScheduleUrl = await getCurrentScheduleUrl();
+  form.dataset.tabId = String(tabId);
 
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
@@ -962,12 +966,13 @@ async function renderScheduleComposer(prefillPrompt = '') {
     try {
       const title = titleInput.value.trim() || prompt.slice(0, 80) || t('sp.scheduled.task_title');
       const res = await sendToBackground('create_scheduled_job', {
-        tabId: currentTabId,
+        tabId,
         job: { title, prompt, schedule, target, mode: modeInput.value },
       });
       if (res?.success === false || res?.ok === false || !res?.scheduledAt) {
         throw new Error(res?.error || 'Could not create scheduled job.');
       }
+      if (currentTabId !== tabId) return;
       form.remove();
       const textEl = msgEl.querySelector('.message-text');
       if (textEl) {
@@ -1575,7 +1580,7 @@ async function parseSlashCommands(text) {
   // /schedule — open a deterministic scheduled-task composer
   const mSchedule = text.match(/^\/schedule\b\s*/i);
   if (mSchedule) {
-    renderScheduleComposer(text.slice(mSchedule[0].length).trim());
+    renderScheduleComposer(text.slice(mSchedule[0].length).trim(), currentTabId);
     return '';
   }
 
