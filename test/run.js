@@ -2535,8 +2535,8 @@ test('sidepanel reports missing background responses without res.content crash',
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
     assert.match(panel, /No response from WebBrain background/, `${label}: missing background response should become a clear error`);
     assert.match(panel, /response == null/, `${label}: sendToBackground should reject nullish responses`);
-    assert.equal((panel.match(/res\?\.content && currentAssistantEl/g) || []).length >= 2, true, `${label}: chat and continue should not dereference missing responses`);
-    assert.doesNotMatch(panel, /(?:else\s+)?if \(res\.content && currentAssistantEl\)/, `${label}: unsafe res.content render guard returned`);
+    assert.equal((panel.match(/res\?\.content && (?:currentAssistantEl|assistantEl)/g) || []).length >= 2, true, `${label}: chat and continue should not dereference missing responses`);
+    assert.doesNotMatch(panel, /res\.content && (?:currentAssistantEl|assistantEl)/, `${label}: unsafe res.content render guard returned`);
   }
 });
 
@@ -3132,7 +3132,7 @@ test('sidepanel scopes async tab commands to the original tab', () => {
 
     const compactIdx = panel.indexOf('// /compact');
     const compactBody = panel.slice(compactIdx, panel.indexOf('// /verbose', compactIdx));
-    assert.match(compactBody, /sendToBackground\('compact_conversation', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return '';/, `${label}: /compact should not render a result into a different tab`);
+    assert.match(compactBody, /const remainder = text\.slice\(mCompact\[0\]\.length\)\.trim\(\);[\s\S]*?sendToBackground\('compact_conversation', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return remainder;/, `${label}: /compact should preserve residual prompt text after tab switches without rendering into a different tab`);
 
     const listIdx = panel.indexOf('// /list-schedules');
     const listBody = panel.slice(listIdx, panel.indexOf('// /show-scratchpad', listIdx));
@@ -3189,8 +3189,8 @@ test('sidepanel awaits recommended-actions collapse persistence', () => {
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
     assert.match(
       panel,
-      /recommendedActionsToggleEl\.addEventListener\('click', async \(\) => \{[\s\S]*?const next = !recommendedActionsCollapsed;[\s\S]*?await (chrome|browser)\.storage\.local\.set\(\{ \[RECOMMENDED_ACTIONS_COLLAPSED_KEY\]: next \}\)\.catch\(\(\) => \{\}\);[\s\S]*?setRecommendedActionsCollapsed\(next, \{ persist: false \}\);[\s\S]*?\}\);/,
-      `${label}: recommended-actions collapse should capture the target state before awaiting persistence`,
+      /recommendedActionsToggleEl\.addEventListener\('click', async \(\) => \{[\s\S]*?const next = !recommendedActionsCollapsed;[\s\S]*?setRecommendedActionsCollapsed\(next, \{ persist: false \}\);[\s\S]*?await (chrome|browser)\.storage\.local\.set\(\{ \[RECOMMENDED_ACTIONS_COLLAPSED_KEY\]: next \}\)\.catch\(\(\) => \{\}\);[\s\S]*?\}\);/,
+      `${label}: recommended-actions collapse should update local state before awaiting persistence`,
     );
   }
 });
@@ -3220,8 +3220,13 @@ test('sidepanel sends residual slash-command prompts to the initiating tab', () 
     const sendBody = sendMatch[0];
     assert.match(
       sendBody,
-      /const tabId = currentTabId;[\s\S]*?text = await parseSlashCommands\(text, tabId\);[\s\S]*?if \(currentTabId !== tabId\) return false;[\s\S]*?sendToBackground\('chat', \{[\s\S]*?tabId,[\s\S]*?text,/,
-      `${label}: residual slash-command prompts should use the tab captured before async parsing`,
+      /const tabId = currentTabId;[\s\S]*?text = await parseSlashCommands\(text, tabId\);[\s\S]*?const renderToCurrentTab = currentTabId === tabId;[\s\S]*?if \(!renderToCurrentTab && !text\) return false;[\s\S]*?sendToBackground\('chat', \{[\s\S]*?tabId,[\s\S]*?text,/,
+      `${label}: residual slash-command prompts should still dispatch to the tab captured before async parsing`,
+    );
+    assert.match(
+      sendBody,
+      /if \(renderToCurrentTab\) \{[\s\S]*?addMessage\('user', text\);[\s\S]*?currentAssistantEl = assistantEl;[\s\S]*?\}/,
+      `${label}: stale-tab residual sends should not render chat UI into the currently visible tab`,
     );
     assert.doesNotMatch(
       sendBody,

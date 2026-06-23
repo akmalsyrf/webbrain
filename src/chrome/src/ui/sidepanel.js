@@ -1426,8 +1426,8 @@ function setRecommendedActionsCollapsed(collapsed, { persist = true } = {}) {
 if (recommendedActionsToggleEl) {
   recommendedActionsToggleEl.addEventListener('click', async () => {
     const next = !recommendedActionsCollapsed;
-    await chrome.storage.local.set({ [RECOMMENDED_ACTIONS_COLLAPSED_KEY]: next }).catch(() => {});
     setRecommendedActionsCollapsed(next, { persist: false });
+    await chrome.storage.local.set({ [RECOMMENDED_ACTIONS_COLLAPSED_KEY]: next }).catch(() => {});
   });
 }
 
@@ -1918,8 +1918,9 @@ async function parseSlashCommands(text, tabId = currentTabId) {
   // /compact — force context compaction for this conversation
   const mCompact = text.match(/^\/compact\b\s*/i);
   if (mCompact) {
+    const remainder = text.slice(mCompact[0].length).trim();
     const res = await sendToBackground('compact_conversation', { tabId });
-    if (currentTabId !== tabId) return '';
+    if (currentTabId !== tabId) return remainder;
     if (res?.ok && res.compacted) {
       addContextCompactedNote({ ...res, manual: true });
     } else if (res?.ok && res.reason === 'busy') {
@@ -1929,7 +1930,7 @@ async function parseSlashCommands(text, tabId = currentTabId) {
     } else {
       addMessage('system', tSystemHtml('sp.compact.failed', { error: res?.error || 'unknown error' }));
     }
-    return text.slice(mCompact[0].length).trim();
+    return remainder;
   }
 
   // /verbose — toggle verbose/compact tool display
@@ -2107,7 +2108,8 @@ async function sendMessage(extraChatParams) {
   // Parse any leading slash command. parseSlashCommands may strip the
   // command from `text` and toggle apiMutationsAllowed as a side effect.
   text = await parseSlashCommands(text, tabId);
-  if (currentTabId !== tabId) return false;
+  const renderToCurrentTab = currentTabId === tabId;
+  if (!renderToCurrentTab && !text) return false;
   // If the entire message was just the slash command, there's nothing
   // left to send to the agent — bail out after the side effect.
   if (!text) {
@@ -2117,16 +2119,19 @@ async function sendMessage(extraChatParams) {
   }
 
   isProcessing = true;
-  hideRecommendedActions();
   abortRequested = false;
   sendBtn.disabled = true;
   inputEl.value = '';
   autoResizeInput();
 
-  addMessage('user', text);
-  showActivity(t('sp.activity.thinking'));
-
-  currentAssistantEl = addMessage('assistant', '');
+  let assistantEl = null;
+  if (renderToCurrentTab) {
+    hideRecommendedActions();
+    addMessage('user', text);
+    showActivity(t('sp.activity.thinking'));
+    assistantEl = addMessage('assistant', '');
+    currentAssistantEl = assistantEl;
+  }
 
   let accepted = false;
   try {
@@ -2139,26 +2144,26 @@ async function sendMessage(extraChatParams) {
     });
     accepted = true;
 
-    if (abortRequested) {
+    if (renderToCurrentTab && currentTabId === tabId && abortRequested) {
       // Agent was stopped — show what we got so far
-      const textEl = currentAssistantEl?.querySelector('.message-text');
+      const textEl = assistantEl?.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
         textEl.innerHTML = formatMarkdown(res?.content || t('sp.stopped_by_user'));
-        addMessageCopyButton(currentAssistantEl);
+        addMessageCopyButton(assistantEl);
       }
-    } else if (res?.content && currentAssistantEl) {
-      const textEl = currentAssistantEl.querySelector('.message-text');
+    } else if (renderToCurrentTab && currentTabId === tabId && res?.content && assistantEl) {
+      const textEl = assistantEl.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
         textEl.innerHTML = formatMarkdown(res.content);
-        addMessageCopyButton(currentAssistantEl);
+        addMessageCopyButton(assistantEl);
       }
     }
   } catch (e) {
-    if (!abortRequested) {
+    if (renderToCurrentTab && currentTabId === tabId && !abortRequested) {
       addMessage('error', t('sp.error_prefix', { msg: e.message }));
     }
   } finally {
-    finalizeSteps();
+    if (renderToCurrentTab && currentTabId === tabId) finalizeSteps(assistantEl);
     // Chime the user when the agent finishes. We play on both success and
     // error completion — anything that wasn't an explicit user abort. The
     // sound is what takes them from "glance back at the tab" to "know it's
@@ -2168,10 +2173,10 @@ async function sendMessage(extraChatParams) {
     abortRequested = false;
     sendBtn.disabled = false;
     hideActivity();
-    currentAssistantEl = null;
-    scrollToBottom();
+    if (currentAssistantEl === assistantEl) currentAssistantEl = null;
+    if (renderToCurrentTab && currentTabId === tabId) scrollToBottom();
     if (!wasAborted) playCompletionSound();
-    refreshRecommendedActions();
+    if (renderToCurrentTab && currentTabId === tabId) refreshRecommendedActions();
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
   return accepted;
