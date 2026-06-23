@@ -3178,6 +3178,33 @@ test('context-menu deferred prompts dispatch one at a time', async () => {
   }
 });
 
+test('context-menu send failures release the deferred prompt drain', async () => {
+  for (const [label, createHandler] of [
+    ['chrome', createContextMenuPromptHandlerCh],
+    ['firefox', createContextMenuPromptHandlerFx],
+  ]) {
+    const first = { id: `${label}-failed-send-1`, tabId: 13, text: 'First selected text prompt' };
+    const second = { id: `${label}-failed-send-2`, tabId: 13, text: 'Second selected text prompt' };
+    const h = createContextMenuPromptHarness(createHandler, first, async (_extra, attempt) => {
+      if (attempt === 1) throw new Error('background unavailable');
+      return true;
+    });
+
+    h.handler.acceptContextMenuPrompt(first);
+    h.handler.acceptContextMenuPrompt(second);
+    await waitMicrotasks(6);
+
+    assert.equal(h.sends.length, 2, `${label}: queued prompt should drain after the previous send rejects`);
+    assert.equal(h.sends[0].text, first.text, `${label}: first prompt should be attempted before the failure`);
+    assert.equal(h.sends[1].text, second.text, `${label}: second prompt should run after the failure releases the guard`);
+
+    await h.handler.consumePendingContextMenuPrompt();
+    await waitMicrotasks(3);
+    assert.equal(h.sends.length, 3, `${label}: failed prompt should remain retryable from stored recovery`);
+    assert.equal(h.sends[2].text, first.text, `${label}: stored recovery should retry the failed prompt`);
+  }
+});
+
 test('context-menu cleanup blocks stale consume until storage removal finishes', async () => {
   for (const [label, createStorage] of [
     ['chrome', createContextMenuStorageCh],
