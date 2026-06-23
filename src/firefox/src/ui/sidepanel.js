@@ -1027,6 +1027,7 @@ async function showScratchpad(tabId = currentTabId) {
     }
     addMessage('system', `${t('sp.scratchpad.title_html')}<pre class="scratchpad-dump">${escapeHtml(body)}</pre>`);
   } catch (e) {
+    if (currentTabId !== tabId) return;
     addMessage('system', t('sp.scratchpad.error', { msg: e.message }));
   }
 }

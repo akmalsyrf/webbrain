@@ -2154,7 +2154,7 @@ test('sidepanel scopes async tab commands to the original tab', () => {
     const listBody = panel.slice(listIdx, panel.indexOf('// /show-scratchpad', listIdx));
     assert.match(listBody, /const tabId = currentTabId;[\s\S]*?const jobs = await refreshScheduledJobs\(\);[\s\S]*?if \(currentTabId !== tabId\) return '';/, `${label}: /list-schedules should not render a result into a different tab`);
 
-    assert.match(panel, /async function showScratchpad\(tabId = currentTabId\) \{[\s\S]*?sendToBackground\('get_scratchpad', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return;/, `${label}: /show-scratchpad should not render a result into a different tab`);
+    assert.match(panel, /async function showScratchpad\(tabId = currentTabId\) \{[\s\S]*?sendToBackground\('get_scratchpad', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?catch \(e\) \{[\s\S]*?if \(currentTabId !== tabId\) return;[\s\S]*?sp\.scratchpad\.error/, `${label}: /show-scratchpad should not render success or error results into a different tab`);
 
     const screenshotIdx = panel.indexOf('// /screenshot');
     const screenshotEnd = panel.indexOf('// /record', screenshotIdx);
