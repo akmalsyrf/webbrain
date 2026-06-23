@@ -107,7 +107,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Scheduled tasks refreshed.',
   'sp.schedule_form.none': 'No active scheduled tasks.',
   'sp.schedule_form.error_prompt': 'Enter a task first.',
-  'sp.schedule_form.error_time': 'Enter a valid time at least one minute from now.',
+  'sp.schedule_form.error_time': 'Enter a valid time, or 0 minutes to start now.',
   'sp.schedule_form.error_interval': 'Enter a valid recurring interval.',
   'sp.schedule_form.error_url': 'Enter a valid http(s) URL.',
   'sp.scratchpad.title_html': '<strong>Current scratchpad</strong>',

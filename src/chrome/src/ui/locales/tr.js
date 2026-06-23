@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Zamanlanmış görevler yenilendi.',
   'sp.schedule_form.none': 'Aktif zamanlanmış görev yok.',
   'sp.schedule_form.error_prompt': 'Önce bir görev girin.',
-  'sp.schedule_form.error_time': 'Şu andan en az bir dakika sonrası için geçerli bir saat girin.',
+  'sp.schedule_form.error_time': 'Geçerli bir saat girin veya şimdi başlamak için 0 dakika yazın.',
   'sp.schedule_form.error_interval': 'Geçerli bir yineleme aralığı girin.',
   'sp.schedule_form.error_url': 'Geçerli bir http(s) URL adresi girin.',
   'sp.scratchpad.title_html': '<strong>Geçerli not defteri</strong>',

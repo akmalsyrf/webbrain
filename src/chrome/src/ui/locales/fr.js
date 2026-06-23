@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Tâches planifiées actualisées.',
   'sp.schedule_form.none': 'Aucune tâche planifiée active.',
   'sp.schedule_form.error_prompt': 'Veuillez d\'abord saisir une tâche.',
-  'sp.schedule_form.error_time': 'Veuillez saisir une heure valide, au moins une minute à partir de maintenant.',
+  'sp.schedule_form.error_time': 'Veuillez saisir une heure valide, ou 0 minute pour commencer maintenant.',
   'sp.schedule_form.error_interval': 'Veuillez saisir un intervalle de récurrence valide.',
   'sp.schedule_form.error_url': 'Veuillez saisir une URL http(s) valide.',
   'sp.scratchpad.title_html': '<strong>Bloc-notes actuel</strong>',

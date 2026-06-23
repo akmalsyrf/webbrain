@@ -412,7 +412,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Список запланированных задач обновлён.',
   'sp.schedule_form.none': 'Нет активных запланированных задач.',
   'sp.schedule_form.error_prompt': 'Сначала введите задачу.',
-  'sp.schedule_form.error_time': 'Укажите корректное время — не менее чем через одну минуту.',
+  'sp.schedule_form.error_time': 'Укажите корректное время или 0 минут, чтобы начать сейчас.',
   'sp.schedule_form.error_interval': 'Укажите корректный интервал повторения.',
   'sp.schedule_form.error_url': 'Укажите корректный URL вида http(s).',
   'sp.scratchpad.title_html': '<strong>Текущий блокнот</strong>',

@@ -220,7 +220,7 @@ pending → running → completed
 
 **Schedule**
 
-- `once` — fires at a single `run_at` or `after_seconds` time.
+- `once` — fires at a single `run_at` or `after_seconds` time. `after_seconds: 0` starts the task immediately.
 - `recurring` — fires repeatedly at `interval_minutes` (1 min – 1 year); after each run completes, `nextRunAt` is advanced and the next alarm is set.
 
 **Persistence**
@@ -239,7 +239,7 @@ Jobs are stored in `chrome.storage.local` under the key `wb_scheduled_jobs` as a
 | Tool | When to use |
 |---|---|
 | `schedule_resume({after_seconds\|run_at, reason, resume_instruction})` | Durable pause for the *current* task when blocked on an external event (CI build, email, deploy). Terminal — the run ends after calling it. |
-| `schedule_task({title, prompt, schedule, target, mode})` | Create a standalone one-shot or recurring future task. Only when the user explicitly asks for scheduled future work. |
+| `schedule_task({title, prompt, schedule, target, mode})` | Create a standalone one-shot or recurring task. `after_seconds: 0` starts now; nonzero future delays still require at least 60 seconds. Only when the user explicitly asks for scheduled work. |
 
 ---
 

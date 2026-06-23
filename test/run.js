@@ -1869,6 +1869,7 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
     assert.match(panel, /\/schedule\b/, `${label}: /schedule parser missing`);
     assert.match(panel, /\/list-schedules\b/, `${label}: /list-schedules parser missing`);
     assert.match(panel, /create_scheduled_job/, `${label}: composer should create scheduled jobs through background`);
+    assert.match(panel, /afterInput\.min = '0'/, `${label}: schedule composer should allow immediate relative tasks`);
     assert.match(panel, /afterInput\.max = '10080'/, `${label}: schedule composer should allow seven-day relative delays`);
     assert.match(panel, /scheduledJobId/, `${label}: scheduled clarify prompts should retain their job id`);
     assert.match(panel, /scheduledTabId/, `${label}: scheduled clarify answers should route to the run tab`);
@@ -1890,6 +1891,20 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
     assert.match(panel, /res\?\.success === false \|\| res\?\.ok === false \|\| !res\?\.scheduledAt/, `${label}: schedule form should reject failed create responses before showing success`);
     assert.match(locale, /\/schedule/, `${label}: help should mention /schedule`);
     assert.match(locale, /\/list-schedules/, `${label}: help should mention /list-schedules`);
+  }
+});
+
+test('schedule form time errors mention immediate start in every locale', () => {
+  for (const [label, localeDir] of [
+    ['chrome', 'src/chrome/src/ui/locales'],
+    ['firefox', 'src/firefox/src/ui/locales'],
+  ]) {
+    for (const filename of fs.readdirSync(path.join(ROOT, localeDir)).filter((name) => name.endsWith('.js'))) {
+      const locale = fs.readFileSync(path.join(ROOT, localeDir, filename), 'utf8');
+      const match = locale.match(/'sp\.schedule_form\.error_time':\s*'([^']+)'/);
+      assert.ok(match, `${label}/${filename}: schedule time error locale key missing`);
+      assert.match(match[1], /0/, `${label}/${filename}: schedule time error should mention 0-minute immediate start`);
+    }
   }
 });
 
@@ -2115,6 +2130,20 @@ test('scheduler validation rejects ambiguous, too-soon, and malformed schedules'
     }, now).error, /no more than 168 hours/, `${label}: over-seven-day resume should fail`);
 
     assert.equal(SchedulerMod.validateTaskArgs({
+      title: 'Start now',
+      prompt: 'check',
+      schedule: { type: 'once', after_seconds: 0 },
+      target: { type: 'current_tab' },
+    }, now).ok, true, `${label}: zero-delay task should pass`);
+
+    assert.match(SchedulerMod.validateTaskArgs({
+      title: 'Too soon',
+      prompt: 'check',
+      schedule: { type: 'once', after_seconds: 30 },
+      target: { type: 'current_tab' },
+    }, now).error, /at least 60 seconds/, `${label}: sub-minute nonzero task should still fail`);
+
+    assert.equal(SchedulerMod.validateTaskArgs({
       title: 'Valid week task',
       prompt: 'check',
       schedule: { type: 'once', after_seconds: 604800 },
@@ -2124,7 +2153,7 @@ test('scheduler validation rejects ambiguous, too-soon, and malformed schedules'
     assert.match(SchedulerMod.validateTaskArgs({
       title: 'Bad',
       prompt: 'check',
-      schedule: { type: 'recurring', after_seconds: 60 },
+      schedule: { type: 'recurring', after_seconds: 0 },
       target: { type: 'current_tab' },
     }, now).error, /interval_minutes/, `${label}: recurring interval is required`);
 
@@ -2296,6 +2325,26 @@ test('ScheduledJobManager staggers distinct same-target busy retries', async () 
     assert.equal(Date.parse(firstJob.nextRunAt), now + SchedulerMod.QUEUE_RETRY_MS, `${label}: first retry should use the base retry delay`);
     assert.equal(Date.parse(secondJob.nextRunAt), now + SchedulerMod.QUEUE_RETRY_MS * 2, `${label}: second retry should be staggered after the first`);
     assert.equal(h.alarms.get(h.alarmName(second.jobId)).when, now + SchedulerMod.QUEUE_RETRY_MS * 2, `${label}: second retry alarm should be staggered`);
+  }
+});
+
+test('ScheduledJobManager schedules zero-delay tasks to run immediately', async () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  for (const [label, SchedulerMod] of [['chrome', SchedulerCh], ['firefox', SchedulerFx]]) {
+    const h = makeSchedulerHarness(SchedulerMod, { now });
+    const created = await h.manager.createTaskJob({
+      tabId: 77,
+      conversationId: 'conv-1',
+      args: {
+        title: 'Start now',
+        prompt: 'check now',
+        schedule: { type: 'once', after_seconds: 0 },
+        target: { type: 'current_tab' },
+      },
+    });
+    assert.equal(created.success, true, `${label}: zero-delay task should be accepted`);
+    assert.equal(created.scheduledAt, new Date(now).toISOString(), `${label}: displayed schedule time should be now`);
+    assert.equal(h.alarms.get(h.alarmName(created.jobId)).when, now + 1000, `${label}: alarm should fire immediately`);
   }
 });
 

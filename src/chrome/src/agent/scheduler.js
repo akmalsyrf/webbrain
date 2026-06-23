@@ -192,6 +192,7 @@ export function normalizeScheduledTime(input, {
   now = Date.now(),
   minDelayMs = MIN_DELAY_MS,
   maxDelayMs = MAX_DELAY_MS,
+  allowImmediate = false,
 } = {}) {
   const obj = asObject(input);
   const hasAfter = obj.after_seconds != null;
@@ -201,11 +202,13 @@ export function normalizeScheduledTime(input, {
   }
 
   let scheduledAtMs;
+  let isImmediateAfter = false;
   if (hasAfter) {
     const seconds = Number(obj.after_seconds);
     if (!Number.isFinite(seconds)) {
       return { ok: false, error: '`after_seconds` must be a number.' };
     }
+    isImmediateAfter = seconds === 0;
     scheduledAtMs = now + Math.round(seconds * 1000);
   } else {
     scheduledAtMs = Date.parse(String(obj.run_at).trim());
@@ -215,6 +218,9 @@ export function normalizeScheduledTime(input, {
   }
 
   const delay = scheduledAtMs - now;
+  if (allowImmediate && isImmediateAfter) {
+    return { ok: true, scheduledAtMs: now, scheduledAt: iso(now), immediate: true };
+  }
   if (delay < minDelayMs) {
     return { ok: false, error: `Scheduled time must be at least ${Math.ceil(minDelayMs / 1000)} seconds in the future.` };
   }
@@ -256,7 +262,7 @@ export function validateTaskArgs(args, now = Date.now()) {
     return { ok: false, error: '`schedule.type` must be "once" or "recurring".' };
   }
 
-  const time = normalizeScheduledTime(schedule, { now });
+  const time = normalizeScheduledTime(schedule, { now, allowImmediate: true });
   if (!time.ok) return time;
 
   let intervalMinutes = null;
@@ -286,6 +292,7 @@ export function validateTaskArgs(args, now = Date.now()) {
     scheduleType: type,
     scheduledAtMs: time.scheduledAtMs,
     scheduledAt: time.scheduledAt,
+    immediate: time.immediate === true,
     intervalMinutes,
     target: {
       type: targetType,
@@ -590,7 +597,7 @@ export class ScheduledJobManager {
       target,
       source,
       scheduledAt: parsed.scheduledAt,
-      nextRunAt: parsed.scheduledAt,
+      nextRunAt: parsed.immediate ? iso(this.now() + 1000) : parsed.scheduledAt,
       createdAt,
       updatedAt: createdAt,
       queueDeferrals: 0,
@@ -606,7 +613,7 @@ export class ScheduledJobManager {
       scheduled: true,
       jobId: saved.job.id,
       scheduledAt: saved.job.scheduledAt,
-      summary: `Scheduled "${saved.job.title}" for ${saved.job.scheduledAt}.`,
+      summary: parsed.immediate ? `Started "${saved.job.title}".` : `Scheduled "${saved.job.title}" for ${saved.job.scheduledAt}.`,
       ...(saved.deduped ? { deduped: true, existingJobId: saved.job.id } : {}),
     };
   }

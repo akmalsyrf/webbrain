@@ -412,7 +412,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Tugas terjadwal diperbarui.',
   'sp.schedule_form.none': 'Tidak ada tugas terjadwal yang aktif.',
   'sp.schedule_form.error_prompt': 'Masukkan tugas terlebih dahulu.',
-  'sp.schedule_form.error_time': 'Masukkan waktu yang valid setidaknya satu menit dari sekarang.',
+  'sp.schedule_form.error_time': 'Masukkan waktu yang valid, atau 0 menit untuk mulai sekarang.',
   'sp.schedule_form.error_interval': 'Masukkan interval pengulangan yang valid.',
   'sp.schedule_form.error_url': 'Masukkan URL http(s) yang valid.',
   'sp.scratchpad.title_html': '<strong>Bak pasir saat ini</strong>',

@@ -412,7 +412,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Senarai tugas berjadual dikemas kini.',
   'sp.schedule_form.none': 'Tiada tugas berjadual yang aktif.',
   'sp.schedule_form.error_prompt': 'Sila masukkan tugas terlebih dahulu.',
-  'sp.schedule_form.error_time': 'Masukkan masa yang sah sekurang-kurangnya satu minit dari sekarang.',
+  'sp.schedule_form.error_time': 'Masukkan masa yang sah, atau 0 minit untuk bermula sekarang.',
   'sp.schedule_form.error_interval': 'Masukkan selang berulang yang sah.',
   'sp.schedule_form.error_url': 'Masukkan URL http(s) yang sah.',
   'sp.scratchpad.title_html': '<strong>Pad nota semasa</strong>',

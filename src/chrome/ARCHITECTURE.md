@@ -408,7 +408,7 @@ OpenAI format → Anthropic blocks: system → separate `system` field; `assista
 | Limits | Value |
 |---|---|
 | Min delay (`schedule_resume`) | 30 s |
-| Min delay (`schedule_task`) | 60 s |
+| Min delay (`schedule_task`) | 0 s to start now; otherwise 60 s |
 | Max delay (both) | 7 days |
 | Min recurring interval | 1 min |
 | Max recurring interval | 1 year (525 600 min) |

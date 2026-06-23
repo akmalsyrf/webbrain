@@ -423,7 +423,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'รีเฟรชรายการงานที่ตั้งเวลาแล้ว',
   'sp.schedule_form.none': 'ไม่มีงานที่ตั้งเวลาที่ใช้งานอยู่',
   'sp.schedule_form.error_prompt': 'กรุณาป้อนงานก่อน',
-  'sp.schedule_form.error_time': 'กรุณาป้อนเวลาที่ถูกต้องซึ่งต้องมากกว่าหนึ่งนาทีนับจากนี้',
+  'sp.schedule_form.error_time': 'ป้อนเวลาที่ถูกต้อง หรือ 0 นาทีเพื่อเริ่มตอนนี้',
   'sp.schedule_form.error_interval': 'กรุณาป้อนช่วงเวลาทำซ้ำที่ถูกต้อง',
   'sp.schedule_form.error_url': 'กรุณาป้อน URL แบบ http(s) ที่ถูกต้อง',
   'sp.scratchpad.title_html': '<strong>กระดานร่างปัจจุบัน</strong>',

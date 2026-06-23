@@ -412,7 +412,7 @@ export default {
   'sp.schedule_form.list_refreshed': 'Tareas programadas actualizadas.',
   'sp.schedule_form.none': 'No hay tareas programadas activas.',
   'sp.schedule_form.error_prompt': 'Introduce primero una tarea.',
-  'sp.schedule_form.error_time': 'Introduce una hora válida con al menos un minuto de antelación.',
+  'sp.schedule_form.error_time': 'Introduce una hora válida, o 0 minutos para empezar ahora.',
   'sp.schedule_form.error_interval': 'Introduce un intervalo de repetición válido.',
   'sp.schedule_form.error_url': 'Introduce una URL http(s) válida.',
   'sp.scratchpad.title_html': '<strong>Bloc de notas actual</strong>',
