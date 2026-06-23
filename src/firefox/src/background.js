@@ -313,10 +313,12 @@ async function handleContextMenuAsk(info, tab) {
     createdAt: Date.now(),
   };
 
+  // Keep the programmatic sidebar open inside the original user gesture.
+  // Prompt storage still completes before the explicit panel notification.
+  openSidebarForContextMenu(tab);
   try {
     await contextMenuStorage.save(tab.id, payload);
   } catch {}
-  openSidebarForContextMenu(tab);
   notifySidePanelOfContextMenuPrompt(payload);
 }
 

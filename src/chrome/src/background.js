@@ -394,10 +394,13 @@ async function handleContextMenuAsk(info, tab) {
     createdAt: Date.now(),
   };
 
+  // sidePanel.open() must run before the first await in this user gesture.
+  // Otherwise Chrome may accept the saved prompt but silently refuse to open
+  // the panel, leaving the run visible only after the user opens it manually.
+  openSidePanelForContextMenu(tab);
   try {
     await contextMenuStorage.save(tab.id, payload);
   } catch {}
-  openSidePanelForContextMenu(tab);
   notifySidePanelOfContextMenuPrompt(payload);
 }
 
