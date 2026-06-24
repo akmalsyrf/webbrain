@@ -8033,6 +8033,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    *   - <tool_call>{"name":"...","arguments":{...}}</tool_call>
    *   - <|tool_call|>...<|/tool_call|>  or  <|tool_call>...<tool_call|>
    *   - <functioncall>{"name":"...","arguments":{...}}</functioncall>
+   *   - <tool_call><function=click_ax><parameter=ref_id>ref_6</parameter>...
    *   - call:toolName{key:<|"|>value<|"|>}  (custom quote-token format)
    *   - Bare JSON objects with a known tool name
    * Returns an array of tool call objects in OpenAI format, or [] if nothing
@@ -8044,6 +8045,19 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!text || text.length > 10000) return [];
 
     const results = [];
+    const parseXmlParamValue = (value) => {
+      const cleaned = String(value || '')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+      if (!cleaned) return '';
+      try {
+        if (/^(?:"|'.*'|\{|\[|-?\d|true\b|false\b|null\b)/i.test(cleaned)) {
+          return JSON.parse(cleaned.replace(/^'([\s\S]*)'$/, '"$1"'));
+        }
+      } catch { /* fall through to string cleanup */ }
+      return cleaned.replace(/^["']+|["']+$/g, '');
+    };
+
     // Collect candidate JSON strings from known wrapper patterns.
     const patterns = [
       // <tool_call>JSON</tool_call>
@@ -8090,6 +8104,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           continue;
         }
       }
+    }
+
+    // XML-ish tool-call format used by some local/chat-template models:
+    // <tool_call><function=click_ax><parameter=ref_id>ref_6</parameter>...
+    const xmlToolRe = /<tool_call>\s*<function(?:\s*=\s*["']?([A-Za-z_]\w*)["']?|\s+name\s*=\s*["']?([A-Za-z_]\w*)["']?)\s*>\s*([\s\S]*?)\s*<\/function>\s*<\/tool_call>/gi;
+    let xmlMatch;
+    while ((xmlMatch = xmlToolRe.exec(text)) !== null) {
+      const toolName = xmlMatch[1] || xmlMatch[2];
+      if (!allowedNames.has(toolName)) continue;
+      const body = xmlMatch[3] || '';
+      const args = {};
+      const paramRe = /<parameter(?:\s*=\s*["']?([A-Za-z_]\w*)["']?|\s+name\s*=\s*["']?([A-Za-z_]\w*)["']?)\s*>\s*([\s\S]*?)\s*<\/parameter>/gi;
+      let paramMatch;
+      while ((paramMatch = paramRe.exec(body)) !== null) {
+        const key = paramMatch[1] || paramMatch[2];
+        if (!key) continue;
+        args[key] = parseXmlParamValue(paramMatch[3]);
+      }
+      results.push({ name: toolName, arguments: args });
     }
 
     // Fallback: scan for bare JSON objects containing a "name" key with a

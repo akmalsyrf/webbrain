@@ -2426,6 +2426,23 @@ test('sidepanel verbose tool-call headers treat tool names as text', () => {
   }
 });
 
+test('sidepanel suppresses streamed raw tool-call text before rendering tool steps', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    assert.match(panel, /function looksLikeRawToolCallText\(text\) \{[\s\S]*?ref_id\\s\*/, `${label}: raw tool-call detector should recognize ref_id payloads`);
+    assert.match(panel, /textEl\.dataset\.suppressToolCallStream = 'true';/, `${label}: text_delta should suppress later raw tool-call chunks`);
+    const start = panel.indexOf("case 'tool_call':");
+    const end = panel.indexOf("case 'tool_result':", start);
+    assert.notEqual(start, -1, `${label}: tool_call handler missing`);
+    const body = panel.slice(start, end);
+    assert.match(body, /clearTransientAssistantTextForToolCall\(\);[\s\S]*?appendVerboseToolCall/, `${label}: verbose tool calls should clear raw streamed text first`);
+    assert.match(body, /clearTransientAssistantTextForToolCall\(\);[\s\S]*?appendCompactStep/, `${label}: compact tool steps should clear raw streamed text first`);
+  }
+});
+
 function runSettingsTabsScript(script, { saved = null, hash = '' } = {}) {
   function makeClassList() {
     return {
@@ -7833,6 +7850,73 @@ test('streamed plain final answers cannot bypass unresolved progress rows', asyn
     assert.doesNotMatch(block.content, /<\/untrusted_page_content><system>/, `${AgentClass.name}: streamed row label escaped untrusted boundary`);
     const blockedDone = agent.conversations.get(tabId).find(msg => msg.role === 'tool' && /"blockedDone":true/.test(msg.content || ''));
     assert.ok(blockedDone, `${AgentClass.name}: streamed done after plain-final nudge was not blocked`);
+  }
+});
+
+test('agent parses XML-style raw tool calls with ref_id parameters', () => {
+  const raw = [
+    '<tool_call>',
+    '<function=click_ax>',
+    '<parameter=ref_id>"ref_6"</parameter>',
+    '</function>',
+    '</tool_call>',
+  ].join('\n');
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const calls = agent._tryParseToolCallsFromText(raw, new Set(['click_ax']));
+    assert.equal(calls.length, 1, `${AgentClass.name}: XML-style tool call was not parsed`);
+    assert.equal(calls[0].function.name, 'click_ax');
+    assert.deepEqual(JSON.parse(calls[0].function.arguments), { ref_id: 'ref_6' });
+
+    const denied = agent._tryParseToolCallsFromText(raw.replace('click_ax', 'not_a_tool'), new Set(['click_ax']));
+    assert.deepEqual(denied, [], `${AgentClass.name}: disallowed XML-style tool call was accepted`);
+  }
+});
+
+test('streamed XML-style raw tool calls execute instead of becoming final text', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const provider = {
+      supportsTools: true,
+      supportsVision: false,
+      promptTier: 'full',
+      contextWindow: 128000,
+      model: 'test-model',
+      name: 'test-provider',
+      calls: 0,
+      async *chatStream() {
+        this.calls++;
+        if (this.calls === 1) {
+          yield { type: 'text', content: '<tool_call>\n<function=click_ax>\n' };
+          yield { type: 'text', content: '<parameter=ref_id>"ref_6"</parameter>\n</function>\n</tool_call>' };
+          yield { type: 'done' };
+          return;
+        }
+        yield { type: 'text', content: 'Clicked the target.' };
+        yield { type: 'done' };
+      },
+    };
+    const agent = new AgentClass({
+      getActive: () => provider,
+      getVisionProvider: async () => null,
+    });
+    const tabId = 808;
+    agent.maxSteps = 3;
+    agent._skipPermissionGate = true;
+    agent._manageContext = async () => {};
+    agent._enrichUserMessageWithCurrentPage = async (_tabId, _messages, content) => ({ role: 'user', content });
+    agent._maybeReinjectAdapter = async () => {};
+    agent._ensureProgressSessionForCurrentTask = async () => ({ mode: 'inactive' });
+    agent._persist = () => {};
+    const executed = [];
+    agent.executeTool = async (_tabId, name, args) => {
+      executed.push({ name, args });
+      return { success: true, method: name, ref_id: args.ref_id };
+    };
+
+    const final = await agent.processMessageStream(tabId, 'click the target', () => {}, 'act');
+
+    assert.equal(final, 'Clicked the target.', `${AgentClass.name}: raw XML tool text became the final response`);
+    assert.deepEqual(executed, [{ name: 'click_ax', args: { ref_id: 'ref_6' } }], `${AgentClass.name}: XML-style tool call did not execute`);
   }
 });
 
