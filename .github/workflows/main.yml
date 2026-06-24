@@ -21,7 +21,7 @@ jobs:
       - run: git config --global user.email "github-actions@github.com"
         continue-on-error: true
       - run: git add -A
-      - run: git commit -m "chore: bump version and rebuild dist zips" || echo "No changes to commit"
+      - run: git commit -m "chore: bump version and rebuild dist zips" 
       - run: git pushname: Build and Package
 
 
