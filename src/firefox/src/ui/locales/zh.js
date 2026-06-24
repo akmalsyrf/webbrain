@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': '复制代码',
 
   'sp.error_prefix': '错误：{msg}',
+  'sp.subscribe.allowance_used': '今日免费的 WebBrain Cloud 额度已用完。',
+  'sp.subscribe.btn': '订阅',
   'sp.stopped_by_user': '[用户已停止]',
   'sp.stopped_by_user_html': '<em>用户已停止。</em>',
 

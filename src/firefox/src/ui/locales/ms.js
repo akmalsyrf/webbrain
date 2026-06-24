@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': 'Salin kod',
 
   'sp.error_prefix': 'Ralat: {msg}',
+  'sp.subscribe.allowance_used': 'Peruntukan harian percuma WebBrain Cloud telah digunakan.',
+  'sp.subscribe.btn': 'Langgan',
   'sp.stopped_by_user': '[Dihentikan oleh pengguna]',
   'sp.stopped_by_user_html': '<em>Dihentikan oleh pengguna.</em>',
 

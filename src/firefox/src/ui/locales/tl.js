@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': 'Kopyahin ang code',
 
   'sp.error_prefix': 'Error: {msg}',
+  'sp.subscribe.allowance_used': 'Naubos na ang libreng pang-araw-araw na alokasyon ng WebBrain Cloud.',
+  'sp.subscribe.btn': 'Mag-subscribe',
   'sp.stopped_by_user': '[Itinigil ng user]',
   'sp.stopped_by_user_html': '<em>Itinigil ng user.</em>',
 

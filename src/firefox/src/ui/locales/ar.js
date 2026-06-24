@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': 'نسخ الكود',
 
   'sp.error_prefix': 'خطأ: {msg}',
+  'sp.subscribe.allowance_used': 'تم استخدام الحصة اليومية المجانية من WebBrain Cloud.',
+  'sp.subscribe.btn': 'اشترك',
   'sp.stopped_by_user': '[أوقفه المستخدم]',
   'sp.stopped_by_user_html': '<em>أوقفه المستخدم.</em>',
 

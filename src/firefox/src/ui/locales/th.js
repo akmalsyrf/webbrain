@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': 'คัดลอกโค้ด',
 
   'sp.error_prefix': 'ข้อผิดพลาด: {msg}',
+  'sp.subscribe.allowance_used': 'ใช้โควตารายวันฟรีของ WebBrain Cloud หมดแล้ว',
+  'sp.subscribe.btn': 'สมัครสมาชิก',
   'sp.stopped_by_user': '[ผู้ใช้หยุด]',
   'sp.stopped_by_user_html': '<em>ผู้ใช้หยุดแล้ว</em>',
 

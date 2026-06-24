@@ -100,6 +100,8 @@ export default {
   'sp.copy.code.title': 'Копировать код',
 
   'sp.error_prefix': 'Ошибка: {msg}',
+  'sp.subscribe.allowance_used': 'Бесплатный дневной лимит WebBrain Cloud исчерпан.',
+  'sp.subscribe.btn': 'Оформить подписку',
   'sp.stopped_by_user': '[Остановлено пользователем]',
   'sp.stopped_by_user_html': '<em>Остановлено пользователем.</em>',
 

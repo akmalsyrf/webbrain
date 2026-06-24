@@ -1615,11 +1615,20 @@ function rebindScheduleComposers() {
   });
 }
 
+function rebindSubscribeButtons() {
+  document.querySelectorAll('.subscribe-btn').forEach(btn => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', () => openSubscribeUrl(btn.dataset.subscribeUrl));
+  });
+}
+
 function rebindRestoredMessageControls() {
   rebindCopyButtons();
   rebindContinueButtons();
   rebindClarifyCards();
   rebindScheduleComposers();
+  rebindSubscribeButtons();
 }
 
 async function loadProviders() {
@@ -2199,7 +2208,9 @@ async function sendMessage(extraChatParams) {
     } else if (renderToCurrentTab && currentTabId === tabId && res?.content && assistantEl) {
       const textEl = assistantEl.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
-        textEl.innerHTML = formatMarkdown(res.content);
+        if (!renderSubscribeError(textEl, res.content)) {
+          textEl.innerHTML = formatMarkdown(res.content);
+        }
         addMessageCopyButton(assistantEl);
       }
     }
@@ -2937,6 +2948,54 @@ function appendVerboseToolResult(name, result) {
 // UI Helpers
 // ==========================================================================
 
+// WebBrain Cloud returns a 402 with a trailing "Subscribe for more usage: <url>"
+// line once the free daily allowance runs out. Detect that shape so we can turn
+// the bare URL into a real Subscribe button instead of making the user copy it.
+const SUBSCRIBE_ERROR_RE = /Subscribe for more usage:\s*(https?:\/\/\S+)/i;
+
+function parseSubscribeError(content) {
+  if (typeof content !== 'string') return null;
+  const m = content.match(SUBSCRIBE_ERROR_RE);
+  if (!m) return null;
+  // Strip trailing punctuation that markdown/markup might have appended.
+  const url = m[1].replace(/[)\].,"'>]+$/, '');
+  const message = content.slice(0, m.index).replace(/\s+$/, '').trim();
+  return { url, message };
+}
+
+function openSubscribeUrl(url) {
+  if (!url) return;
+  try { chrome.tabs.create({ url }); }
+  catch { window.open(url, '_blank', 'noopener'); }
+}
+
+// Render the quota error as a card with a one-click Subscribe button. Returns
+// true when `content` matched and the card was rendered into `textEl`, so the
+// caller can skip its normal markdown rendering. The URL is stashed on the
+// button's dataset so it survives chat-history restore (messagesEl.innerHTML),
+// where the click closure is lost and rebindSubscribeButtons re-attaches it.
+function renderSubscribeError(textEl, content) {
+  const parsed = parseSubscribeError(content);
+  if (!parsed) return false;
+
+  textEl.innerHTML = '';
+  textEl.classList.add('subscribe-error');
+
+  const msg = document.createElement('div');
+  msg.className = 'subscribe-error-text';
+  msg.textContent = parsed.message || t('sp.subscribe.allowance_used');
+  textEl.appendChild(msg);
+
+  const btn = document.createElement('button');
+  btn.className = 'subscribe-btn';
+  btn.textContent = t('sp.subscribe.btn');
+  btn.dataset.subscribeUrl = parsed.url;
+  btn.dataset.bound = 'true';
+  btn.addEventListener('click', () => openSubscribeUrl(btn.dataset.subscribeUrl));
+  textEl.appendChild(btn);
+  return true;
+}
+
 function addMessage(role, content) {
   const msgEl = document.createElement('div');
   msgEl.className = `message ${role}`;
@@ -2950,7 +3009,7 @@ function addMessage(role, content) {
     textEl.textContent = content;
   } else if (role === 'system') {
     textEl.innerHTML = content || '';
-  } else {
+  } else if (!renderSubscribeError(textEl, content)) {
     textEl.innerHTML = content ? formatMarkdown(content) : '';
   }
 
@@ -3043,7 +3102,9 @@ async function continueAgent() {
     if (currentTabId === tabId && res?.content && assistantEl) {
       const textEl = assistantEl.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
-        textEl.innerHTML = formatMarkdown(res.content);
+        if (!renderSubscribeError(textEl, res.content)) {
+          textEl.innerHTML = formatMarkdown(res.content);
+        }
         addMessageCopyButton(assistantEl);
       }
     }

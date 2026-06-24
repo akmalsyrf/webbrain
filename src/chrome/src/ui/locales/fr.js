@@ -102,6 +102,8 @@ export default {
   'sp.copy.code.title': 'Copier le code',
 
   'sp.error_prefix': 'Erreur : {msg}',
+  'sp.subscribe.allowance_used': 'Quota quotidien gratuit de WebBrain Cloud épuisé.',
+  'sp.subscribe.btn': 'S’abonner',
   'sp.stopped_by_user': '[Arrêté par l\'utilisateur]',
   'sp.stopped_by_user_html': '<em>Arrêté par l\'utilisateur.</em>',
 
