@@ -2489,7 +2489,15 @@ chrome.runtime.onMessage.addListener((msg) => {
     case 'text_delta':
       if (currentAssistantEl) {
         const textEl = currentAssistantEl.querySelector('.message-text');
-        if (textEl) textEl.textContent += data.content;
+        if (textEl && textEl.dataset.suppressToolCallStream !== 'true') {
+          const nextText = textEl.textContent + data.content;
+          if (looksLikeRawToolCallText(nextText)) {
+            textEl.textContent = '';
+            textEl.dataset.suppressToolCallStream = 'true';
+          } else {
+            textEl.textContent = nextText;
+          }
+        }
       }
       scrollToBottom();
       break;
@@ -2498,6 +2506,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       showActivity(friendlyToolLabel(data.name, data.args));
       showInspectionBanner(data.name);
       if (currentAssistantEl) {
+        clearTransientAssistantTextForToolCall();
         if (verboseMode) {
           appendVerboseToolCall(data.name, data.args);
         } else {
@@ -2860,6 +2869,25 @@ function finalizeSteps(assistantEl = currentAssistantEl) {
     const icon = step.querySelector('.step-icon');
     if (icon) { icon.className = 'step-icon check'; icon.textContent = '\u2713'; }
   });
+}
+
+function looksLikeRawToolCallText(text) {
+  return /<\/?(?:tool_call|function|parameter)\b|<\|\/?tool_call|ref_id\s*["']?\s*[:=]\s*["']?ref_\d+/i.test(String(text || ''));
+}
+
+function clearTransientAssistantTextForToolCall() {
+  if (!currentAssistantEl) return;
+  const textEl = currentAssistantEl.querySelector('.message-text');
+  if (!textEl) return;
+  const text = textEl.textContent || '';
+  if (!text.trim()) {
+    delete textEl.dataset.suppressToolCallStream;
+    return;
+  }
+  if (!verboseMode || looksLikeRawToolCallText(text)) {
+    textEl.textContent = '';
+  }
+  delete textEl.dataset.suppressToolCallStream;
 }
 
 
