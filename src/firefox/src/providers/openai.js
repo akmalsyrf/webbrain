@@ -75,10 +75,18 @@ export class OpenAICompatibleProvider extends BaseLLMProvider {
     body.temperature = options.temperature ?? 0.7;
   }
 
+  _webbrainSubscribeUrl() {
+    const url = new URL('https://webbrain.one/subscribe');
+    if (this.config.deviceGuid) {
+      url.searchParams.set('client_reference_id', this.config.deviceGuid);
+    }
+    return url.toString();
+  }
+
   _formatHttpError(status, body) {
     const providerName = (this.config.providerName || '').toLowerCase();
     if (status === 402 && providerName === 'webbrain-cloud') {
-      let subscribeUrl = 'https://webbrain.one/subscribe';
+      let subscribeUrl = this._webbrainSubscribeUrl();
       let message = 'Daily free WebBrain Cloud allowance used.';
       try {
         const parsed = JSON.parse(body || '{}');

@@ -167,13 +167,12 @@ function buildSoftwareJsonLd(dict, locale) {
 
 function buildSubscribeHtml() {
   return `<!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebBrain Cloud Subscribe</title>
   <meta name="robots" content="noindex, follow">
-  <meta http-equiv="refresh" content="4; url=${STRIPE_SUBSCRIBE_URL}">
   <link rel="canonical" href="${SITE_ORIGIN}/subscribe/">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -226,15 +225,25 @@ function buildSubscribeHtml() {
 <body>
   <main>
     <div class="brand">WebBrain Cloud</div>
-    <h1>Stripe'a yonlendiriliyorsunuz</h1>
-    <p>Odeme sayfasi birkac saniye icinde acilacak.</p>
-    <p>Yonlendirme calismazsa <a href="${STRIPE_SUBSCRIBE_URL}">Stripe checkout'u ac</a>.</p>
+    <h1 id="subscribe-title">Redirecting to Stripe</h1>
+    <p id="subscribe-copy">The payment page will open in a few seconds.</p>
+    <p id="checkout-row">If redirect does not work, <a id="checkout-link" href="${STRIPE_SUBSCRIBE_URL}">open Stripe checkout</a>.</p>
     <div class="spinner" aria-hidden="true"></div>
   </main>
   <script>
-    setTimeout(function () {
-      window.location.href = ${JSON.stringify(STRIPE_SUBSCRIBE_URL)};
-    }, 3500);
+    const checkoutUrl = new URL(${JSON.stringify(STRIPE_SUBSCRIBE_URL)});
+    const clientReferenceId = new URLSearchParams(window.location.search).get('client_reference_id');
+    if (clientReferenceId) {
+      checkoutUrl.searchParams.set('client_reference_id', clientReferenceId);
+      document.getElementById('checkout-link').href = checkoutUrl.toString();
+      setTimeout(function () {
+        window.location.href = checkoutUrl.toString();
+      }, 3500);
+    } else {
+      document.getElementById('subscribe-title').textContent = 'Open this link from WebBrain';
+      document.getElementById('subscribe-copy').textContent = 'This subscribe link is missing a device id. Open the subscribe link returned by WebBrain after a quota message.';
+      document.getElementById('checkout-row').style.display = 'none';
+    }
   </script>
 </body>
 </html>

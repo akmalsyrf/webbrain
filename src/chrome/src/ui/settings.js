@@ -145,6 +145,14 @@ function renderCostAllowanceSpent(spent, limit) {
   costSpentValueLabel.textContent = `${formatUsd(spent)} / ${formatUsd(limit)}`;
 }
 
+function webbrainSubscribeUrl(deviceGuid) {
+  const url = new URL('https://webbrain.one/subscribe');
+  if (deviceGuid) {
+    url.searchParams.set('client_reference_id', deviceGuid);
+  }
+  return url.toString();
+}
+
 function isUnlimitedMaxAgentSteps(value) {
   const n = Number(value);
   return Number.isFinite(n) && (n === 0 || n >= MAX_AGENT_STEPS_UNLIMITED_SENTINEL);
@@ -1095,6 +1103,7 @@ function renderProviders() {
       }
     }
 
+    const subscribeHref = id === 'webbrain_cloud' ? webbrainSubscribeUrl(config.deviceGuid) : '';
     const providerNote = id === 'webbrain_cloud'
       ? `<div style="margin-top:10px;padding:10px 12px;border-radius:6px;
                   background:rgba(74,144,217,0.08);border:1px solid rgba(74,144,217,0.22);
@@ -1104,7 +1113,7 @@ function renderProviders() {
            <a href="https://webbrain.one/privacy" target="_blank" rel="noopener noreferrer"
               style="color:var(--accent,#4A90D9);text-decoration:none;">Privacy policy</a>.
            For more usage, subscribe at
-           <a href="https://webbrain.one/subscribe" target="_blank" rel="noopener noreferrer"
+           <a href="${escapeHtml(subscribeHref)}" target="_blank" rel="noopener noreferrer"
               style="color:var(--accent,#4A90D9);text-decoration:none;">webbrain.one/subscribe</a>.
          </div>`
       : '';
