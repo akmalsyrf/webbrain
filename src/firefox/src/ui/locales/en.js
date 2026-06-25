@@ -137,6 +137,7 @@ export default {
   'sp.plan.edit_hint': 'Optional: edit the plan before approving',
   'sp.plan.approved': 'Plan approved — running…',
   'sp.plan.cancelled': 'Plan cancelled.',
+  'sp.plan.expired': 'This plan is no longer awaiting review — the run was cancelled.',
 
   // Permission prompt (structured; returns once/always/deny — no free text)
   'sp.perm.question': 'WebBrain wants to {verb} {host}. Allow it?',

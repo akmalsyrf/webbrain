@@ -30,6 +30,7 @@ import {
   formatPlanMarkdown,
   formatPlanScratchpad,
   userMessageToText,
+  messageContentToText,
 } from './planner.js';
 import { extractFirstJsonObject } from './json-extract.js';
 import { sanitizeText as sanitizePlannerText } from './text-sanitize.js';
@@ -2085,8 +2086,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const responsePromise = new Promise((resolve) => {
       tabPending.set(planId, { resolve, ts: Date.now() });
     });
+    let timeoutId = null;
     const timeoutPromise = new Promise((resolve) => {
-      setTimeout(() => resolve({
+      timeoutId = setTimeout(() => resolve({
         action: 'reject',
         cancelled: true,
         reason: 'plan review timed out',
@@ -2097,20 +2099,34 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         onUpdate('plan_review', { planId, plan, markdown });
       } catch {}
     }
-    const response = await Promise.race([responsePromise, timeoutPromise]);
-    tabPending.delete(planId);
-    if (!tabPending.size) this._pendingPlans.delete(tabId);
-    return response;
+    try {
+      return await Promise.race([responsePromise, timeoutPromise]);
+    } finally {
+      // Cancel the 10-minute timer once the race settles so a fast approval
+      // doesn't leave an armed timer (and its captured resolve/plan closure)
+      // alive for up to 10 minutes.
+      if (timeoutId != null) clearTimeout(timeoutId);
+      tabPending.delete(planId);
+      if (!tabPending.size) this._pendingPlans.delete(tabId);
+    }
   }
 
-  async _startTraceRun(tabId, userMessage, mode, provider) {
-    let tabUrl = '';
-    let tabTitle = '';
+  /**
+   * Fetch the tab's url/title, tolerating a missing tab. Returns empty strings
+   * on failure so callers never have to guard. Centralized so the planner gate
+   * and trace start can share one fetch instead of hitting browser.tabs.get twice.
+   */
+  async _getTabUrlTitle(tabId) {
     try {
       const tab = await browser.tabs.get(tabId);
-      tabUrl = tab?.url || '';
-      tabTitle = tab?.title || '';
-    } catch {}
+      return { tabUrl: tab?.url || '', tabTitle: tab?.title || '' };
+    } catch {
+      return { tabUrl: '', tabTitle: '' };
+    }
+  }
+
+  async _startTraceRun(tabId, userMessage, mode, provider, tabInfo = null) {
+    const { tabUrl, tabTitle } = tabInfo || await this._getTabUrlTitle(tabId);
     // Tracing must never break a run: a recorder failure returns null and the
     // run proceeds untraced rather than throwing out of the message path.
     let runId = null;
@@ -2166,21 +2182,24 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return digest.length > maxChars ? `…${digest.slice(digest.length - maxChars)}` : digest;
   }
 
-  async _maybeRunPlannerGate(tabId, messages, enriched, onUpdate, mode, costState, runId) {
-    if (mode !== 'act' || !this.planBeforeAct) {
-      messages.push(enriched);
-      return { proceed: true };
-    }
+  async _maybeRunPlannerGate(tabId, messages, enriched, onUpdate, mode, costState, runId, tabInfo = null) {
+    const runPlanner = mode === 'act' && this.planBeforeAct;
 
-    const historyDigest = this._buildPlannerHistoryDigest(messages);
-    const gate = await this._runPlannerGate(tabId, enriched, onUpdate, costState, runId, historyDigest);
+    // Snapshot prior turns for the planner digest BEFORE appending, then always
+    // record the user's turn first so a planner failure (or a throw while
+    // building the digest) can never drop the just-typed message from the
+    // transcript.
+    const priorMessages = runPlanner ? messages.slice() : null;
+    messages.push(enriched);
+    if (!runPlanner) return { proceed: true };
+
+    const historyDigest = this._buildPlannerHistoryDigest(priorMessages);
+    const gate = await this._runPlannerGate(tabId, enriched, onUpdate, costState, runId, historyDigest, tabInfo);
     if (!gate.proceed) {
-      messages.push(enriched);
       messages.push({ role: 'assistant', content: gate.message || 'Task cancelled.' });
       return { proceed: false, message: gate.message || 'Task cancelled.' };
     }
 
-    messages.push(enriched);
     if (gate.approvedScratchpadText) {
       const scratchResult = this._scratchpadWrite(tabId, { text: gate.approvedScratchpadText });
       if (!scratchResult?.success) {
@@ -2194,20 +2213,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
         // Note: the "Plan approved — running…" confirmation is rendered locally
         // by submitPlanReview in the sidepanel, so there's no plan_approved
-        // agent_update to emit here (no handler consumed it). (#3)
+        // agent_update to emit here (no handler consumed it).
       }
     }
     return { proceed: true };
   }
 
-  async _runPlannerGate(tabId, enriched, onUpdate, costState, runId = null, historyDigest = '') {
-    let tabUrl = '';
-    let tabTitle = '';
-    try {
-      const tab = await browser.tabs.get(tabId);
-      tabUrl = tab?.url || '';
-      tabTitle = tab?.title || '';
-    } catch {}
+  async _runPlannerGate(tabId, enriched, onUpdate, costState, runId = null, historyDigest = '', tabInfo = null) {
+    const { tabUrl, tabTitle } = tabInfo || await this._getTabUrlTitle(tabId);
 
     onUpdate('thinking', { step: 0, note: 'Planning…' });
 
@@ -2260,7 +2273,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const markdown = formatPlanMarkdown(plan);
       const scheduledPolicy = this.scheduledRunPolicies.get(tabId);
       if (scheduledPolicy?.autoApprovePlanReview === true) {
-        const approvedScratchpadText = formatPlanScratchpad(plan, '');
+        const approvedScratchpadText = formatPlanScratchpad(plan, '', markdown);
         return { proceed: true, approvedScratchpadText, planId };
       }
       const choice = await this._waitForPlanReview(tabId, planId, plan, markdown, onUpdate);
@@ -2272,7 +2285,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         return { proceed: false, message: 'Task cancelled — plan was not approved.' };
       }
 
-      const approvedScratchpadText = formatPlanScratchpad(plan, choice?.editedText);
+      const approvedScratchpadText = formatPlanScratchpad(plan, choice?.editedText, markdown);
       return { proceed: true, approvedScratchpadText, planId };
     } catch (e) {
       if (this._isCostAllowanceError(e)) {
@@ -2949,11 +2962,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   _messageText(content) {
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      return content.map(part => typeof part?.text === 'string' ? part.text : '').filter(Boolean).join('\n');
-    }
-    return '';
+    return messageContentToText(content);
   }
 
   _originalTaskText(tabId) {
@@ -5384,12 +5393,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // call is recorded under this run; otherwise it's started just before the
     // loop. _startTraceRun is the single source of truth (no duplicate tab
     // fetch / startRun payload). (#6)
+    let plannerTabInfo = null;
     if (mode === 'act' && this.planBeforeAct) {
-      runId = await this._startTraceRun(tabId, userMessage, mode, provider);
+      // Fetch the tab url/title once and reuse it for both the trace start and
+      // the planner gate, instead of fetching the same tab twice.
+      plannerTabInfo = await this._getTabUrlTitle(tabId);
+      runId = await this._startTraceRun(tabId, userMessage, mode, provider, plannerTabInfo);
     }
 
     const gateOutcome = await this._maybeRunPlannerGate(
-      tabId, messages, enriched, onUpdate, mode, costState, runId,
+      tabId, messages, enriched, onUpdate, mode, costState, runId, plannerTabInfo,
     );
     if (!gateOutcome.proceed) {
       _traceStatus = 'cancelled';
@@ -5671,12 +5684,16 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // loop — runs inside this try so the finally always ends the trace run and
     // clears currentRunId, even on an early throw during setup. (#2)
     try {
+    let plannerTabInfo = null;
     if (mode === 'act' && this.planBeforeAct) {
-      runId = await this._startTraceRun(tabId, userMessage, mode, provider);
+      // Fetch the tab url/title once and reuse it for both the trace start and
+      // the planner gate, instead of fetching the same tab twice.
+      plannerTabInfo = await this._getTabUrlTitle(tabId);
+      runId = await this._startTraceRun(tabId, userMessage, mode, provider, plannerTabInfo);
     }
 
     const gateOutcome = await this._maybeRunPlannerGate(
-      tabId, messages, enriched, onUpdate, mode, costState, runId,
+      tabId, messages, enriched, onUpdate, mode, costState, runId, plannerTabInfo,
     );
     if (!gateOutcome.proceed) {
       return finish(gateOutcome.message || 'Task cancelled.', 'cancelled');

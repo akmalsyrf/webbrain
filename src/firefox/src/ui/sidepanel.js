@@ -2442,14 +2442,31 @@ function submitPlanReview(card, tabId, planId, action, editedText) {
   }
   const note = document.createElement('div');
   note.className = 'plan-review-note';
-  note.textContent = action === 'approve'
-    ? (typeof t === 'function' ? t('sp.plan.approved') : 'Plan approved — running…')
-    : (typeof t === 'function' ? t('sp.plan.cancelled') : 'Plan cancelled.');
+  const approvedText = () => (typeof t === 'function' ? t('sp.plan.approved') : 'Plan approved — running…');
+  const cancelledText = () => (typeof t === 'function' ? t('sp.plan.cancelled') : 'Plan cancelled.');
+  const expiredText = () => (typeof t === 'function' ? t('sp.plan.expired') : 'This plan is no longer awaiting review — the run was cancelled.');
+  // Cancellation is local and always valid. For approval, wait for the
+  // background to confirm a pending plan actually matched: if the agent-side
+  // gate already resolved (timeout/abort/cleared) nothing will run, so claiming
+  // "running…" would be a lie — show the expired notice instead.
+  if (action !== 'approve') {
+    note.textContent = cancelledText();
+  }
   card.appendChild(note);
   scrollToBottom();
 
   sendToBackground('plan_response', { tabId, planId, decision: action, editedText })
-    .catch(() => {});
+    .then((res) => {
+      if (action !== 'approve') return;
+      note.textContent = res && res.matched ? approvedText() : expiredText();
+      scrollToBottom();
+    })
+    .catch(() => {
+      if (action === 'approve') {
+        note.textContent = expiredText();
+        scrollToBottom();
+      }
+    });
 }
 
 function submitClarify(card, tabId, clarifyId, answer, source) {
