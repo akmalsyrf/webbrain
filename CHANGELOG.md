@@ -4,6 +4,14 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / `manifest.json` version.
 
+## [17.4.0] - 2026-06-25
+
+### Added
+- Added `/edit-scratchpad <text>` in the Chrome and Firefox side panels so users can append notes to the current conversation scratchpad from slash-command autocomplete and help.
+
+### Changed
+- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 17.4.0.
+
 ## [17.3.0] - 2026-06-24
 
 ### Fixed
