@@ -154,7 +154,7 @@ export function recordLLMRequest(runId, step, payload) {
   return _appendEvent(runId, 'llm_request', { step, ...payload });
 }
 
-export function recordLLMResponse(runId, step, { content, toolCalls, usage, latencyMs, model }) {
+export function recordLLMResponse(runId, step, { content, toolCalls, usage, latencyMs, model, phase }) {
   return _appendEvent(runId, 'llm_response', {
     step,
     content: content || null,
@@ -166,6 +166,9 @@ export function recordLLMResponse(runId, step, { content, toolCalls, usage, late
     usage: usage || null,
     latencyMs: latencyMs || null,
     model: model || null,
+    // Carry the phase label (e.g. 'planner') so a pre-loop planner call recorded
+    // at step 0 is distinguishable from the agent loop's first step-0 response.
+    ...(phase ? { phase } : {}),
   });
 }
 

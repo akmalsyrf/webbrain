@@ -1620,6 +1620,27 @@ function bindPlanReviewCard(card) {
   const textarea = card.querySelector('.plan-review-edit');
   const originalMarkdown = String(textarea?.defaultValue || textarea?.value || '').trim();
 
+  // A <textarea>'s live `.value` is NOT captured when the conversation is
+  // persisted via innerHTML (only its defaultValue / child text is), so edits
+  // made before a tab switch would be lost on restore — and silently pinned
+  // un-edited on approval. Mirror live edits into a data attribute on the card
+  // (which DOES survive the persist→restore round-trip) and rehydrate the
+  // textarea from it on rebind. (#3)
+  if (textarea) {
+    const saved = card.dataset.editedText;
+    if (saved != null && saved !== '') textarea.value = saved;
+    if (!textarea.dataset.bound) {
+      textarea.dataset.bound = 'true';
+      textarea.addEventListener('input', () => {
+        card.dataset.editedText = textarea.value;
+        // The persist observer only watches childList/characterData, not
+        // attributes, so the data attribute above won't trigger a save on its
+        // own — schedule one so the edit reaches storage before a panel reload.
+        schedulePersist();
+      });
+    }
+  }
+
   const approveBtn = card.querySelector('.plan-review-approve');
   if (approveBtn && !approveBtn.dataset.bound) {
     approveBtn.dataset.bound = 'true';
@@ -2630,7 +2651,13 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case 'run_complete':
       if (currentAssistantEl) finalizeSteps(currentAssistantEl);
-      clearPlanReviewActiveRun(currentAssistantEl);
+      // When a local send is still in flight (isProcessing), its own finally
+      // resets run state and refreshes recommended actions *after* the final
+      // text renders — so only finalize the steps visually here and let that
+      // owner tear down, avoiding a premature double refresh/drain. When nothing
+      // is processing locally (e.g. the panel remounted on a tab switch away and
+      // back mid-run), run_complete is the sole finalizer and must tear down. (#4)
+      if (!isProcessing) clearPlanReviewActiveRun(currentAssistantEl);
       scrollToBottom();
       break;
 
@@ -2819,7 +2846,11 @@ function renderPlanReviewCard(data) {
   titleEl.textContent = typeof t === 'function' ? t('sp.plan.title') : 'Review plan';
   card.appendChild(titleEl);
 
-  const originalMarkdown = String(data.markdown || data.plan?.summary || '').slice(0, 6000);
+  // Match the agent-side scratchpad cap (formatPlanScratchpad keeps up to 8000
+  // chars). A lower display cap would silently drop the plan's tail the moment
+  // the user edits a long plan, since the edited textarea becomes the pinned
+  // text. (#5)
+  const originalMarkdown = String(data.markdown || data.plan?.summary || '').slice(0, 8000);
 
   const editHint = document.createElement('div');
   editHint.className = 'plan-review-hint';

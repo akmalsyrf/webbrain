@@ -2308,7 +2308,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         return { proceed: false, message: '[Stopped by user]' };
       }
       let plan = parsePlanFromContent(result.content);
-      if (!plan && (!String(result.content || '').trim() || this._plannerReasoningContent(result))) {
+      // Retry whenever the first attempt yields no parseable plan — empty
+      // output, thinking-only output, OR non-JSON prose ("Sure, here's the
+      // plan…"). The repair prompt exists precisely to coerce JSON out of that
+      // prose case, so it must not be gated on emptiness/reasoning. (#1)
+      if (!plan) {
         onUpdate('thinking', { step: 0, note: 'Planning… retrying JSON output' });
         result = await this._chatWithCostAllowance(
           provider,
@@ -2317,6 +2321,12 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           costState,
         );
         plan = parsePlanFromContent(result.content);
+      }
+      // The retry above is a paid LLM call that does not honor the abort flag
+      // itself; re-check before pinning the plan or showing the review card so
+      // a Stop pressed during the retry isn't ignored until after approval. (#2)
+      if (this._checkAbort(tabId)) {
+        return { proceed: false, message: '[Stopped by user]' };
       }
       if (!plan) {
         const msg = 'Plan before Act is enabled but the planner could not produce a valid structured plan. Task cancelled — no actions were taken.';
