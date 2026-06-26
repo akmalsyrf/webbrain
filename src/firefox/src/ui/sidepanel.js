@@ -2044,8 +2044,10 @@ async function sendMessage(extraChatParams) {
     syncSendButtonState();
     await parseSlashCommands(text, tabId);
     if (currentTabId === tabId) {
-      inputEl.value = '';
-      autoResizeInput();
+      if (!inputEl.value.trim() || inputEl.value.trim() === text) {
+        inputEl.value = '';
+        autoResizeInput();
+      }
       syncSendButtonState();
     }
     return true;

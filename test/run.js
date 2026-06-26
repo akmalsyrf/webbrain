@@ -3326,6 +3326,11 @@ test('sidepanel allows only safe slash commands while busy', () => {
       `${label}: busy send preflight should run safe slash commands without starting chat`,
     );
     assert.match(
+      panel,
+      /await parseSlashCommands\(text, tabId\);[\s\S]*?if \(currentTabId === tabId\) \{[\s\S]*?if \(!inputEl\.value\.trim\(\) \|\| inputEl\.value\.trim\(\) === text\) \{[\s\S]*?inputEl\.value = '';[\s\S]*?autoResizeInput\(\);[\s\S]*?\}[\s\S]*?syncSendButtonState\(\);[\s\S]*?\}/,
+      `${label}: async busy slash completion should preserve newly typed drafts`,
+    );
+    assert.match(
       locale,
       /'sp\.slash\.busy_only_oob': 'Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run while WebBrain is busy\./,
       `${label}: busy slash notice should be localized`,
