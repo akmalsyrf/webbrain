@@ -45,6 +45,10 @@ const DEFAULT_OUT_DIR = path.join(REPO_ROOT, 'web', 'blog');
 const DEFAULT_SITE_ORIGIN = 'https://webbrain.one';
 const DEFAULT_AUTHOR = 'Emre Sokullu';
 const DEFAULT_AUTHOR_URL = 'https://emresokullu.com';
+const SOCIAL_IMAGE_PATH = '/og-image.png';
+const TWITTER_IMAGE_PATH = '/twitter-image.png';
+const SOCIAL_IMAGE_WIDTH = 1200;
+const SOCIAL_IMAGE_HEIGHT = 630;
 
 const LOCALES = [
   { code: 'en', label: 'English', path: '/' },
@@ -1130,6 +1134,8 @@ function sharedHead({ title, description, canonical, ogType = 'website', ogTitle
   const keywordsTag = keywords && keywords.length
     ? `\n  <meta name="keywords" content="${escAttr(keywords.join(', '))}">`
     : '';
+  const socialImageUrl = `${site}${SOCIAL_IMAGE_PATH}`;
+  const twitterImageUrl = `${site}${TWITTER_IMAGE_PATH}`;
 
   return `<head>
   <meta charset="UTF-8">
@@ -1140,10 +1146,17 @@ function sharedHead({ title, description, canonical, ogType = 'website', ogTitle
   <meta property="og:description" content="${escAttr(ogDescription || description)}">
   <meta property="og:type" content="${escAttr(ogType)}">
   <meta property="og:url" content="${escAttr(canonical)}">
-  <meta property="og:image" content="${escAttr(site)}/og-image.svg">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta property="og:image" content="${escAttr(socialImageUrl)}">
+  <meta property="og:image:secure_url" content="${escAttr(socialImageUrl)}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="${SOCIAL_IMAGE_WIDTH}">
+  <meta property="og:image:height" content="${SOCIAL_IMAGE_HEIGHT}">
+  <meta property="og:image:alt" content="WebBrain brain emoji icon">
+  <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="${escAttr(twitterTitle || ogTitle || title)}">
   <meta name="twitter:description" content="${escAttr(twitterDescription || ogDescription || description)}">
+  <meta name="twitter:image" content="${escAttr(twitterImageUrl)}">
+  <meta name="twitter:image:alt" content="WebBrain brain emoji icon">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="canonical" href="${escAttr(canonical)}">
   <!-- Blog is English-only; alternates point to locale homepages. -->
@@ -1158,6 +1171,7 @@ ${escJsonLd(jsonLd)}
 
 function renderPostPage(post, args) {
   const canonical = `${args.site}${post.urlPath}`;
+  const socialImageUrl = `${args.site}${SOCIAL_IMAGE_PATH}`;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -1169,7 +1183,7 @@ function renderPostPage(post, args) {
       url: post.authorUrl,
     },
     datePublished: post.date,
-    image: `${args.site}/og-image.svg`,
+    image: socialImageUrl,
     publisher: {
       '@type': 'Organization',
       name: 'WebBrain',
@@ -1223,6 +1237,7 @@ ${post.bodyHtml}
 
 function renderIndexPage(posts, args) {
   const canonical = `${args.site}/blog`;
+  const socialImageUrl = `${args.site}${SOCIAL_IMAGE_PATH}`;
   const description = 'Engineering notes from WebBrain - the open-source AI browser agent.';
   const cards = posts.map((post) => (
     `<a href="${escAttr(post.urlPath)}" class="post-card">
@@ -1238,6 +1253,7 @@ function renderIndexPage(posts, args) {
     name: 'WebBrain Blog',
     description,
     url: canonical,
+    image: socialImageUrl,
     blogPost: posts.map((post) => ({
       '@type': 'BlogPosting',
       headline: post.title,
