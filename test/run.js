@@ -3284,13 +3284,46 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
     assert.equal(staleReturnIdx < sendIdx, true, `${label}: stale-tab residual guard must run before chat dispatch`);
     assert.match(
       sendBody,
-      /if \(renderToCurrentTab\) \{\s*isProcessing = true;\s*abortRequested = false;\s*sendBtn\.disabled = true;\s*inputEl\.value = '';\s*autoResizeInput\(\);[\s\S]*?addMessage\('user', text\);[\s\S]*?currentAssistantEl = assistantEl;[\s\S]*?\}/,
+      /if \(renderToCurrentTab\) \{\s*isProcessing = true;\s*abortRequested = false;\s*inputEl\.value = '';\s*autoResizeInput\(\);\s*syncSendButtonState\(\);[\s\S]*?addMessage\('user', text\);[\s\S]*?currentAssistantEl = assistantEl;[\s\S]*?\}/,
       `${label}: stale-tab residual sends should not mutate or render chat UI in the currently visible tab`,
     );
     assert.doesNotMatch(
       sendBody,
       /sendToBackground\('chat', \{[\s\S]*?tabId: currentTabId/,
       `${label}: chat dispatch should not read currentTabId after slash parsing`,
+    );
+  }
+});
+
+test('sidepanel allows only safe slash commands while busy', () => {
+  const allowed = ['/help', '/show-scratchpad', '/list-schedules', '/screenshot', '/export', '/verbose'];
+  for (const [label, panelRel, localeRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/locales/en.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+    for (const command of allowed) {
+      assert.match(
+        panel,
+        new RegExp(`const OUT_OF_BAND_SLASH_COMMANDS = new Set\\(\\[[\\s\\S]*?'${command}'`),
+        `${label}: ${command} should be allowed while busy`,
+      );
+    }
+    assert.match(
+      panel,
+      /function syncSendButtonState\(\) \{[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = false;[\s\S]*?\}[\s\S]*?sendBtn\.disabled = !isOutOfBandSlashDraft\(inputEl\?\.value \|\| ''\);[\s\S]*?\}/,
+      `${label}: send button state should permit only out-of-band slash drafts while busy`,
+    );
+    assert.match(
+      panel,
+      /if \(isProcessing\) \{[\s\S]*?if \(!isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}/,
+      `${label}: busy send preflight should run safe slash commands without starting chat`,
+    );
+    assert.match(
+      locale,
+      /'sp\.slash\.busy_only_oob': 'Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run while WebBrain is busy\./,
+      `${label}: busy slash notice should be localized`,
     );
   }
 });

@@ -347,7 +347,16 @@ const SLASH_COMMANDS = [
   { value: '/ask', descriptionKey: 'sp.slash.ask' },
   { value: '/plan', descriptionKey: 'sp.slash.plan' },
 ];
+const OUT_OF_BAND_SLASH_COMMANDS = new Set([
+  '/help',
+  '/show-scratchpad',
+  '/list-schedules',
+  '/screenshot',
+  '/export',
+  '/verbose',
+]);
 const SLASH_COMMAND_OPTION_ID_PREFIX = 'slash-command-option-';
+const BUSY_SLASH_NOTICE_COOLDOWN_MS = 3000;
 let placeholderRotationIndex = 0;
 let placeholderRotationTimer = null;
 // Tab Recorder (v7.4) — recording is started entirely via the agent's
@@ -372,6 +381,7 @@ let providerTestRequestId = 0;
 let recommendedActionsCollapsed = false;
 let slashCommandMatches = [];
 let slashCommandSelectedIndex = 0;
+let busySlashNoticeLastShownAt = 0;
 const {
   acceptContextMenuPrompt,
   drainQueuedContextMenuPrompts,
@@ -533,6 +543,7 @@ function restoreInputDraftForTab(tabId) {
   inputEl.value = draft;
   autoResizeInput();
   updateSlashCommandAutocomplete();
+  syncSendButtonState();
 }
 
 function renderClearedConversationForTab(tabId) {
@@ -544,6 +555,7 @@ function renderClearedConversationForTab(tabId) {
   messagesEl.innerHTML = '';
   inputEl.value = '';
   autoResizeInput();
+  syncSendButtonState();
   addMessage('system', t('sp.cleared_message'));
   refreshScheduledJobs({ tabId });
   refreshRecommendedActions();
@@ -880,7 +892,7 @@ function settleScheduledRun(event, job) {
   const ownsActiveRun = !currentAssistantEl || currentAssistantEl === assistantEl;
   if (ownsActiveRun) {
     isProcessing = false;
-    sendBtn.disabled = false;
+    syncSendButtonState();
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     abortRequested = false;
@@ -910,7 +922,7 @@ function handleScheduledJobEvent(data, tabId) {
   } else if (event === 'running') {
     isProcessing = true;
     abortRequested = false;
-    sendBtn.disabled = true;
+    syncSendButtonState();
     currentAssistantEl = addMessage('assistant', '');
     if (jobId) currentAssistantEl.dataset.scheduledJobId = jobId;
     showActivity(t('sp.scheduled.running', { title }));
@@ -926,10 +938,10 @@ function handleScheduledJobEvent(data, tabId) {
     abortRequested = false;
     if (currentAssistantEl) {
       isProcessing = true;
-      sendBtn.disabled = true;
+      syncSendButtonState();
     } else {
       isProcessing = false;
-      sendBtn.disabled = false;
+      syncSendButtonState();
       addMessage('system', tSystemHtml('sp.scheduled.needs_user_input', { title }));
       drainQueuedContextMenuPromptsAfterPendingTabSwitch();
     }
@@ -1911,6 +1923,7 @@ function handleSlashCommandKeydown(e) {
 function handleInput() {
   autoResizeInput();
   updateSlashCommandAutocomplete();
+  syncSendButtonState();
 }
 
 // --- Message Sending ---
@@ -1938,6 +1951,38 @@ function setApiMutationsAllowedForTab(tabId, allowed) {
 function syncApiMutationsAllowedForCurrentTab() {
   apiMutationsAllowed = isApiMutationsAllowedForTab(currentTabId);
   updateApiBadge();
+}
+
+function getLeadingSlashCommand(value) {
+  const text = String(value || '').trimStart();
+  const lowerText = text.toLowerCase();
+  const command = SLASH_COMMANDS.find((candidate) => {
+    if (!lowerText.startsWith(candidate.value)) return false;
+    const next = text.charAt(candidate.value.length);
+    return !next || /\s/.test(next);
+  });
+  return command?.value || null;
+}
+
+function isOutOfBandSlashDraft(value) {
+  const command = getLeadingSlashCommand(value);
+  return !!command && OUT_OF_BAND_SLASH_COMMANDS.has(command);
+}
+
+function syncSendButtonState() {
+  if (!sendBtn) return;
+  if (!isProcessing) {
+    sendBtn.disabled = false;
+    return;
+  }
+  sendBtn.disabled = !isOutOfBandSlashDraft(inputEl?.value || '');
+}
+
+function showBusySlashCommandNotice() {
+  const now = Date.now();
+  if (now - busySlashNoticeLastShownAt < BUSY_SLASH_NOTICE_COOLDOWN_MS) return;
+  busySlashNoticeLastShownAt = now;
+  addMessage('system', t('sp.slash.busy_only_oob'));
 }
 
 /**
@@ -2173,8 +2218,26 @@ function updateApiBadge() {
 
 async function sendMessage(extraChatParams) {
   let text = inputEl.value.trim();
-  if (!text || isProcessing) return;
+  if (!text) return;
   const tabId = currentTabId;
+  if (isProcessing) {
+    if (!isOutOfBandSlashDraft(text)) {
+      showBusySlashCommandNotice();
+      return false;
+    }
+    saveInputDraftForTab(tabId, '');
+    hideSlashCommandAutocomplete();
+    inputEl.value = '';
+    autoResizeInput();
+    syncSendButtonState();
+    await parseSlashCommands(text, tabId);
+    if (currentTabId === tabId) {
+      inputEl.value = '';
+      autoResizeInput();
+      syncSendButtonState();
+    }
+    return true;
+  }
   const modeForSend = /^\/(?:ask|plan)\b/i.test(text) ? 'ask' : agentMode;
   const apiMutationsAllowedForSend = isApiMutationsAllowedForTab(tabId) || /^\/allow-api\b/i.test(text);
   saveInputDraftForTab(tabId, '');
@@ -2184,6 +2247,7 @@ async function sendMessage(extraChatParams) {
   if (text.startsWith('/')) {
     inputEl.value = '';
     autoResizeInput();
+    syncSendButtonState();
   }
 
   // Parse any leading slash command. parseSlashCommands may strip the
@@ -2199,6 +2263,7 @@ async function sendMessage(extraChatParams) {
   if (!text) {
     inputEl.value = '';
     autoResizeInput();
+    syncSendButtonState();
     return;
   }
 
@@ -2206,9 +2271,9 @@ async function sendMessage(extraChatParams) {
   if (renderToCurrentTab) {
     isProcessing = true;
     abortRequested = false;
-    sendBtn.disabled = true;
     inputEl.value = '';
     autoResizeInput();
+    syncSendButtonState();
     hideRecommendedActions();
     addMessage('user', text);
     showActivity(t('sp.activity.thinking'));
@@ -2257,7 +2322,7 @@ async function sendMessage(extraChatParams) {
     if (renderToCurrentTab) {
       isProcessing = false;
       abortRequested = false;
-      sendBtn.disabled = false;
+      syncSendButtonState();
       hideActivity();
     }
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
@@ -2779,14 +2844,14 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
       currentAssistantEl = msgEl;
     }
     isProcessing = true;
-    sendBtn.disabled = true;
+    syncSendButtonState();
     showActivity(t('sp.activity.thinking'));
   }
   sendToBackground('clarify_response', { tabId, clarifyId, answer, source })
     .catch(() => {
       if (isScheduledClarify) {
         isProcessing = false;
-        sendBtn.disabled = false;
+        syncSendButtonState();
         hideActivity();
         drainQueuedContextMenuPromptsAfterPendingTabSwitch();
       }
@@ -3116,7 +3181,7 @@ async function continueAgent() {
 
   isProcessing = true;
   abortRequested = false;
-  sendBtn.disabled = true;
+  syncSendButtonState();
 
   const assistantEl = addMessage('assistant', '');
   currentAssistantEl = assistantEl;
@@ -3145,7 +3210,7 @@ async function continueAgent() {
     if (currentTabId === tabId) finalizeSteps(assistantEl);
     isProcessing = false;
     abortRequested = false;
-    sendBtn.disabled = false;
+    syncSendButtonState();
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     if (currentTabId === tabId) scrollToBottom();
@@ -3531,7 +3596,7 @@ async function abortRun() {
         }
       }
       isProcessing = false;
-      sendBtn.disabled = false;
+      syncSendButtonState();
       hideActivity();
       currentAssistantEl = null;
       abortRequested = false;
