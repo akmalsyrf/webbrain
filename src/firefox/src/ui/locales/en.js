@@ -183,6 +183,8 @@ export default {
   'tool.type_text': 'Typing',
   'tool.scroll': 'Scrolling',
   'tool.navigate': 'Navigating',
+  'tool.go_back': 'Going back',
+  'tool.go_forward': 'Going forward',
   'tool.extract_data': 'Extracting data',
   'tool.inspect_element_styles': 'Inspecting styles',
   'tool.read_page_source': 'Reading page source',

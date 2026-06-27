@@ -576,9 +576,9 @@ export class Agent {
     return { kind: 'nudge', warning };
   }
 
-  static NAV_TOOLS = new Set(['navigate', 'new_tab']);
-  static STATE_CHANGE_TOOLS = new Set(['navigate', 'new_tab', 'click', 'click_ax', 'type_text', 'type_ax', 'set_field', 'press_keys', 'scroll', 'hover', 'drag_drop']);
-  static NAV_PRONE_TOOLS = new Set(['click', 'click_ax', 'navigate', 'execute_js', 'iframe_click']);
+  static NAV_TOOLS = new Set(['navigate', 'new_tab', 'go_back', 'go_forward']);
+  static STATE_CHANGE_TOOLS = new Set(['navigate', 'new_tab', 'go_back', 'go_forward', 'click', 'click_ax', 'type_text', 'type_ax', 'set_field', 'press_keys', 'scroll', 'hover', 'drag_drop']);
+  static NAV_PRONE_TOOLS = new Set(['click', 'click_ax', 'navigate', 'go_back', 'go_forward', 'execute_js', 'iframe_click']);
 
   // System prompt for the dedicated "vision model" sub-call. Kept terse and
   // format-oriented so the description is actually useful to the planning
@@ -656,8 +656,50 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!url) return '';
     try {
       const u = new URL(url);
-      return u.origin + u.pathname;
+      return u.origin + u.pathname + u.search + u.hash;
     } catch (e) { return url; }
+  }
+
+  /**
+   * Shared unsaved-changes guard for tools that leave the current page
+   * (navigate / go_back / go_forward). Leaving discards in-progress form state
+   * — attached files reset, filled fields clear — so before navigating away we
+   * probe the live DOM and block unless the caller passed force:true.
+   *
+   * Returns a blocking tool result ({ success:false, blockedUnsavedChanges })
+   * when there is meaningful unsaved state, or null when it's safe to proceed.
+   */
+  async _probeUnsavedChanges(tabId, toolName = 'navigate') {
+    try {
+      const probeCode = `
+        (() => {
+          let attachedFiles = 0;
+          for (const inp of document.querySelectorAll('input[type=file]')) {
+            if (inp.files && inp.files.length) attachedFiles += inp.files.length;
+          }
+          let dirtyFields = 0;
+          for (const el of document.querySelectorAll('input, textarea')) {
+            const t = (el.type || '').toLowerCase();
+            if (['file','hidden','submit','button','reset','search','checkbox','radio'].includes(t)) continue;
+            if (el.value && el.value !== el.defaultValue) dirtyFields++;
+          }
+          return { attachedFiles, dirtyFields };
+        })()
+      `;
+      const probeResults = await browser.tabs.executeScript(tabId, { code: probeCode });
+      const d = (probeResults && probeResults[0]) || {};
+      if (d.attachedFiles > 0 || d.dirtyFields >= 2) {
+        const parts = [];
+        if (d.attachedFiles > 0) parts.push(`${d.attachedFiles} attached file(s)`);
+        if (d.dirtyFields > 0) parts.push(`${d.dirtyFields} filled field(s)`);
+        const detail = parts.join(', ');
+        const error = toolName === 'navigate'
+          ? `Navigation blocked: the current page has unsaved changes (${detail}) that leaving will discard. Re-navigating resets forms like GitHub's "New release" page — you would lose the tag, title, and attached binaries, then have to start over. Finish the current action first (e.g. click "Publish release"). If discarding is genuinely intended, call navigate again with force:true.`
+          : `${toolName} blocked: the current page has unsaved changes (${detail}) that leaving will discard. Finish the current action first, or call ${toolName} again with force:true to discard them intentionally.`;
+        return { success: false, blockedUnsavedChanges: true, error };
+      }
+    } catch { /* probe failed (e.g. privileged page) — nothing to protect, allow navigation */ }
+    return null;
   }
 
   async _getVisibleInteractiveElements(tabId) {
@@ -885,7 +927,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         const afterUrl = await this._currentUrl(tabId);
         const beforeNorm = this._normalizeUrl(beforeUrl);
         const afterNorm = this._normalizeUrl(afterUrl);
-        if (beforeNorm && afterNorm && beforeNorm !== afterNorm && fnName !== 'navigate') {
+        if (beforeNorm && afterNorm && beforeNorm !== afterNorm && !Agent.NAV_TOOLS.has(fnName)) {
           navNotices.push({ before: beforeUrl, after: afterUrl, viaTool: fnName });
         }
       }
@@ -3665,6 +3707,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         if (parsed.url) return `now on ${this._truncate(parsed.url, 110)}`;
         break;
       }
+      case 'go_back':
+      case 'go_forward': {
+        if (parsed.blockedUnsavedChanges) return `${name} blocked: unsaved changes on current page (use force:true to discard)`;
+        if (parsed.success === false) return `${name} failed: ${this._truncate(parsed.error || '', 110)}`;
+        if (parsed.url) return `went ${parsed.direction || (name === 'go_back' ? 'back' : 'forward')} to ${this._truncate(parsed.url, 110)}`;
+        break;
+      }
       case 'upload_file': {
         if (parsed.success === false) return `upload failed: ${this._truncate(parsed.error || '', 110)}`;
         if (parsed.attached) return `uploaded ${this._truncate(parsed.attached.name || '', 60)} (${parsed.attached.size} bytes)`;
@@ -4036,41 +4085,82 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // can't tell its uploads landed will renavigate and destroy its own
       // progress. Detect meaningful unsaved state and block unless forced.
       if (!args.force) {
-        try {
-          const probeCode = `
-            (() => {
-              let attachedFiles = 0;
-              for (const inp of document.querySelectorAll('input[type=file]')) {
-                if (inp.files && inp.files.length) attachedFiles += inp.files.length;
-              }
-              let dirtyFields = 0;
-              for (const el of document.querySelectorAll('input, textarea')) {
-                const t = (el.type || '').toLowerCase();
-                if (['file','hidden','submit','button','reset','search','checkbox','radio'].includes(t)) continue;
-                if (el.value && el.value !== el.defaultValue) dirtyFields++;
-              }
-              return { attachedFiles, dirtyFields };
-            })()
-          `;
-          const probeResults = await browser.tabs.executeScript(tabId, { code: probeCode });
-          const d = (probeResults && probeResults[0]) || {};
-          if (d.attachedFiles > 0 || d.dirtyFields >= 2) {
-            const parts = [];
-            if (d.attachedFiles > 0) parts.push(`${d.attachedFiles} attached file(s)`);
-            if (d.dirtyFields > 0) parts.push(`${d.dirtyFields} filled field(s)`);
-            return {
-              success: false,
-              blockedUnsavedChanges: true,
-              error: `Navigation blocked: the current page has unsaved changes (${parts.join(', ')}) that leaving will discard. Re-navigating resets forms like GitHub's "New release" page — you would lose the tag, title, and attached binaries, then have to start over. Finish the current action first (e.g. click "Publish release"). If discarding is genuinely intended, call navigate again with force:true.`,
-            };
-          }
-        } catch { /* probe failed (e.g. privileged page) — allow navigation */ }
+        const blocked = await this._probeUnsavedChanges(tabId, 'navigate');
+        if (blocked) return blocked;
       }
 
       await browser.tabs.update(tabId, { url: args.url });
       // Wait a moment for navigation
       await new Promise(r => setTimeout(r, 2000));
       return { success: true, url: args.url };
+    }
+
+    if (name === 'go_back' || name === 'go_forward') {
+      const direction = name === 'go_back' ? 'back' : 'forward';
+      // Clamp steps to a sane range; default to a single entry.
+      let steps = Math.floor(Number(args.steps));
+      if (!Number.isFinite(steps) || steps < 1) steps = 1;
+      if (steps > 10) steps = 10;
+
+      let beforeUrl = '';
+      try {
+        const tab = await browser.tabs.get(tabId);
+        beforeUrl = tab?.url || '';
+      } catch {}
+
+      // Internal pages (about:, view-source, extension) have no meaningful
+      // web session history to walk.
+      if (/^(about|moz-extension|view-source|data|chrome):/i.test(beforeUrl)) {
+        return { success: false, error: `${name}: history navigation is not available on internal pages (${beforeUrl || 'unknown'}).` };
+      }
+
+      // Same unsaved-changes guard as navigate — going back/forward leaves the
+      // current page and discards attached files / filled fields.
+      if (!args.force) {
+        const blocked = await this._probeUnsavedChanges(tabId, name);
+        if (blocked) return blocked;
+      }
+
+      // Drive history from the page context (CSP-safe; this is the extension's
+      // injected code, not page eval).
+      let probe = null;
+      try {
+        const delta = direction === 'back' ? -steps : steps;
+        const code = `
+          (() => {
+            const before = location.href;
+            history.go(${delta});
+            return { before };
+          })()
+        `;
+        const results = await browser.tabs.executeScript(tabId, { code });
+        probe = (results && results[0]) || null;
+      } catch (e) {
+        return { success: false, error: `${name}: cannot navigate history on this page (${e.message}).` };
+      }
+      if (!probe) {
+        return { success: false, error: `${name}: history navigation did not run on this page.` };
+      }
+
+      // history.go() commits asynchronously (including bfcache restores), so
+      // wait briefly, then confirm the URL actually changed. If it didn't,
+      // there was no entry in that direction — report failure rather than a
+      // misleading success the model would build on.
+      await new Promise(r => setTimeout(r, 1500));
+      let afterUrl = probe.before;
+      try {
+        const tab = await browser.tabs.get(tabId);
+        if (tab?.url) afterUrl = tab.url;
+      } catch {}
+
+      if (this._normalizeUrl(afterUrl) === this._normalizeUrl(probe.before)) {
+        const dirWord = direction === 'back' ? 'earlier' : 'later';
+        return {
+          success: false,
+          error: `${name}: no ${dirWord} entry in this tab's history (the page did not change).`,
+        };
+      }
+      return { success: true, url: afterUrl, previousUrl: probe.before, direction, steps };
     }
 
     if (name === 'new_tab') {
