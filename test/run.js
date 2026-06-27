@@ -371,6 +371,14 @@ test('click_ax is nav-prone but non-submitting set_field is not', () => {
   }
 });
 
+test('firefox URL normalization preserves query and hash for nav change detection', () => {
+  const agent = new AgentFx({});
+  assert.equal(
+    agent._normalizeUrl('https://example.com/inbox?page=2#/sent'),
+    'https://example.com/inbox?page=2#/sent'
+  );
+});
+
 // ────────────────────────────────────────────────────────────────────────
 // Adapter matching tests
 // ────────────────────────────────────────────────────────────────────────

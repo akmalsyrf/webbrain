@@ -656,7 +656,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!url) return '';
     try {
       const u = new URL(url);
-      return u.origin + u.pathname;
+      return u.origin + u.pathname + u.search + u.hash;
     } catch (e) { return url; }
   }
 
