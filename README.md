@@ -14,6 +14,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Page Reading** — Extracts text, links, forms, tables, and interactive elements from any page
 - **Browser Actions** — Click, type, scroll, navigate, and interact with page elements
 - **Ask / Act Modes** — Read-only mode by default, full agent mode with confirmation
+- **Plan before Act** — Act mode can generate a structured plan, show it for approval, then pin the approved plan to the scratchpad before tools run
 - **Multi-Step Agent** — Autonomous task execution with tool-use loops (configurable, default 130 steps)
 - **Continue from Limit** — When the agent hits the step limit, click Continue to keep going
 - **Multi-Provider LLM** — Supports local and cloud models:
@@ -30,6 +31,8 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Per-Tab Conversations** — Each tab has its own chat history
 - **Streaming** — Real-time token streaming from all providers
 - **Smart Context** — Token-aware auto-compaction (summarizes older turns once the conversation nears the model's context window, with a visible "Context automatically compacted" notice), tool result limits, and emergency overflow recovery
+- **Browser History Control** — Act mode can use native `go_back` / `go_forward` history tools instead of CSP-sensitive page JavaScript
+- **API Shortcut Hints** — Repeated clicks that fire the same XHR/fetch request can surface a matching `fetch_url` suggestion while preserving the UI-first and `/allow-api` mutation policy
 - **Copy Support** — Copy buttons on code blocks and full messages
 - **Page Inspection Banner** — Visual indicator when the agent is interacting with the page
 - **Stop Button** — Abort the agent mid-execution at any time
@@ -96,6 +99,7 @@ Click the gear icon or go to the extension's Options page to configure:
 - Verbose Mode — Show full tool call JSON (off by default)
 - Screenshot Fallback — Use screenshots when DOM reading fails
 - Max Agent Steps — Configurable step limit (5-200, default 60)
+- Plan before Act — Generate and review a structured Act-mode plan before browser tools run (on by default)
 
 **Providers:**
 
@@ -171,6 +175,8 @@ Deeper docs live in [`docs/`](docs/): [architecture](docs/architecture.md), [sit
 | `hover` | -- | Yes | -- | CDP-trusted hover for reveal-on-hover menus (Chrome only) |
 | `drag_drop` | -- | Yes | -- | Drag-and-drop via CDP pointer events (Chrome only) |
 | `navigate` | -- | Yes | Yes | Go to a URL |
+| `go_back` | -- | Yes | -- | Go back in the current tab's browser history |
+| `go_forward` | -- | Yes | -- | Go forward in the current tab's browser history |
 | `new_tab` | -- | Yes | Yes | Open a new tab |
 | `wait_for_element` | -- | Yes | Yes | Wait for a selector to appear |
 | `wait_for_stable` | -- | Yes | -- | Wait until page is idle (no DOM mutations + no network) |
@@ -260,7 +266,7 @@ Chrome side panel shortcuts work when the WebBrain side panel has focus.
 
 ## What's New
 
-See [CHANGELOG.md](./CHANGELOG.md) for the full version history. Recent highlights: native PDF reading with Claude passthrough (8.x), 65+ bug fixes in 8.5.0, compact mode going fully opt-in (8.3.0), Turkish deasciification (8.2.x), on-page agent indicator and tab-group-scoped side panel (6.0.x).
+See [CHANGELOG.md](./CHANGELOG.md) for the full version history. Recent highlights include Plan before Act, native browser-history tools, repeated-click API shortcut hints, WebBrain Cloud 1.0, scheduled tasks, compact-mode improvements, and native PDF reading.
 
 ## Roadmap
 

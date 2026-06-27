@@ -60,6 +60,7 @@ Open `src/chrome/src/agent/tools.js` and add an entry to the `AGENT_TOOLS` array
 - **Read-only tools** (safe in Ask mode): add to `ASK_ONLY_TOOLS` array in `tools.js`
 - **Navigation tools**: add to `Agent.NAV_TOOLS` (auto-screenshot on navigation)
 - **State-change tools**: add to `Agent.STATE_CHANGE_TOOLS` (auto-screenshot on state change)
+- **Navigation-prone tools**: add to `Agent.NAV_PRONE_TOOLS` when a successful call should be checked for URL/history changes (`navigate`, `go_back`, `go_forward`, click-like tools)
 - **URL-family tools**: if the tool takes a URL argument that should be bucket-identity-hashed for loop detection, update `loop-bucket.js`'s `URL_FAMILY_TOOLS`
 
 ---
@@ -186,7 +187,7 @@ And to every other locale file under `locales/*.js`.
 
 Copy the changes to `src/firefox/src/agent/tools.js`, `src/firefox/src/agent/agent.js`, and `src/firefox/src/content/content.js`.
 
-Some tools are intentionally Chrome-only (those needing CDP, offscreen documents, or `chrome.downloads`). For those, add the schema to both builds but implement the Firefox handler with a clear error or no-op:
+Some tools are intentionally Chrome-only (those needing CDP, offscreen documents, tab capture, or other Chrome-only APIs). For those, add the schema to both builds but implement the Firefox handler with a clear error or no-op:
 
 ```js
 // Firefox: not supported
@@ -205,6 +206,7 @@ Every new tool should be classified for security:
 2. **Can it perform destructive mutations?** → Consider whether it should be gated behind `/allow-api`.
 3. **Can it be prompt-injected?** → If the tool accepts user-provided strings that end up in tool-call arguments, document the injection surface in the tool description.
 4. **Should it work in Ask mode?** → If yes, add to `ASK_ONLY_TOOLS`.
+5. **Can it shortcut repeated UI actions to network calls?** → Keep the UI-first policy intact. The background API observer may surface exact XHR/fetch URL+method hints during click loops, but mutating `fetch_url` calls still need the conversation's `/allow-api` state. GET requests and non-network capabilities still use the normal permission gate.
 
 See `docs/security-model.md` for the full threat model.
 
@@ -228,7 +230,8 @@ See `docs/security-model.md` for the full threat model.
 - [ ] Handler added to `executeTool()` in both `agent.js` files
 - [ ] Content-script handler added (if applicable) in both `content.js` files
 - [ ] Added to `ASK_ONLY_TOOLS` (if read-only)
-- [ ] Added to `Agent.NAV_TOOLS` / `Agent.STATE_CHANGE_TOOLS` (if triggers auto-screenshot)
+- [ ] Added to `Agent.NAV_TOOLS` / `Agent.STATE_CHANGE_TOOLS` / `Agent.NAV_PRONE_TOOLS` (if it navigates, changes page state, or should be checked for navigation)
 - [ ] Security classification documented
+- [ ] README / architecture docs updated when the public tool surface or execution flow changes
 - [ ] UI labels added to `locales/*.js` (if needed)
 - [ ] Tool description updated in corresponding system prompt (if the model should know about it proactively)

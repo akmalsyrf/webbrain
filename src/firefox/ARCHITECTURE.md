@@ -11,11 +11,10 @@ Firefox uses Manifest V2 (background page, not service worker) and has **no acce
 - **No conversation persistence** — conversations are lost when the sidebar closes (no session-storage equivalent for MV2 background pages).
 - **No shadow DOM piercing** — content script can read open shadow roots via `element.shadowRoot`, but cannot pierce closed roots.
 - **No offscreen document** — no HTTP fetch proxy for localhost LLM servers with Private Network Access / CORS issues. User must ensure their local LLM server sends permissive CORS headers.
-- **No trace recorder** — no IndexedDB run recorder, no `unlimitedStorage` permission, no trace viewer UI.
 - **No duplicate-submit guard** — the per-tab submit-throttle (Chrome v3.6.5+) is still Chrome-only. Firefox's agent loop does not block rapid duplicate Create/Submit clicks. `blockedDone` and the ambiguous-click candidate payload were ported to Firefox in v4.0.1 (see "Overlay defenses" below).
-- **Fewer tools overall** — Firefox exposes 31 tools (27 legacy + 4 AX) vs Chrome's ~34 (missing full-page screenshot, shadow-dom-query via CDP, file upload via CDP).
+- **Some Chrome-only tools/features remain absent** — no CDP full-page screenshot, CDP upload automation, tab recording, offscreen fetch proxy, or closed-shadow-root traversal.
 
-Everything else — the agent loop, LLM providers, site adapters, loop detection, context management — is architecturally identical to Chrome.
+Everything else — the agent loop, LLM providers, site adapters, Plan before Act, loop detection, API shortcut observer, trace recorder, scheduler, context management — is architecturally identical to Chrome unless noted below.
 
 ---
 
@@ -56,6 +55,8 @@ src/firefox/
 │   ├── agent/
 │   │   ├── agent.js                # Core agent loop
 │   │   ├── tools.js                # Tool schemas + system prompts (incl. 4 AX tools)
+│   │   ├── planner.js              # Plan-before-Act structured planner
+│   │   ├── permission-gate.js      # Capability x origin permission gate
 │   │   ├── adapters.js             # Per-site guidance (identical to Chrome)
 │   │   └── scheduler.js            # ScheduledJobManager — alarms-backed deferred tasks
 │   ├── content/
@@ -69,15 +70,19 @@ src/firefox/
 │   │   ├── openai.js               # OpenAI-compatible
 │   │   ├── anthropic.js            # Anthropic Claude
 │   │   └── llamacpp.js             # Local llama.cpp server
+│   ├── trace/
+│   │   └── recorder.js             # Optional IndexedDB run recorder
 │   └── ui/
 │       ├── sidepanel.html
 │       ├── sidepanel.js            # Chat UI, verbose mode, deep verbose
 │       ├── settings.html
-│       └── settings.js
+│       ├── settings.js
+│       ├── traces.html
+│       └── traces.js
 └── icons/
 ```
 
-Notable absences vs Chrome: no `cdp/`, no `offscreen/`, no `trace/`, no `ui/traces.html`, no `providers/fetch-with-fallback.js`.
+Notable absences vs Chrome: no `cdp/`, no `offscreen/`, no `recorder/`, no `providers/fetch-with-fallback.js`.
 
 ## Permissions
 
@@ -85,23 +90,32 @@ Notable absences vs Chrome: no `cdp/`, no `offscreen/`, no `trace/`, no `ui/trac
 {
   "permissions": [
     "activeTab",
+    "menus",
+    "webNavigation",
+    "webRequest",
     "storage",
     "unlimitedStorage",
     "tabs",
+    "tabGroups",
+    "downloads",
+    "alarms",
+    "clipboardWrite",
+    "clipboardRead",
     "<all_urls>"
   ]
 }
 ```
 
-Notably **missing** vs Chrome: `debugger`, `downloads`, `sidePanel`, `scripting`, `webNavigation`, `offscreen`, `privateNetworkAccess`.
+Notably **missing** vs Chrome: `debugger`, `sidePanel`, `scripting`, `offscreen`, `privateNetworkAccess`, `tabCapture`.
 
 - No `debugger` → no CDP, no trusted events
 - No `offscreen` → no HTTP fetch proxy; direct fetch from background page only
 - No `privateNetworkAccess` → localhost LLM servers must send CORS headers themselves
+- `webRequest` is used for the same in-memory API shortcut observer as Chrome: URL + method + timestamp only, no request body capture
 - Uses `sidebar_action` (MV2) instead of `side_panel` (MV3)
 - Uses `browser.tabs.executeScript()` / `browser.tabs.sendMessage()` instead of `chrome.scripting.executeScript()`
 
-`unlimitedStorage` is declared for parity (forward-looking: if a trace recorder is ported to Firefox, it will want IndexedDB without quota friction). It is currently unused by the Firefox build.
+`unlimitedStorage` supports the optional IndexedDB trace recorder, matching Chrome's trace storage model.
 
 ---
 
@@ -225,15 +239,15 @@ Legacy tier (kept for compatibility with older prompts and for non-AX flows):
 |---|---|
 | `read_page`, `screenshot`, `get_interactive_elements` | Page content / image / indexed elements |
 | `click`, `type_text`, `press_keys` | Text/selector/index-based interaction |
-| `scroll`, `navigate`, `new_tab`, `wait_for_element`, `wait_for_stable` | Page control. `wait_for_stable` polls MutationObserver + in-flight fetch/XHR — works identically to Chrome. |
+| `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `wait_for_stable` | Page control. `wait_for_stable` polls MutationObserver + in-flight fetch/XHR — works identically to Chrome. |
 | `extract_data`, `get_selection`, `execute_js` | Data extraction / arbitrary JS |
 | `get_shadow_dom`, `get_frames`, `iframe_read`, `iframe_click`, `iframe_type` | Frame / shadow DOM |
 | `fetch_url`, `research_url` | HTTP / open-and-read |
-| `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files` | Download helpers (limited without `downloads` permission — graceful fallbacks) |
+| `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files` | Download helpers via `browser.downloads` where available |
 | `verify_form` | Reads form field values + viewport screenshot before submit |
 | `done` | Signal completion |
 
-Chrome-only (absent in Firefox): `full_page_screenshot`, `shadow_dom_query` (CDP shadow-pierce variant), `upload_file` (CDP-driven file input).
+Chrome-only (absent in Firefox): `full_page_screenshot`, `shadow_dom_query` (CDP shadow-pierce variant), `upload_file` (CDP-driven file input), `record_tab`, `stop_recording`.
 
 ### Click — content script implementation
 
@@ -428,7 +442,6 @@ Same end-to-end shape as Chrome, minus the CDP-trusted-event path and the offscr
 |---|---|---|
 | No CDP (no `debugger` permission) | Clicks are synthetic (`isTrusted: false`) | Most sites work; some banking/captcha sites may reject |
 | No offscreen document | Localhost LLM fetches fail on CORS | Configure server CORS headers |
-| No trace recorder | No run replay / model-comparison UI | Use deep-verbose console dump |
 | No conversation persistence | Chat lost when sidebar closes | None — MV2 limitation |
 | No trusted keyboard events | `press_keys` may not land on all sites | Dispatched to both activeElement and document |
 | No full-page screenshot | Only visible viewport | Scroll + multiple captures |
@@ -447,7 +460,9 @@ Same as Chrome, minus CDP:
 - Extension runs with user's full browser permissions
 - `<all_urls>` host permission allows content-script injection anywhere
 - Cross-origin iframes accessible via extension privilege
-- `/allow-api` flag required for API mutations
+- Plan before Act can require user approval before any Act-mode tool executes
+- API shortcut observer records same-tab XHR/fetch URL + method metadata only
+- `/allow-api` flag required for API mutations (POST/PUT/PATCH/DELETE via `fetch_url`)
 - Finance adapters get extra safety warnings
 - Tool results capped at 8KB
 - No remote code execution: all providers called via `fetch()` with user-supplied keys; no eval of LLM responses
@@ -456,4 +471,9 @@ Same as Chrome, minus CDP:
 
 ## Versioning & Port Status
 
-v3.6.8 is the first Firefox release at feature parity with Chrome's AX subsystem. Work was done on the `firefox-port-3.6.8` branch. Skipped-on-purpose items (listed above under "What was intentionally skipped in the Firefox port") are the natural next scope for a v3.7 Firefox pass.
+Firefox remains a self-contained MV2 build with mirrored agent/provider/UI code
+where the browser APIs allow it. The historical v3.6.8 port brought the AX
+subsystem to parity; current 18.0.0 parity includes Plan before Act, scheduled
+tasks, trace recording, the API shortcut observer, and browser-history tools.
+The remaining gaps are browser-platform gaps listed above, mostly CDP/offscreen
+features.

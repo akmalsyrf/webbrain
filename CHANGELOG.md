@@ -13,7 +13,7 @@ This changelog was generated from the repository Git history and release tags. V
 
 ### Changed
 - Kept API shortcut detection method-aware for GET, POST, PUT, PATCH, DELETE, and other observed methods while leaving mutating replay decisions to the existing `/allow-api` and UI-vs-API policy.
-- Updated release metadata, Settings subtitle versions, architecture docs, Chrome / Firefox manifests, and package versions for 18.0.0.
+- Updated README, architecture, adding-a-tool, privacy, prompt-injection, and security docs alongside release metadata, Settings subtitle versions, Chrome / Firefox manifests, and package versions for 18.0.0.
 
 ### Fixed
 - Fixed Chrome history URL normalization so query-string and hash-only history transitions are treated as real back/forward navigation changes, matching Firefox.

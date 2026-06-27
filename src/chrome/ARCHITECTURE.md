@@ -36,8 +36,10 @@ src/chrome/
 ├── src/
 │   ├── background.js           # Service worker — message router
 │   ├── agent/
-│   │   ├── agent.js            # Core agent loop (~2000 lines)
+│   │   ├── agent.js            # Core agent loop + tool dispatch
 │   │   ├── tools.js            # Tool schemas + system prompts
+│   │   ├── planner.js          # Plan-before-Act structured planner
+│   │   ├── permission-gate.js  # Capability x origin permission gate
 │   │   ├── adapters.js         # Per-site guidance
 │   │   └── scheduler.js        # ScheduledJobManager — alarms-backed deferred tasks
 │   ├── cdp/
@@ -74,22 +76,40 @@ src/chrome/
 ```json
 {
   "permissions": [
-    "sidePanel", "activeTab", "scripting", "storage",
-    "webNavigation", "debugger", "downloads",
-    "unlimitedStorage", "offscreen", "privateNetworkAccess",
-    "tabCapture"
+    "sidePanel", "activeTab", "contextMenus", "tabs", "tabGroups",
+    "scripting", "storage", "webNavigation", "webRequest",
+    "debugger", "downloads", "alarms", "unlimitedStorage",
+    "offscreen", "privateNetworkAccess", "tabCapture",
+    "clipboardWrite", "clipboardRead"
   ],
-  "host_permissions": ["<all_urls>", "http://localhost/*", "http://127.0.0.1/*"]
+  "host_permissions": ["<all_urls>", "http://localhost/*", "http://127.0.0.1/*", "http://*/*"]
 }
 ```
 
 | Permission | Why |
 |---|---|
 | `debugger` | CDP access — trusted mouse/keyboard, pixel-perfect screenshots, shadow-DOM piercing. The single most important differentiator vs Firefox. |
+| `webRequest` | In-memory same-tab XHR/fetch URL+method observer for repeated-click API shortcut hints. Request bodies are not captured. |
+| `alarms` | Scheduled tasks and scheduled resumes across browser sessions. |
 | `unlimitedStorage` | Optional trace recorder persists agent runs (LLM I/O + screenshots) into IndexedDB. A multi-step run can be 1–10 MB; the default ~10 MB origin cap fills after a few runs. |
 | `offscreen` | Localhost LLM servers (llama.cpp, LM Studio, Ollama) are unreachable from the MV3 service worker due to CORS / Private Network Access restrictions. An offscreen document hosts the fetch proxy AND the tab recorder. |
 | `privateNetworkAccess` | Same motivation — allow calling `http://localhost:8080` from the extension. |
 | `tabCapture` | Optional "Record this tab" feature in the sidepanel. Pulls a MediaStream of the active tab's video+audio via `chrome.tabCapture.getMediaStreamId()`, hands it to the offscreen document which runs the MediaRecorder. |
+
+---
+
+## Plan-before-Act Gate (v18.0.0)
+
+When `planBeforeAct` is enabled (default), Act-mode runs call `agent/planner.js`
+before the first tool loop. The planner returns a bounded JSON plan with steps,
+memory strategy, scheduling hints, and risks. The side panel renders that plan
+as an editable approval card; approving it pins the plan to the scratchpad so it
+survives context compaction. Rejecting, timing out, invalid JSON after retry, or
+pressing Stop cancels before browser tools execute. Scheduled runs can set
+`autoApprovePlanReview` so the plan is pinned without blocking on the UI.
+
+Planner LLM requests are recorded in traces with `phase: "planner"` and use the
+same cost allowance and abort checks as the main loop.
 
 ---
 
@@ -309,6 +329,16 @@ System prompt has a new "MODALS & DIALOGS" section that describes the intended f
 
 Before any `click` whose resolved text matches `^(create|save|submit|add|post|publish|send|confirm|place order|pay|checkout|update|finish|done)\b` the agent checks a per-tab+URL 45-second window. Duplicate clicks in that window are blocked unless `_allowResubmit` is set. Prevents the "clicked Create three times → three products created" failure mode.
 
+### API shortcut observer (v18.0.0)
+
+`background.js` records the last 40 same-tab XHR/fetch requests as `{url,
+method, ts}` using `chrome.webRequest.onBeforeRequest`. When loop detection sees
+the same `click` / `click_ax` repeat, `_detectApiShortcut()` checks whether each
+click produced the same exact URL + method within 3 seconds. If so, the warning
+suggests `fetch_url({url, method})` instead of another click. This is advisory
+only: POST/PUT/PATCH/DELETE still depend on the conversation's `/allow-api`
+state, and GET/non-network capabilities still follow the normal permission gate.
+
 ### Ambiguous-click CDP enrichment (v3.6.4+)
 
 When `click({text})` or `click({selector})` finds multiple matches, the error payload now carries full candidates (`ref_id`, rect, accessible name, ancestor summary) instead of just count. Lets the model pick the right one instead of looping.
@@ -321,7 +351,7 @@ When `click({text})` or `click({selector})` finds multiple matches, the error pa
 `get_accessibility_tree`, `read_page` (legacy prose), `screenshot`, `get_interactive_elements` (legacy indexed list), `get_selection`, `extract_data`, `get_shadow_dom`, `get_frames`
 
 ### Interaction
-`click_ax`, `type_ax`, `set_field`, `hover` (CDP-trusted, for reveal-on-hover menus), `drag_drop` (CDP-trusted pointer sequence, for Trello/Linear-style reordering), `click` (by text/selector/index/coords — legacy), `type_text`, `press_keys`, `scroll`, `navigate`, `new_tab`, `wait_for_element`, `wait_for_stable` (DOM mutations + network idle), `iframe_read`, `iframe_click`, `iframe_type`, `upload_file`
+`click_ax`, `type_ax`, `set_field`, `hover` (CDP-trusted, for reveal-on-hover menus), `drag_drop` (CDP-trusted pointer sequence, for Trello/Linear-style reordering), `click` (by text/selector/index/coords — legacy), `type_text`, `press_keys`, `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `wait_for_stable` (DOM mutations + network idle), `iframe_read`, `iframe_click`, `iframe_type`, `upload_file`
 
 > **Note:** `execute_js` was removed from the Chrome MV3 tool schema — `new Function()` is blocked by the extension_pages CSP and always throws EvalError. The agent uses `read_page`, `click`, `type_text`, `scroll`, and other fine-grained tools instead. `execute_js` is still available on Firefox MV2.
 
@@ -550,7 +580,8 @@ Finance adapters carry a `[FINANCE / HIGH-STAKES]` banner and extra confirmation
 - `<all_urls>` host permission → content-script injection anywhere.
 - `debugger` → trusted events on any tab.
 - Cross-origin iframes reachable via content-script injection (extension privilege).
-- `/allow-api` flag required for API mutations (POST/PUT/DELETE via `fetch_url`).
+- Plan before Act can require user approval before any Act-mode tool executes.
+- `/allow-api` flag required for API mutations (POST/PUT/PATCH/DELETE via `fetch_url`).
 - Finance adapters layer extra confirmation guidance.
 - Tool results capped at 8 KB to limit prompt-injection surface.
 - Offscreen proxy only forwards requests the user's own code initiated (provider SDK traffic).

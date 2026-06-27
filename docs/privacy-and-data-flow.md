@@ -18,6 +18,12 @@ The user's message, the current page content (AX tree, screenshot, or extracted 
 | User credentials (passwords, API keys) | Yes | If the user types them in chat or the agent fills them and they appear in tool results |
 | Provider API key | Yes | Sent as an HTTP header (Bearer token) to the provider's API endpoint |
 
+When **Plan before Act** is enabled, Act-mode turns make an additional planner
+call to the same configured provider before any browser tools run. That call
+contains the user's task, sanitized page URL/title, a short recent-conversation
+digest, and the planner system prompt. Image blocks are dropped before the
+planner call; any screenshot text description is treated as untrusted context.
+
 **No other data is sent to the provider.** The extension does not inject tracking, telemetry, or analytics.
 
 ### Which provider receives the data?
@@ -55,6 +61,16 @@ Provider configs (API keys, base URLs, model selections) are stored in `chrome.s
 
 If the user enables profile auto-fill, the profile text (name, email, throwaway password) is stored in `chrome.storage.local` in plaintext and sent to the LLM provider as part of the system prompt on every turn.
 
+### API Shortcut Observer
+
+The background script keeps a small in-memory buffer of same-tab XHR/fetch
+metadata: URL, HTTP method, and timestamp for the last 40 observed requests per
+tab. It is used only when loop detection sees repeated clicks, so the agent can
+suggest the exact matching `fetch_url` call instead of clicking again. Request
+bodies and response bodies are not captured. The buffer is deleted when the tab
+closes, and no observer data leaves the browser unless a loop warning surfaces
+the URL + method to the active LLM conversation.
+
 ---
 
 ## Telemetry / Analytics
@@ -66,6 +82,9 @@ The only outbound HTTP requests are:
 2. **CapSolver API calls** (if the user enables CAPTCHA solving)
 3. **Content fetches** via `fetch_url` / `research_url` tools (to URLs the agent is asked to fetch)
 4. **Tab recording** creates no outbound traffic (the .webm is saved to the Downloads folder via `chrome.downloads.download`)
+
+The `webRequest` API shortcut observer does not create outbound requests; it
+only observes URL/method metadata for requests the page already made.
 
 ---
 
@@ -81,6 +100,9 @@ Side panel → Background (chrome.runtime.sendMessage)
   │
   ▼
 Agent enriches: URL + title + adapter notes + (optional) screenshot
+  │
+  ▼
+Optional Plan before Act call: provider.chat(planner messages, no tools)
   │
   ▼
 Agent calls provider.chat(messages, tools)

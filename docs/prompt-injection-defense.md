@@ -29,7 +29,8 @@ them in sync — the test suite asserts the pure modules are byte-identical.
    system prompt and the user's own chat/`clarify` messages are authoritative.
    - Code: `tools.js` -> `SYSTEM_PROMPT_ASK` (5-bullet block), `SYSTEM_PROMPT_ACT`
      (7-bullet block), `SYSTEM_PROMPT_ACT_COMPACT` (condensed opt-in compact
-     prompt in both browser builds).
+     prompt in both browser builds), plus `planner.js` -> `PLANNER_SYSTEM_PROMPT`
+     for the Plan-before-Act pre-loop call.
 3. **Capability × origin permission gate (Layer 3).** Before a consequential
    tool runs, the agent checks a `(capability, host)` grant and prompts the user
    (Allow once / Always / Deny) if there isn't one. No text inspection, no LLM —
@@ -101,6 +102,9 @@ messages.push({ role: 'user', content: `[…]\n${wrapped}` });
 Known non-tool ingestion points (keep this list current):
 - auto-screenshot re-injection (vision description + interactive-elements list);
 - the "Initial viewport description" in `_enrichUserMessageWithCurrentPage`;
+- Plan before Act planner messages: sanitized page URL/title and recent-history
+  digest are sent under the planner's untrusted-page framing; non-text image
+  blocks are dropped before the planner call;
 - PDF passthrough: the raw PDF `document` block can't be text-wrapped, so its
   accompanying note carries explicit untrusted framing **and** the attacker-
   controlled `docTitle` is sanitized before interpolation;
@@ -123,6 +127,7 @@ protect the user on the trusted sites where injected content actually lives
     `KNOWN_SAFE_TOOLS` allowlist (defined in `test/run.js`) — else CI fails.
   - capability mapping, host resolution, `requiredHosts`, `frameHostMatches`,
     grant storage / `hydrateFrom`, content-wrap breakout-stripping.
+  - planner prompt parity / boundary checks in `test/security/injection-corpus.mjs`.
 - `test/manual-permissions.md` — the in-browser checklist (the 3-option
   permission card and the Settings → Permissions tab) that the unit suite can't
   cover.

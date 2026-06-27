@@ -13,9 +13,10 @@ For vulnerability disclosure, see [SECURITY.md](../SECURITY.md).
 ```json
 {
   "permissions": [
-    "sidePanel", "activeTab", "tabs", "tabGroups", "scripting", "storage",
-    "webNavigation", "debugger", "downloads", "unlimitedStorage",
-    "offscreen", "privateNetworkAccess", "tabCapture",
+    "sidePanel", "activeTab", "contextMenus", "tabs", "tabGroups",
+    "scripting", "storage", "webNavigation", "webRequest", "debugger",
+    "downloads", "alarms", "unlimitedStorage", "offscreen",
+    "privateNetworkAccess", "tabCapture",
     "clipboardWrite", "clipboardRead"
   ],
   "host_permissions": ["<all_urls>", "http://localhost/*", "http://127.0.0.1/*", "http://*/*"]
@@ -23,14 +24,18 @@ For vulnerability disclosure, see [SECURITY.md](../SECURITY.md).
 ```
 
 (This is the Chrome MV3 manifest. Firefox MV2 grants a narrower set —
-`activeTab`, `tabs`, `tabGroups`, `storage`, `unlimitedStorage`, `clipboard*`,
-`<all_urls>` — and has no `debugger`/`offscreen`, see Firefox Differences below.)
+`activeTab`, `menus`, `webNavigation`, `webRequest`, `storage`,
+`unlimitedStorage`, `tabs`, `tabGroups`, `downloads`, `alarms`, `clipboard*`,
+`<all_urls>` — and has no `debugger`/`offscreen`/`tabCapture`, see Firefox
+Differences below.)
 
 | Permission | Risk | Mitigation |
 |---|---|---|
 | `<all_urls>` | Content script injection anywhere — the agent can read and interact with any page the user visits | The user must explicitly switch to Act mode; Ask mode is read-only. The agent never auto-activates on new tabs. |
 | `debugger` | CDP access provides trusted events and full DOM/network control on any tab | The debugger is only attached during active agent runs and detached on completion/abort. |
+| `webRequest` | Can observe URL + method metadata for XHR/fetch requests made by the active page | Used only as an in-memory per-tab buffer for repeated-click API shortcut hints. Request bodies are not captured. |
 | `downloads` | Can save files to the user's Downloads folder without prompting | Only the agent's explicit tool calls (`download_files`, `download_file`, `download_resource_from_page`, `download_social_media`, `screenshot({save:true})`) use this, and each is gated by the capability × origin permission prompt. |
+| `alarms` | Can wake scheduled jobs in future browser sessions | Only `schedule_resume` / `schedule_task` create alarms, and those tools are gated. |
 | `offscreen` | An offscreen document can make HTTP requests immune to user CSP | Only used for localhost LLM provider proxy and tab recording. Never forwards arbitrary URLs. |
 
 ### Authentication
@@ -92,13 +97,14 @@ The primary threat: a malicious page crafts content that, when read by the agent
 | **Capability × origin gate** | Before a consequential tool runs (click/type/navigate/execute_js/network/download/…), the agent requires a `(capability, host)` grant — Allow once / Always / Deny. Language-agnostic, deterministic, human-in-the-loop (`permission-gate.js`). |
 | **Tool result cap** | Individual tool results truncated at 8,000 chars (`_limitToolResult`). Injected text beyond that is silently dropped. |
 | **Ask/Act mode** | In Ask mode, only read-only tools are available. The user must explicitly switch to Act for the agent to click/type/navigate. |
+| **Plan before Act** | When enabled, Act-mode runs first produce a structured plan and wait for side-panel approval before any browser tool executes. Scheduled runs can auto-approve the plan only through scheduler policy. |
 | **`/allow-api`** | A per-conversation `/allow-api` flag that *waives* the permission prompt for write-method network egress (`fetch_url`/`research_url` with POST/PUT/PATCH/DELETE). It does NOT waive GET egress or any other capability. Clears on conversation reset. |
 | **`done()` blocking** | Before accepting completion, the agent probes for open dialogs/forms. If the summary claims "created"/"saved" but a modal is still open, the agent is forced to continue. |
 | **Duplicate-submit guard** | Clicks on submit-like text (create/save/submit/add/post/publish/send/confirm/sign up/log in/pay/checkout/order, etc.) are blocked within a 45-second window per tab+URL (Chrome). |
 | **CLICK occlusion test** | Before clicking, the resolver calls `elementFromPoint()`. If another element is visually on top, the click is refused. |
 | **Modal-scoped click** | When a dialog is open, text clicks are scoped to that subtree so the agent doesn't click a dimmed background element. |
 | **Universal preamble** | Every system prompt includes guidance on cookie banners and paywalls — two common injection vectors that look like benign page content. |
-| **Loop detection** | Three independent detectors stop the agent if it's repeating the same action or oscillating. Limits damage from a persistently injected prompt. |
+| **Loop detection** | Three independent detectors stop the agent if it's repeating the same action or oscillating. Repeated click loops may include an exact same-tab XHR/fetch URL+method hint so the agent can switch to `fetch_url` instead of clicking forever. Limits damage from a persistently injected prompt. |
 | **Finance adapters** | Adapters with `category: 'finance'` inject extra confirmation guidance and a warning banner. |
 | **Strict secret handling** | Prevents credential exfiltration even if the model is jailbroken into quoting secrets. |
 | **Local network blocking** | When disabled (default), `fetch_url` cannot reach private/RFC1918 addresses. Cloud-metadata endpoints (169.254.169.254) are always blocked. |
@@ -125,6 +131,12 @@ go through the capability × origin gate. (`isNetworkMutation` in
 The system prompt adds a preamble telling the model to:
 - State the URL, method, and payload in plain text before any destructive API call
 - Default to UI-first; only reach for the API when UI has actually failed
+
+Loop-detection API shortcut hints do not bypass this policy. They can expose
+the exact method and URL the page was already calling, including POST/PATCH/etc.,
+but write-method `fetch_url` / `research_url` calls still require the
+conversation's `/allow-api` state. GET requests and non-network capabilities
+still go through the normal capability × origin gate.
 
 Cleared on conversation reset.
 
