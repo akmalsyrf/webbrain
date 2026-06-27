@@ -371,6 +371,8 @@ const recordingStopBtn = document.getElementById('btn-recording-stop');
 let currentTabId = null;
 let renderedTabId = null;
 let pendingTabSwitch = null; // tab the user switched to while isProcessing was true
+let tabSwitchTransitionId = null;
+let queuedTabSwitchMessages = [];
 let isProcessing = false;
 let currentAssistantEl = null;
 let verboseMode = false;
@@ -888,6 +890,25 @@ async function drainQueuedContextMenuPromptsAfterPendingTabSwitch() {
     // when the underlying browser tab disappears during run settlement.
   }
   drainQueuedContextMenuPrompts();
+}
+
+function queueAgentUpdateDuringTabSwitch(msg) {
+  const tabId = msg?.tabId;
+  if (tabSwitchTransitionId == null || tabId == null || tabId !== tabSwitchTransitionId) return false;
+  queuedTabSwitchMessages.push(msg);
+  return true;
+}
+
+function drainQueuedAgentUpdatesForTab(tabId) {
+  if (!queuedTabSwitchMessages.length) return;
+  const replay = [];
+  const remaining = [];
+  for (const msg of queuedTabSwitchMessages) {
+    if (msg?.tabId === tabId) replay.push(msg);
+    else remaining.push(msg);
+  }
+  queuedTabSwitchMessages = remaining;
+  replay.forEach((msg) => handleAgentUpdateMessage(msg));
 }
 
 async function settleScheduledRun(event, job) {
@@ -1469,37 +1490,43 @@ async function switchToTab(newTabId) {
     return;
   }
   pendingTabSwitch = null;
+  tabSwitchTransitionId = newTabId;
 
-  // Save the tab currently represented by the DOM. During an async restore,
-  // currentTabId may already point at the target while the DOM is still older.
-  if (renderedTabId != null) {
-    await flushRenderedTabChat();
-    if (isProcessing) {
-      pendingTabSwitch = newTabId;
-      return;
+  try {
+    // Save the tab currently represented by the DOM. During an async restore,
+    // currentTabId may already point at the target while the DOM is still older.
+    if (renderedTabId != null) {
+      await flushRenderedTabChat();
+      if (isProcessing) {
+        pendingTabSwitch = newTabId;
+        return;
+      }
+      captureInputDraftForTab(renderedTabId);
     }
-    captureInputDraftForTab(renderedTabId);
-  }
 
-  currentTabId = newTabId;
-  syncApiMutationsAllowedForCurrentTab();
+    currentTabId = newTabId;
+    syncApiMutationsAllowedForCurrentTab();
 
-  // Restore new tab's chat from memory or storage.
-  const html = await loadTabChat(newTabId);
-  if (currentTabId !== newTabId) return;
-  renderedTabId = newTabId;
-  if (html) {
-    messagesEl.innerHTML = html;
-    messagesEl.querySelectorAll('[data-bound]').forEach(el => delete el.dataset.bound);
-    rebindRestoredMessageControls();
-  } else {
-    messagesEl.innerHTML = '';
-    addMessage('system', t('sp.help_message'));
+    // Restore new tab's chat from memory or storage.
+    const html = await loadTabChat(newTabId);
+    if (currentTabId !== newTabId) return;
+    renderedTabId = newTabId;
+    if (html) {
+      messagesEl.innerHTML = html;
+      messagesEl.querySelectorAll('[data-bound]').forEach(el => delete el.dataset.bound);
+      rebindRestoredMessageControls();
+    } else {
+      messagesEl.innerHTML = '';
+      addMessage('system', t('sp.help_message'));
+    }
+    restoreInputDraftForTab(newTabId);
+    scrollToBottom();
+    refreshScheduledJobs({ tabId: newTabId });
+    refreshRecommendedActions();
+  } finally {
+    if (tabSwitchTransitionId === newTabId) tabSwitchTransitionId = null;
   }
-  restoreInputDraftForTab(newTabId);
-  scrollToBottom();
-  refreshScheduledJobs({ tabId: newTabId });
-  refreshRecommendedActions();
+  drainQueuedAgentUpdatesForTab(newTabId);
   consumePendingContextMenuPrompt().then(() => drainQueuedContextMenuPrompts()).catch(() => {});
 }
 
@@ -2565,9 +2592,7 @@ function summarizeLastTranscript() {
   if (sendBtn) sendBtn.click();
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
-
+function handleAgentUpdateMessage(msg) {
   if (msg.type === 'scheduled_job') {
     handleScheduledJobEvent(msg.data, msg.tabId).catch((err) => {
       console.warn('[WebBrain] failed to handle scheduled job event:', err);
@@ -2700,6 +2725,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       renderClarifyCard(data);
       break;
   }
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
+  if (queueAgentUpdateDuringTabSwitch(msg)) return;
+  handleAgentUpdateMessage(msg);
 });
 
 /**
