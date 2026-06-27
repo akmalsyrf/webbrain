@@ -836,7 +836,14 @@ export class Agent {
     this.bulkApiMutationHints.set(tabId, hinted);
 
     const examples = [...new Set(group.slice(-4).map(item => item.url))];
-    const replaySource = [...group].reverse().find(item => item.replayRequestId);
+    // Prefer a same-shape entry that still has its captured body: bodies over
+    // API_REPLAY_BODY_LIMIT (16 KB) are dropped (body:null, hasBody:false), and
+    // replaying a body-bearing mutation without its body fails (missing CSRF /
+    // form data). Fall back to any replayable entry only if none kept a body.
+    const reversed = [...group].reverse();
+    const replaySource =
+      reversed.find(item => item.replayRequestId && item.hasBody) ||
+      reversed.find(item => item.replayRequestId);
     return {
       action: entry.actionKey,
       label,
@@ -851,17 +858,31 @@ export class Agent {
     };
   }
 
+  // URLs in the bulk-mutation warning come from the page's own XHR/fetch
+  // traffic (apiRequestsByTab), so they are attacker-controlled. This note is
+  // appended OUTSIDE the <untrusted_page_content> wrap (it's a trusted WebBrain
+  // directive), so neutralize chars that could break out of the bracket framing
+  // and clamp length before interpolating — same treatment as the PDF docTitle.
+  _sanitizeBulkApiUrl(url) {
+    return String(url || '')
+      .replace(/[[\]<>`"\r\n]/g, ' ')
+      .replace(/untrusted_page_content/gi, 'untrusted-content')
+      .trim()
+      .slice(0, 300);
+  }
+
   _formatBulkApiMutationWarning(shortcut) {
     const examples = (shortcut.examples || [])
-      .map(url => `${shortcut.method} ${url}`)
+      .map(url => `${shortcut.method} ${this._sanitizeBulkApiUrl(url)}`)
       .join('; ');
+    const requestShape = this._sanitizeBulkApiUrl(shortcut.requestShape);
     const permission = shortcut.apiAllowed
       ? 'API mutations are enabled for this conversation. Stop further same-shape UI clicks and sample one direct fetch_url replay for the next matching item.'
       : 'API mutations are NOT enabled for this conversation; ask the user to type /allow-api before using mutating fetch_url, or continue through the visible UI.';
     const replay = shortcut.replayRequestId
       ? ` Captured replay material is available as replayRequestId "${shortcut.replayRequestId}"${shortcut.replayHasBody ? ' with a request body' : ''}${shortcut.replayHeaderNames?.length ? ` and headers (${shortcut.replayHeaderNames.join(', ')})` : ''}; use fetch_url({url: "<next matching concrete URL>", method: "${shortcut.method}", replayRequestId: "${shortcut.replayRequestId}"}) for exactly one sampled remaining item so WebBrain reuses same-origin body/headers without exposing hidden tokens.`
       : '';
-    return `[BULK API MUTATION PATTERN: You have successfully clicked ${shortcut.count} similar "${shortcut.action}" controls, and each click triggered ${shortcut.method} requests with the same URL shape: ${shortcut.requestShape}. Recent concrete examples: ${examples}. This is repeated bulk mutation work, not a stuck loop. ${permission}${replay} If the sampled direct API call returns success:false or HTTP 4xx/5xx, fall back to the visible UI for this shape and do not loop on fetch_url. Verify the page after any API batch.]`;
+    return `[BULK API MUTATION PATTERN: You have successfully clicked ${shortcut.count} similar "${shortcut.action}" controls, and each click triggered ${shortcut.method} requests with the same URL shape: ${requestShape}. Recent concrete examples: ${examples}. This is repeated bulk mutation work, not a stuck loop. ${permission}${replay} If the sampled direct API call returns success:false or HTTP 4xx/5xx, fall back to the visible UI for this shape and do not loop on fetch_url. Verify the page after any API batch.]`;
   }
 
   _toolCallArgs(tc) {
@@ -1476,6 +1497,47 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   }
 
   /**
+   * Path-level URL normalization for the click side-effect navigation notice.
+   * Drops query + hash so SPA interactions that only change ?page=2 / #thread
+   * (pagination, filter pills, tab toggles, utm/fbclid rewrites) do NOT trip
+   * the "navigation occurred — re-plan from scratch" warning. Distinct from
+   * _normalizeUrl, which keeps query/hash so go_back/go_forward can detect
+   * history movement between entries that differ only by search params/anchor.
+   */
+  _normalizeUrlPath(url) {
+    if (!url) return '';
+    try {
+      const u = new URL(url);
+      return u.origin + u.pathname;
+    } catch (e) { return url; }
+  }
+
+  /**
+   * Flush accumulated side-effect navigation notices as a user message. Called
+   * from every _executeToolBatch exit that continues the run (the normal
+   * post-loop path AND the bulk-API-replay early return), so a click that both
+   * triggered the bulk pattern and navigated the page never silently drops the
+   * "previous page is GONE" warning.
+   */
+  _injectNavNotices(messages, navNotices, onUpdate) {
+    if (!navNotices || navNotices.length === 0) return;
+    const last = navNotices[navNotices.length - 1];
+    const noticeText =
+      `[NAVIGATION OCCURRED — the page changed as a side effect of your last action.\n` +
+      `  Was on: ${last.before}\n` +
+      `  Now on: ${last.after}\n` +
+      `  Triggered by: ${last.viaTool}\n` +
+      `\n` +
+      `The previous page is GONE. Any plan you had for that page no longer applies. ` +
+      `DO NOT continue executing steps from the previous page's plan — those elements no longer exist. ` +
+      `STOP, take a fresh screenshot, call get_interactive_elements, decide whether this new page is what you wanted, ` +
+      `and re-plan from scratch. If this navigation was unintended (you clicked the wrong thing), navigate back ` +
+      `with \`navigate({url: "${last.before}"})\` and try a more specific click.]`;
+    messages.push({ role: 'user', content: noticeText });
+    onUpdate('warning', { message: 'Page navigated unexpectedly — agent notified.' });
+  }
+
+  /**
    * Shared unsaved-changes guard for tools that leave the current page
    * (navigate / go_back / go_forward). Leaving discards in-progress form state
    * — attached files reset, filled fields clear — so before navigating away we
@@ -1703,8 +1765,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       if (Agent.NAV_PRONE_TOOLS.has(fnName) && beforeUrl && !toolResult?.error) {
         await new Promise(r => setTimeout(r, 200));
         const afterUrl = await this._currentUrl(tabId);
-        const beforeNorm = this._normalizeUrl(beforeUrl);
-        const afterNorm = this._normalizeUrl(afterUrl);
+        const beforeNorm = this._normalizeUrlPath(beforeUrl);
+        const afterNorm = this._normalizeUrlPath(afterUrl);
         if (beforeNorm && afterNorm && beforeNorm !== afterNorm) {
           // Explicit navigation tools (navigate / go_back / go_forward)
           // intentionally go somewhere — don't warn. For everything else
@@ -1964,6 +2026,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             replayRequestId: bulkApiShortcut.replayRequestId,
           });
         }
+        // A click can both trigger the bulk pattern AND navigate the page; this
+        // early return skips the post-loop flush, so emit any nav notices here
+        // or the model would replay against stale URLs from the prior page.
+        this._injectNavNotices(messages, navNotices, onUpdate);
         this._persist(tabId);
         return { action: 'continue' };
       }
@@ -1975,22 +2041,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
     // Inject any navigation notices BEFORE the auto-screenshot, so the
     // model sees the warning and the new viewport in the same turn.
-    if (navNotices.length > 0) {
-      const last = navNotices[navNotices.length - 1];
-      const noticeText =
-        `[NAVIGATION OCCURRED — the page changed as a side effect of your last action.\n` +
-        `  Was on: ${last.before}\n` +
-        `  Now on: ${last.after}\n` +
-        `  Triggered by: ${last.viaTool}\n` +
-        `\n` +
-        `The previous page is GONE. Any plan you had for that page no longer applies. ` +
-        `DO NOT continue executing steps from the previous page's plan — those elements no longer exist. ` +
-        `STOP, take a fresh screenshot, call get_interactive_elements, decide whether this new page is what you wanted, ` +
-        `and re-plan from scratch. If this navigation was unintended (you clicked the wrong thing), navigate back ` +
-        `with \`navigate({url: "${last.before}"})\` and try a more specific click.]`;
-      messages.push({ role: 'user', content: noticeText });
-      onUpdate('warning', { message: 'Page navigated unexpectedly — agent notified.' });
-    }
+    this._injectNavNotices(messages, navNotices, onUpdate);
 
     // Auto-screenshot once per batch, debounced 500ms. Capture if either
     // the main provider supports images, or a dedicated vision model is
@@ -3500,7 +3551,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!gate.proceed) {
       messages.push({ role: 'assistant', content: gate.message || 'Task cancelled.' });
       this._persist(tabId);
-      return { proceed: false, message: gate.message || 'Task cancelled.' };
+      return { proceed: false, message: gate.message || 'Task cancelled.', reason: gate.reason };
     }
 
     if (gate.approvedScratchpadText) {
@@ -3660,7 +3711,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       return { proceed: true, approvedScratchpadText, planId };
     } catch (e) {
       if (this._isCostAllowanceError(e)) {
-        return { proceed: false, message: e.message };
+        return { proceed: false, message: e.message, reason: 'cost_limit' };
       }
       if (!strictPlanner) {
         onUpdate('warning', { message: `Planning failed (${e.message || 'unknown error'}); continuing without a pinned plan.` });
@@ -9124,7 +9175,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       tabId, messages, enriched, onUpdate, mode, costState, runId, plannerTabInfo,
     );
     if (!gateOutcome.proceed) {
-      _traceStatus = 'cancelled';
+      _traceStatus = gateOutcome.reason === 'cost_limit' ? 'cost_limit' : 'cancelled';
       return (finalResponse = gateOutcome.message || 'Task cancelled.');
     }
 
@@ -9445,7 +9496,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       tabId, messages, enriched, onUpdate, mode, costState, runId, plannerTabInfo,
     );
     if (!gateOutcome.proceed) {
-      return finish(gateOutcome.message || 'Task cancelled.', 'cancelled');
+      return finish(gateOutcome.message || 'Task cancelled.', gateOutcome.reason === 'cost_limit' ? 'cost_limit' : 'cancelled');
     }
 
     if (mode === 'act') {

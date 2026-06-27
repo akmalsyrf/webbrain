@@ -1803,7 +1803,7 @@ test('fetchUrl runs captured same-origin API replay in the active page context',
     assert.equal(chromeResult.success, true, 'chrome: page-context replay should succeed');
     assert.equal(chromeResult.status, 204, 'chrome: status should be preserved');
     assert.equal(chromeResult.replayContext, 'page', 'chrome: result should identify page replay');
-    assert.equal(chromeSeen.world, 'MAIN', 'chrome: replay should run in the page main world');
+    assert.equal(chromeSeen.world, 'ISOLATED', 'chrome: replay should run in the isolated world so the page cannot monkey-patch fetch/URL/Response');
     assert.equal(chromeSeen.args[1].method, 'POST', 'chrome: replay should reuse captured method');
     assert.equal(chromeSeen.args[1].body, 'authenticity_token=opaque-token', 'chrome: replay should reuse captured body');
     assert.equal(chromeSeen.args[1].headers['x-csrf-token'], 'opaque-token', 'chrome: replay should keep safe CSRF header internally');

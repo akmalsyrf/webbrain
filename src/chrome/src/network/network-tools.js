@@ -389,7 +389,13 @@ async function fetchReplayInPageContext(url, opts = {}, ctx = {}, allowLocal = f
   try {
     const results = await api.scripting.executeScript({
       target: { tabId: ctx.tabId },
-      world: 'MAIN',
+      // ISOLATED world: the injected func does the safety-critical origin check
+      // and credentialed fetch, so it must run against pristine built-ins the
+      // page can't monkey-patch (a compromised same-origin page could otherwise
+      // override fetch/URL/Response/location to forge the response and origin
+      // check). credentials:'include' still attaches the page's cookies, so the
+      // legitimate replay use case is preserved.
+      world: 'ISOLATED',
       args: [url, init],
       func: async (rawUrl, replayInit) => {
         try {
