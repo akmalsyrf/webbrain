@@ -2726,21 +2726,24 @@ function submitPlanReview(card, tabId, planId, action, editedText) {
   }
   const note = document.createElement('div');
   note.className = 'plan-review-note';
-  const approvedText = () => (typeof t === 'function' ? t('sp.plan.approved') : 'Plan approved — running…');
   const expiredText = () => (typeof t === 'function' ? t('sp.plan.expired') : 'This plan is no longer awaiting review — the run was cancelled.');
-  card.appendChild(note);
-  scrollToBottom();
 
   sendToBackground('plan_response', { tabId, planId, decision: action, editedText })
     .then((res) => {
       if (action !== 'approve') return;
-      note.textContent = res && res.matched ? approvedText() : expiredText();
-      if (!res?.matched && activeAssistantEl) clearPlanReviewActiveRun(activeAssistantEl);
+      if (res?.matched) {
+        card.remove();
+      } else {
+        note.textContent = expiredText();
+        card.appendChild(note);
+        if (activeAssistantEl) clearPlanReviewActiveRun(activeAssistantEl);
+      }
       scrollToBottom();
     })
     .catch(() => {
       if (action === 'approve') {
         note.textContent = expiredText();
+        card.appendChild(note);
         if (activeAssistantEl) clearPlanReviewActiveRun(activeAssistantEl);
         scrollToBottom();
       }

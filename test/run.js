@@ -9834,6 +9834,7 @@ test('sidepanel: restored plan review cards rebind approve and cancel actions', 
     assert.match(source, /plan-review-cancel[\s\S]*submitPlanReview\(card, tabId, planId, 'reject'/, `${file} should rebind cancel`);
     assert.match(source, /const activeAssistantEl = action === 'approve' \? reattachPlanReviewActiveRun\(card\) : null;/, `${file} should mark approvals active before posting`);
     assert.match(source, /if \(action !== 'approve'\) \{[\s\S]*?card\.remove\(\);[\s\S]*?sendToBackground\('plan_response'/, `${file} should remove cancelled plan review cards`);
+    assert.match(source, /if \(res\?\.matched\) \{[\s\S]*?card\.remove\(\);[\s\S]*?\} else \{[\s\S]*?note\.textContent = expiredText\(\);/, `${file} should remove successfully approved plan review cards`);
     assert.match(source, /case 'run_complete':/, `${file} should clear restored active state when the resumed run completes`);
   }
 });
