@@ -1910,6 +1910,31 @@ test('scheduled tools are exposed only in full and mid act tiers', () => {
   }
 });
 
+test('history tools (go_back/go_forward) are exposed in full and mid tiers but not compact/ask', () => {
+  // The maintainer's one caveat on this feature: more tools = more small-model
+  // hallucination. So go_back/go_forward stay out of the leanest compact tier
+  // (those models keep navigate); mid+ models that handle real tasks get them.
+  for (const [label, getTools, midPrompt, compactPrompt] of [
+    ['chrome', getToolsForModeCh, SYSTEM_PROMPT_ACT_MID_CH, SYSTEM_PROMPT_ACT_COMPACT_CH],
+    ['firefox', getToolsForModeFx, SYSTEM_PROMPT_ACT_MID_FX, SYSTEM_PROMPT_ACT_COMPACT_FX],
+  ]) {
+    const full = getTools('act').map(t => t.function.name);
+    const mid = getTools('act', { tier: 'mid' }).map(t => t.function.name);
+    const compact = getTools('act', { tier: 'compact' }).map(t => t.function.name);
+    const ask = getTools('ask').map(t => t.function.name);
+
+    for (const tool of ['go_back', 'go_forward']) {
+      assert.equal(full.includes(tool), true, `[${label}] full act should expose ${tool}`);
+      assert.equal(mid.includes(tool), true, `[${label}] mid act should expose ${tool}`);
+      assert.equal(compact.includes(tool), false, `[${label}] compact act must not expose ${tool}`);
+      assert.equal(ask.includes(tool), false, `[${label}] ask mode must not expose ${tool} (read-only)`);
+    }
+
+    assert.match(midPrompt, /go_back/, `[${label}] mid prompt should mention go_back`);
+    assert.doesNotMatch(compactPrompt, /go_back/, `[${label}] compact prompt must not mention go_back`);
+  }
+});
+
 test('sidepanel exposes schedule slash commands in both builds', () => {
   for (const [label, panelRel, localeRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
@@ -6503,6 +6528,8 @@ test('capabilityFor: screenshot is read-only, but save:true is a download', () =
 test('capabilityFor: state-changing tools map to capabilities', () => {
   assert.equal(capabilityFor('navigate', { url: 'https://x.com' }), Capability.NAVIGATE);
   assert.equal(capabilityFor('new_tab', { url: 'https://x.com' }), Capability.NAVIGATE);
+  assert.equal(capabilityFor('go_back', {}), Capability.NAVIGATE);
+  assert.equal(capabilityFor('go_forward', { steps: 2 }), Capability.NAVIGATE);
   assert.equal(capabilityFor('click', {}), Capability.CLICK);
   assert.equal(capabilityFor('click_ax', { ref_id: 'ref_1' }), Capability.CLICK); // ref_id, no label needed
   assert.equal(capabilityFor('type_text', {}), Capability.TYPE);
@@ -8572,6 +8599,9 @@ test('hostForCapability: navigate/network use target URL, others use current pag
   assert.equal(hostForCapability(Capability.NETWORK, { url: 'https://api.dest.com' }, 'https://cur.com'), 'api.dest.com');
   assert.equal(hostForCapability(Capability.CLICK, { ref_id: 'ref_1' }, 'https://cur.com'), 'cur.com');
   assert.equal(hostForCapability(Capability.TYPE, {}, 'https://cur.com'), 'cur.com');
+  // go_back / go_forward carry no url arg, so they charge the current tab host.
+  assert.equal(hostForCapability(Capability.NAVIGATE, {}, 'https://cur.com', 'go_back'), 'cur.com');
+  assert.equal(hostForCapability(Capability.NAVIGATE, { steps: 2 }, 'https://cur.com', 'go_forward'), 'cur.com');
 });
 
 test('hostForCapability: URL-target scheduled tasks use the scheduled host', () => {

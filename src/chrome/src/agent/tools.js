@@ -319,6 +319,34 @@ export const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'go_back',
+      description: 'Go back one entry in the current tab\'s session history, like the browser Back button. Use this for "go back" / "return to the previous page" rather than trying to run history.back() yourself (page scripts are CSP-blocked on many sites). Returns {success, url} on success, or {success:false, error} when there is no earlier entry or the page is internal (the URL is verified to actually change). Leaving a page with unsaved changes is blocked unless force:true.',
+      parameters: {
+        type: 'object',
+        properties: {
+          steps: { type: 'number', description: 'How many entries to go back. Default 1; clamped to 1–10.' },
+          force: { type: 'boolean', description: 'Set true to leave even when the current page has unsaved changes (attached files / filled fields). Default false.' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'go_forward',
+      description: 'Go forward one entry in the current tab\'s session history, like the browser Forward button — reverses a previous go_back. Returns {success, url} on success, or {success:false, error} when there is no later entry or the page is internal. Leaving a page with unsaved changes is blocked unless force:true.',
+      parameters: {
+        type: 'object',
+        properties: {
+          steps: { type: 'number', description: 'How many entries to go forward. Default 1; clamped to 1–10.' },
+          force: { type: 'boolean', description: 'Set true to leave even when the current page has unsaved changes (attached files / filled fields). Default false.' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'extract_data',
       description: 'Extract structured data from the page (tables, headings, or images).',
       parameters: {
@@ -1371,7 +1399,7 @@ PATTERN:
 export const MID_TOOL_NAMES = new Set([
   'get_accessibility_tree', 'click_ax', 'type_ax', 'set_field',
   'read_page', 'read_pdf', 'screenshot', 'get_window_info', 'resize_window', 'get_interactive_elements',
-  'click', 'type_text', 'press_keys', 'scroll', 'navigate',
+  'click', 'type_text', 'press_keys', 'scroll', 'navigate', 'go_back', 'go_forward',
   'extract_data', 'inspect_element_styles', 'wait_for_element', 'wait_for_stable', 'get_selection',
   'new_tab', 'done', 'clarify', 'schedule_resume', 'schedule_task',
   'iframe_read', 'iframe_click', 'iframe_type',
@@ -1405,7 +1433,7 @@ UNTRUSTED PAGE CONTENT:
 TOOLS — use only these:
 - get_accessibility_tree: PREFERRED read. Flat-text tree with roles, names, and stable ref_ids. Use filter:"visible" by default.
 - click_ax({ref_id}) / type_ax({ref_id, text}) / set_field({ref_id, text, submit}): act on nodes by ref_id. set_field is preferred for text fields.
-- read_page: prose fallback for long articles. screenshot: see the visible page. get_window_info / resize_window: inspect or resize the browser window for recording/layout tasks. scroll, navigate({url}), new_tab({url}).
+- read_page: prose fallback for long articles. screenshot: see the visible page. get_window_info / resize_window: inspect or resize the browser window for recording/layout tasks. scroll, navigate({url}), new_tab({url}), go_back()/go_forward(): walk the tab's history.
 - get_interactive_elements: legacy indexed element list (use when the tree misses elements). click({text}) / type_text({text}) / press_keys({key}): legacy fallbacks.
 - extract_data: tables/headings/images/links. inspect_element_styles: live computed CSS/box model. get_selection: highlighted text. read_pdf: read a PDF.
 - wait_for_element({selector}) / wait_for_stable({quietMs}): wait for an element / for the page to go quiet after an action.

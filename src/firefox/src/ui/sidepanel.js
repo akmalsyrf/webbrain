@@ -458,6 +458,8 @@ const TOOL_KEYS = {
   type_text: 'tool.type_text',
   scroll: 'tool.scroll',
   navigate: 'tool.navigate',
+  go_back: 'tool.go_back',
+  go_forward: 'tool.go_forward',
   extract_data: 'tool.extract_data',
   inspect_element_styles: 'tool.inspect_element_styles',
   read_page_source: 'tool.read_page_source',

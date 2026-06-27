@@ -22,7 +22,7 @@
  */
 
 export const Capability = {
-  NAVIGATE: 'navigate',          // navigate / new_tab to a host
+  NAVIGATE: 'navigate',          // navigate / new_tab / go_back / go_forward to a host
   CLICK: 'click',                // click / click_ax / iframe_click / drag_drop / Enter / submit
   TYPE: 'type',                  // type_text / type_ax / iframe_type / set_field (no submit)
   EXECUTE_JS: 'execute_js',      // execute_js
@@ -127,6 +127,8 @@ export function isNetworkMutation(name, args) {
 const TOOL_CAPABILITY = {
   navigate: Capability.NAVIGATE,
   new_tab: Capability.NAVIGATE,
+  go_back: Capability.NAVIGATE,
+  go_forward: Capability.NAVIGATE,
   click: Capability.CLICK,
   click_ax: Capability.CLICK,
   iframe_click: Capability.CLICK,
