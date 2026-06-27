@@ -4,6 +4,17 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / `manifest.json` version.
 
+## [18.0.2] - 2026-06-27
+
+### Added
+- Added bulk API mutation pattern detection for Chrome and Firefox so repeated successful same-action clicks, such as following many GitHub stargazers, can surface matching background API request shapes before the agent spends one LLM turn per button.
+
+### Changed
+- Kept mutating `fetch_url` calls behind the `/allow-api` slash command, including a hard fail-closed path for POST, PUT, PATCH, and DELETE when API mutations have not been explicitly enabled for the conversation.
+
+### Tests
+- Added Chrome and Firefox regression coverage for bulk API mutation hints, `/allow-api` hint state, and blocking mutating `fetch_url` calls until `/allow-api` is enabled.
+
 ## [18.0.0] - 2026-06-27
 
 ### Added
