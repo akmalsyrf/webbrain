@@ -332,14 +332,19 @@ class LoopDetectorShim {
     const SAFE_SHORTCUT_METHODS = new Set(['GET']);
     let candidate = null;
     let matches = 0;
+    const usedRequestIndexes = new Set();
     for (const clickTs of clickTimes) {
-      const hit = apiRequests.find(r =>
+      const hitIndex = apiRequests.findIndex((r, idx) =>
+        !usedRequestIndexes.has(idx) &&
         SAFE_SHORTCUT_METHODS.has(String(r.method || '').toUpperCase()) &&
         r.ts >= clickTs && r.ts <= clickTs + WINDOW_MS &&
         (!candidate || (r.url === candidate.url && String(r.method || '').toUpperCase() === candidate.method))
       );
+      if (hitIndex < 0) continue;
+      const hit = apiRequests[hitIndex];
       if (!hit) continue;
       if (!candidate) candidate = { url: hit.url, method: String(hit.method || '').toUpperCase() };
+      usedRequestIndexes.add(hitIndex);
       matches++;
     }
     if (!candidate || matches < 2) return null;
@@ -746,6 +751,37 @@ test('_detectApiShortcut: match found returns url + method', () => {
     assert.equal(shortcut.url, 'https://api.example.com/items?page=2');
     assert.equal(shortcut.method, 'GET');
     assert.ok(shortcut.occurrences >= 2, `expected occurrences >= 2, got ${shortcut.occurrences}`);
+  } finally {
+    delete globalThis.__webbrainApiRequests;
+  }
+});
+
+test('_detectApiShortcut: one request cannot satisfy multiple click windows', () => {
+  const d = new LoopDetectorShim();
+  const tabId = 205;
+  d._recordCall(tabId, 'click', { selector: '#next' }, { success: true });
+  d._recordCall(tabId, 'click', { selector: '#next' }, { success: true });
+  const buf = d._recordCall(tabId, 'click', { selector: '#next' }, { success: true });
+  const loop = d._detectLoop(buf);
+  assert.ok(loop, 'expected loop to be detected');
+
+  const base = Date.now();
+  const clickEntries = buf.filter(e => e.key === loop.key);
+  clickEntries.forEach((entry, idx) => { entry.ts = base + (idx * 100); });
+  const apiMap = new Map();
+  apiMap.set(tabId, [{
+    url: 'https://api.example.com/analytics',
+    method: 'GET',
+    ts: base + 250,
+  }]);
+  globalThis.__webbrainApiRequests = apiMap;
+
+  try {
+    assert.equal(
+      d._detectApiShortcut(tabId, loop, buf),
+      null,
+      'a single request should not be counted once per overlapping click window'
+    );
   } finally {
     delete globalThis.__webbrainApiRequests;
   }

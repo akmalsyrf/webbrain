@@ -576,14 +576,19 @@ export class Agent {
     const SAFE_SHORTCUT_METHODS = new Set(['GET']);
     let candidate = null;
     let matches = 0;
+    const usedRequestIndexes = new Set();
     for (const clickTs of clickTimes) {
-      const hit = apiRequests.find(r =>
+      const hitIndex = apiRequests.findIndex((r, idx) =>
+        !usedRequestIndexes.has(idx) &&
         SAFE_SHORTCUT_METHODS.has(String(r.method || '').toUpperCase()) &&
         r.ts >= clickTs && r.ts <= clickTs + WINDOW_MS &&
         (!candidate || (r.url === candidate.url && String(r.method || '').toUpperCase() === candidate.method))
       );
+      if (hitIndex < 0) continue;
+      const hit = apiRequests[hitIndex];
       if (!hit) continue;
       if (!candidate) candidate = { url: hit.url, method: String(hit.method || '').toUpperCase() };
+      usedRequestIndexes.add(hitIndex);
       matches++;
     }
     if (!candidate || matches < 2) return null;
