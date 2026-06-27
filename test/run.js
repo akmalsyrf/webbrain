@@ -2671,15 +2671,58 @@ test('chrome sidepanel drops stale async tab-chat restores', () => {
   const renderedSetIdx = body.indexOf('renderedTabId = newTabId;');
   const restoreIdx = body.indexOf('messagesEl.innerHTML =');
   const consumeIdx = body.indexOf('consumePendingContextMenuPrompt()');
+  const flushIdx = body.indexOf('await flushRenderedTabChat();');
+  const postFlushProcessingIdx = body.indexOf('if (isProcessing) {', flushIdx);
+  const postFlushPendingIdx = body.indexOf('pendingTabSwitch = newTabId;', postFlushProcessingIdx);
+  const postFlushReturnIdx = body.indexOf('return;', postFlushPendingIdx);
   assert.notEqual(setIdx, -1, 'chrome: switchToTab should set the visible tab before restoring chat');
   assert.notEqual(loadIdx, -1, 'chrome: switchToTab should load persisted tab chat asynchronously');
   assert.notEqual(guardIdx, -1, 'chrome: stale async tab-chat restores should be dropped');
   assert.notEqual(renderedSetIdx, -1, 'chrome: switchToTab should mark the rendered tab only after stale async restores are dropped');
   assert.notEqual(restoreIdx, -1, 'chrome: switchToTab restore point missing');
   assert.notEqual(consumeIdx, -1, 'chrome: switchToTab context-menu consume point missing');
+  assert.notEqual(flushIdx, -1, 'chrome: switchToTab should flush rendered chat before changing tabs');
+  assert.notEqual(postFlushProcessingIdx, -1, 'chrome: switchToTab should recheck processing after the async flush yields');
+  assert.notEqual(postFlushPendingIdx, -1, 'chrome: switchToTab should defer the requested tab switch if a run starts during the flush');
+  assert.notEqual(postFlushReturnIdx, -1, 'chrome: switchToTab should stop before changing currentTabId when a run starts during the flush');
+  assert.equal(flushIdx < postFlushProcessingIdx && postFlushProcessingIdx < postFlushPendingIdx && postFlushPendingIdx < postFlushReturnIdx && postFlushReturnIdx < setIdx, true, 'chrome: post-flush processing recheck must happen before currentTabId changes');
   assert.equal(setIdx < loadIdx && loadIdx < guardIdx && guardIdx < renderedSetIdx && renderedSetIdx < restoreIdx && guardIdx < consumeIdx, true, 'chrome: stale guard must run after async chat load and before rendered-tab/DOM/context-menu work');
-  assert.match(body, /if \(renderedTabId != null\) \{[\s\S]*?persistTabChat\(renderedTabId, messagesEl\.innerHTML\);[\s\S]*?captureInputDraftForTab\(renderedTabId\);[\s\S]*?\}/, 'chrome: overlapping tab switches should save drafts for the tab represented by the DOM');
+  assert.match(body, /if \(renderedTabId != null\) \{[\s\S]*?await flushRenderedTabChat\(\);[\s\S]*?captureInputDraftForTab\(renderedTabId\);[\s\S]*?\}/, 'chrome: overlapping tab switches should flush chat and save drafts for the tab represented by the DOM');
   assert.doesNotMatch(body, /persistTabChat\(currentTabId,\s*messagesEl\.innerHTML\)|captureInputDraftForTab\(currentTabId\)/, 'chrome: overlapping tab switches must not save DOM or drafts under a pending target tab');
+});
+
+test('chrome sidepanel queues target-tab updates during async tab switches', () => {
+  const panel = fs.readFileSync(path.join(ROOT, 'src/chrome/src/ui/sidepanel.js'), 'utf8');
+  assert.match(panel, /let tabSwitchTransitionId = null;/, 'chrome: tab switches should track the tab currently being restored');
+  assert.match(panel, /let queuedTabSwitchMessages = \[\];/, 'chrome: tab switches should keep target-tab messages that arrive mid-restore');
+  assert.match(panel, /function queueAgentUpdateDuringTabSwitch\(msg\) \{[\s\S]*?const tabId = msg\?\.tabId;[\s\S]*?tabSwitchTransitionId == null[\s\S]*?tabId !== tabSwitchTransitionId[\s\S]*?return false;[\s\S]*?queuedTabSwitchMessages\.push\(msg\);[\s\S]*?return true;[\s\S]*?\}/, 'chrome: target-tab messages should be queued while that tab is being restored');
+  assert.match(panel, /function drainQueuedAgentUpdatesForTab\(tabId\) \{[\s\S]*?queuedTabSwitchMessages = remaining;[\s\S]*?replay\.forEach\(\(msg\) => handleAgentUpdateMessage\(msg\)\);[\s\S]*?\}/, 'chrome: queued target-tab messages should replay through the normal agent update handler');
+
+  const switchMatch = panel.match(/async function switchToTab\(newTabId\) \{([\s\S]*?)\n\}/);
+  assert.ok(switchMatch, 'chrome: switchToTab body missing');
+  const body = switchMatch[1];
+  const markIdx = body.indexOf('tabSwitchTransitionId = newTabId;');
+  const flushIdx = body.indexOf('await flushRenderedTabChat();');
+  const loadIdx = body.indexOf('const html = await loadTabChat(newTabId);');
+  const clearTransitionIdx = body.indexOf('if (tabSwitchTransitionId === newTabId) tabSwitchTransitionId = null;');
+  const replayIdx = body.indexOf('drainQueuedAgentUpdatesForTab(newTabId);');
+  const consumeIdx = body.indexOf('consumePendingContextMenuPrompt()');
+  assert.notEqual(markIdx, -1, 'chrome: switchToTab should mark the target tab before any async flush can yield');
+  assert.notEqual(flushIdx, -1, 'chrome: switchToTab flush point missing');
+  assert.notEqual(loadIdx, -1, 'chrome: switchToTab restore load point missing');
+  assert.notEqual(clearTransitionIdx, -1, 'chrome: switchToTab should clear the transition marker after restore settles');
+  assert.notEqual(replayIdx, -1, 'chrome: switchToTab should replay queued target-tab messages after restore');
+  assert.notEqual(consumeIdx, -1, 'chrome: switchToTab context-menu consume point missing');
+  assert.equal(markIdx < flushIdx && flushIdx < loadIdx && loadIdx < clearTransitionIdx && clearTransitionIdx < replayIdx && replayIdx < consumeIdx, true, 'chrome: queued target-tab updates must wait until the async restore has settled');
+
+  const listenerStart = panel.indexOf("if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;");
+  assert.notEqual(listenerStart, -1, 'chrome: runtime message listener missing');
+  const listenerBody = panel.slice(listenerStart, panel.indexOf('\n});', listenerStart) + 4);
+  const queueIdx = listenerBody.indexOf('if (queueAgentUpdateDuringTabSwitch(msg)) return;');
+  const handleIdx = listenerBody.indexOf('handleAgentUpdateMessage(msg);');
+  assert.notEqual(queueIdx, -1, 'chrome: runtime listener should queue target-tab updates during async tab switching');
+  assert.notEqual(handleIdx, -1, 'chrome: runtime listener should still pass normal updates to the shared handler');
+  assert.equal(queueIdx < handleIdx, true, 'chrome: target-tab updates should be queued before scheduled-job or tab filters can drop them');
 });
 
 test('chrome sidepanel persists tab chat to the tab captured before debounce', () => {
@@ -2697,6 +2740,69 @@ test('chrome sidepanel persists tab chat to the tab captured before debounce', (
   assert.notEqual(persistIdx, -1, 'chrome: persistence should write the captured tab/html');
   assert.equal(captureTabIdx < timerIdx && captureHtmlIdx < timerIdx && timerIdx < persistIdx, true, 'chrome: persistence must not read mutable tab state after the debounce delay');
   assert.doesNotMatch(body, /persistTabChat\(currentTabId,\s*messagesEl\.innerHTML\)/, 'chrome: debounced persistence should not save live DOM under the later currentTabId');
+});
+
+test('sidepanel flushes completed run chat before deferred tab switches', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+
+    if (label === 'chrome') {
+      assert.match(
+        panel,
+        /async function flushRenderedTabChat\(\) \{[\s\S]*?const tabId = renderedTabId;[\s\S]*?if \(persistTimer && persistTimerTabId === tabId\) \{[\s\S]*?clearTimeout\(persistTimer\);[\s\S]*?\}[\s\S]*?await persistTabChat\(tabId, messagesEl\.innerHTML\);[\s\S]*?\}/,
+        'chrome: final flush should cancel stale debounced writes and persist the rendered tab immediately',
+      );
+    } else {
+      assert.match(
+        panel,
+        /function flushRenderedTabChat\(\) \{[\s\S]*?if \(currentTabId == null\) return;[\s\S]*?tabChats\.set\(currentTabId, messagesEl\.innerHTML\);[\s\S]*?\}/,
+        'firefox: final flush should update the currently rendered in-memory chat',
+      );
+    }
+
+    const sendMatch = panel.match(/async function sendMessage\([^)]*\) \{[\s\S]*?finally \{([\s\S]*?)\n  \}\n  return accepted;/);
+    assert.ok(sendMatch, `${label}: sendMessage finally block missing`);
+    const sendFinally = sendMatch[1];
+    const sendFlushIdx = sendFinally.indexOf('flushRenderedTabChat()');
+    const sendDrainIdx = sendFinally.indexOf('await drainQueuedContextMenuPromptsAfterPendingTabSwitch();');
+    assert.notEqual(sendFlushIdx, -1, `${label}: send completion should flush the final transcript`);
+    assert.notEqual(sendDrainIdx, -1, `${label}: send completion should drain pending tab switches`);
+    assert.equal(sendFlushIdx < sendDrainIdx, true, `${label}: send completion must flush before deferred tab switching`);
+
+    const continueMatch = panel.match(/async function continueAgent\(\) \{[\s\S]*?finally \{([\s\S]*?)\n  \}\n\}/);
+    assert.ok(continueMatch, `${label}: continueAgent finally block missing`);
+    const continueFinally = continueMatch[1];
+    const continueFlushIdx = continueFinally.indexOf('flushRenderedTabChat()');
+    const continueDrainIdx = continueFinally.indexOf('await drainQueuedContextMenuPromptsAfterPendingTabSwitch();');
+    assert.notEqual(continueFlushIdx, -1, `${label}: Continue completion should flush the final transcript`);
+    assert.notEqual(continueDrainIdx, -1, `${label}: Continue completion should drain pending tab switches`);
+    assert.equal(continueFlushIdx < continueDrainIdx, true, `${label}: Continue completion must flush before deferred tab switching`);
+
+    const scheduledStart = panel.search(/(?:async\s+)?function settleScheduledRun\(event, job\)/);
+    const scheduledEnd = panel.search(/(?:async\s+)?function handleScheduledJobEvent\(data, tabId\)/);
+    assert.notEqual(scheduledStart, -1, `${label}: scheduled settlement helper missing`);
+    assert.notEqual(scheduledEnd, -1, `${label}: scheduled event handler boundary missing`);
+    const scheduledBody = panel.slice(scheduledStart, scheduledEnd);
+    const scheduledFlushNeedle = label === 'chrome' ? 'await flushRenderedTabChat()' : 'flushRenderedTabChat()';
+    const scheduledDrainNeedle = label === 'chrome' ? 'await drainQueuedContextMenuPromptsAfterPendingTabSwitch();' : 'drainQueuedContextMenuPromptsAfterPendingTabSwitch();';
+    const scheduledFlushIdx = scheduledBody.indexOf(scheduledFlushNeedle);
+    const scheduledDrainIdx = scheduledBody.indexOf(scheduledDrainNeedle);
+    assert.notEqual(scheduledFlushIdx, -1, `${label}: scheduled completion should flush the final transcript`);
+    assert.notEqual(scheduledDrainIdx, -1, `${label}: scheduled completion should drain pending tab switches`);
+    assert.equal(scheduledFlushIdx < scheduledDrainIdx, true, `${label}: scheduled completion must flush before deferred tab switching`);
+
+    const abortMatch = panel.match(/setTimeout\(async \(\) => \{[\s\S]*?if \(abortRequested\) \{([\s\S]*?)\n    \}\n  \}, 3000\);/);
+    assert.ok(abortMatch, `${label}: abort safety timeout body missing`);
+    const abortBody = abortMatch[1];
+    const abortFlushIdx = abortBody.indexOf('flushRenderedTabChat()');
+    const abortDrainIdx = abortBody.indexOf('await drainQueuedContextMenuPromptsAfterPendingTabSwitch();');
+    assert.notEqual(abortFlushIdx, -1, `${label}: abort timeout should flush the stopped transcript`);
+    assert.notEqual(abortDrainIdx, -1, `${label}: abort timeout should drain pending tab switches`);
+    assert.equal(abortFlushIdx < abortDrainIdx, true, `${label}: abort timeout must flush before deferred tab switching`);
+  }
 });
 
 test('chrome sidepanel serializes tab-chat storage writes with clears and reads', () => {
@@ -3493,7 +3599,7 @@ test('sidepanel drains scheduled-run context-menu prompts after pending tab swit
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
     assert.match(panel, /async function drainQueuedContextMenuPromptsAfterPendingTabSwitch\(\) \{[\s\S]*?if \(pendingTabSwitch == null\) \{[\s\S]*?drainQueuedContextMenuPrompts\(\);[\s\S]*?const pending = pendingTabSwitch;[\s\S]*?pendingTabSwitch = null;[\s\S]*?try \{[\s\S]*?await switchToTab\(pending\);[\s\S]*?\} catch \{[\s\S]*?\}[\s\S]*?drainQueuedContextMenuPrompts\(\);/, `${label}: scheduled completions need a non-throwing pending-tab switch before draining context-menu prompts`);
 
-    const scheduledStart = panel.indexOf('function settleScheduledRun(event, job)');
+    const scheduledStart = panel.search(/(?:async\s+)?function settleScheduledRun\(event, job\)/);
     const scheduledEnd = panel.indexOf('if (scheduledJobsEl)', scheduledStart);
     assert.notEqual(scheduledStart, -1, `${label}: scheduled run settlement helper missing`);
     assert.notEqual(scheduledEnd, -1, `${label}: scheduled job event block missing`);

@@ -509,6 +509,11 @@ function clearCachedTabChat(tabId) {
   tabChats.delete(tabId);
 }
 
+function flushRenderedTabChat() {
+  if (currentTabId == null) return;
+  tabChats.set(currentTabId, messagesEl.innerHTML);
+}
+
 function saveInputDraftForTab(tabId, text) {
   const numericTabId = Number(tabId);
   if (!Number.isFinite(numericTabId)) return;
@@ -865,6 +870,7 @@ function settleScheduledRun(event, job) {
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     abortRequested = false;
+    flushRenderedTabChat();
     drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
   if (event === 'completed') notifyCompletion({ success: job?.lastOutcome === 'success' });
@@ -1400,7 +1406,7 @@ function switchToTab(newTabId) {
 
   // Save current tab's chat
   if (currentTabId != null) {
-    tabChats.set(currentTabId, messagesEl.innerHTML);
+    flushRenderedTabChat();
     captureInputDraftForTab(currentTabId);
   }
 
@@ -2250,6 +2256,7 @@ async function sendMessage(extraChatParams) {
       scrollToBottom();
       refreshRecommendedActions();
     }
+    if (renderToCurrentTab && currentTabId === tabId) flushRenderedTabChat();
     if (renderToCurrentTab && !wasAborted) notifyCompletion({ success: completedSuccessfully });
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
@@ -2939,6 +2946,7 @@ async function continueAgent() {
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     if (currentTabId === tabId) scrollToBottom();
+    if (currentTabId === tabId) flushRenderedTabChat();
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
 }
@@ -3268,6 +3276,7 @@ stopBtn.addEventListener('click', async () => {
       hideActivity();
       currentAssistantEl = null;
       abortRequested = false;
+      flushRenderedTabChat();
       await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
     }
   }, 3000); // safety timeout if background takes too long

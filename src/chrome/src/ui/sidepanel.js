@@ -371,6 +371,8 @@ const recordingStopBtn = document.getElementById('btn-recording-stop');
 let currentTabId = null;
 let renderedTabId = null;
 let pendingTabSwitch = null; // tab the user switched to while isProcessing was true
+let tabSwitchTransitionId = null;
+let queuedTabSwitchMessages = [];
 let isProcessing = false;
 let currentAssistantEl = null;
 let verboseMode = false;
@@ -564,6 +566,17 @@ function persistTabChat(tabId, html) {
     } catch (e) { /* ignore */ }
     return { ok: true };
   });
+}
+
+async function flushRenderedTabChat() {
+  const tabId = renderedTabId;
+  if (tabId == null) return;
+  if (persistTimer && persistTimerTabId === tabId) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+    persistTimerTabId = null;
+  }
+  await persistTabChat(tabId, messagesEl.innerHTML);
 }
 
 function clearCachedTabChat(tabId) {
@@ -941,7 +954,26 @@ async function drainQueuedContextMenuPromptsAfterPendingTabSwitch() {
   drainQueuedContextMenuPrompts();
 }
 
-function settleScheduledRun(event, job) {
+function queueAgentUpdateDuringTabSwitch(msg) {
+  const tabId = msg?.tabId;
+  if (tabSwitchTransitionId == null || tabId == null || tabId !== tabSwitchTransitionId) return false;
+  queuedTabSwitchMessages.push(msg);
+  return true;
+}
+
+function drainQueuedAgentUpdatesForTab(tabId) {
+  if (!queuedTabSwitchMessages.length) return;
+  const replay = [];
+  const remaining = [];
+  for (const msg of queuedTabSwitchMessages) {
+    if (msg?.tabId === tabId) replay.push(msg);
+    else remaining.push(msg);
+  }
+  queuedTabSwitchMessages = remaining;
+  replay.forEach((msg) => handleAgentUpdateMessage(msg));
+}
+
+async function settleScheduledRun(event, job) {
   if (job?.id) crossPanelScheduledJobIds.delete(String(job.id));
   const assistantEl = job?.id ? findScheduledAssistantMessageForJob(job.id) : currentAssistantEl;
   if (assistantEl) {
@@ -959,12 +991,13 @@ function settleScheduledRun(event, job) {
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     abortRequested = false;
-    drainQueuedContextMenuPromptsAfterPendingTabSwitch();
+    if (renderedTabId != null) await flushRenderedTabChat();
+    await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
   if (event === 'completed') notifyCompletion({ success: job?.lastOutcome === 'success' });
 }
 
-function handleScheduledJobEvent(data, tabId) {
+async function handleScheduledJobEvent(data, tabId) {
   refreshScheduledJobs({ tabId: currentTabId });
   const event = data?.event;
   const job = data?.job;
@@ -991,10 +1024,10 @@ function handleScheduledJobEvent(data, tabId) {
     showActivity(t('sp.scheduled.running', { title }));
   } else if (event === 'completed') {
     ensureScheduledTerminalMessage(job);
-    settleScheduledRun(event, job);
+    await settleScheduledRun(event, job);
   } else if (event === 'failed') {
-    settleScheduledRun(event, job);
     addMessage('error', t('sp.scheduled.failed', { title, msg: job.lastError || t('sp.scheduled.unknown_error') }));
+    await settleScheduledRun(event, job);
   } else if (event === 'needs_user_input') {
     ensureScheduledClarifyCards([job]);
     hideActivity();
@@ -1519,33 +1552,43 @@ async function switchToTab(newTabId) {
     return;
   }
   pendingTabSwitch = null;
+  tabSwitchTransitionId = newTabId;
 
-  // Save the tab currently represented by the DOM. During an async restore,
-  // currentTabId may already point at the target while the DOM is still older.
-  if (renderedTabId != null) {
-    persistTabChat(renderedTabId, messagesEl.innerHTML);
-    captureInputDraftForTab(renderedTabId);
+  try {
+    // Save the tab currently represented by the DOM. During an async restore,
+    // currentTabId may already point at the target while the DOM is still older.
+    if (renderedTabId != null) {
+      await flushRenderedTabChat();
+      if (isProcessing) {
+        pendingTabSwitch = newTabId;
+        return;
+      }
+      captureInputDraftForTab(renderedTabId);
+    }
+
+    currentTabId = newTabId;
+    syncApiMutationsAllowedForCurrentTab();
+
+    // Restore new tab's chat from memory or storage.
+    const html = await loadTabChat(newTabId);
+    if (currentTabId !== newTabId) return;
+    renderedTabId = newTabId;
+    if (html) {
+      messagesEl.innerHTML = html;
+      messagesEl.querySelectorAll('[data-bound]').forEach(el => delete el.dataset.bound);
+      rebindRestoredMessageControls();
+    } else {
+      messagesEl.innerHTML = '';
+      addMessage('system', t('sp.help_message'));
+    }
+    restoreInputDraftForTab(newTabId);
+    scrollToBottom();
+    refreshScheduledJobs({ tabId: newTabId });
+    refreshRecommendedActions();
+  } finally {
+    if (tabSwitchTransitionId === newTabId) tabSwitchTransitionId = null;
   }
-
-  currentTabId = newTabId;
-  syncApiMutationsAllowedForCurrentTab();
-
-  // Restore new tab's chat from memory or storage.
-  const html = await loadTabChat(newTabId);
-  if (currentTabId !== newTabId) return;
-  renderedTabId = newTabId;
-  if (html) {
-    messagesEl.innerHTML = html;
-    messagesEl.querySelectorAll('[data-bound]').forEach(el => delete el.dataset.bound);
-    rebindRestoredMessageControls();
-  } else {
-    messagesEl.innerHTML = '';
-    addMessage('system', t('sp.help_message'));
-  }
-  restoreInputDraftForTab(newTabId);
-  scrollToBottom();
-  refreshScheduledJobs({ tabId: newTabId });
-  refreshRecommendedActions();
+  drainQueuedAgentUpdatesForTab(newTabId);
   consumePendingContextMenuPrompt().then(() => drainQueuedContextMenuPrompts()).catch(() => {});
 }
 
@@ -2406,6 +2449,7 @@ async function sendMessage(extraChatParams) {
     }
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     if (renderToCurrentTab && currentTabId === tabId) scrollToBottom();
+    if (renderToCurrentTab && renderedTabId === tabId) await flushRenderedTabChat();
     if (renderToCurrentTab && !wasAborted) notifyCompletion({ success: completedSuccessfully });
     if (renderToCurrentTab && currentTabId === tabId) refreshRecommendedActions();
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
@@ -2612,11 +2656,11 @@ function summarizeLastTranscript() {
   if (sendBtn) sendBtn.click();
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
-
+function handleAgentUpdateMessage(msg) {
   if (msg.type === 'scheduled_job') {
-    handleScheduledJobEvent(msg.data, msg.tabId);
+    handleScheduledJobEvent(msg.data, msg.tabId).catch((err) => {
+      console.warn('[WebBrain] failed to handle scheduled job event:', err);
+    });
     return;
   }
 
@@ -2745,6 +2789,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       renderClarifyCard(data);
       break;
   }
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;
+  if (queueAgentUpdateDuringTabSwitch(msg)) return;
+  handleAgentUpdateMessage(msg);
 });
 
 /**
@@ -3293,6 +3343,7 @@ async function continueAgent() {
     hideActivity();
     if (currentAssistantEl === assistantEl) currentAssistantEl = null;
     if (currentTabId === tabId) scrollToBottom();
+    if (currentTabId === tabId && renderedTabId === tabId) await flushRenderedTabChat();
     await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   }
 }
@@ -3706,6 +3757,7 @@ async function abortRun() {
       hideActivity();
       currentAssistantEl = null;
       abortRequested = false;
+      await flushRenderedTabChat();
       await drainQueuedContextMenuPromptsAfterPendingTabSwitch();
     }
   }, 3000); // safety timeout if background takes too long
