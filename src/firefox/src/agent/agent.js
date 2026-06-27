@@ -485,6 +485,42 @@ export class Agent {
   }
 
   /**
+   * Issue #189 — mutation API observer shortcutter. When _checkLoop flags a
+   * repeated click (e.g. "Next Page" clicked 3x), check whether each click
+   * fired the same background XHR/fetch (captured by the webRequest
+   * listener in background.js). If so, surface the URL/method so the model
+   * can call fetch_url directly instead of clicking again.
+   *
+   * Strict matching only: same tab, exact url+method repeated, request must
+   * land within WINDOW_MS after the click that triggered it. No fuzzy
+   * param-pattern matching.
+   */
+  _detectApiShortcut(tabId, loop, buf) {
+    if (loop.type !== 'repeat') return null;
+    if (!['click', 'click_ax'].includes(loop.name)) return null;
+    const apiRequests = globalThis.__webbrainApiRequests?.get(tabId);
+    if (!apiRequests || apiRequests.length === 0) return null;
+
+    const clickTimes = buf.filter(e => e.key === loop.key).map(e => e.ts);
+    if (clickTimes.length < 2) return null;
+
+    const WINDOW_MS = 3000;
+    let candidate = null;
+    let matches = 0;
+    for (const clickTs of clickTimes) {
+      const hit = apiRequests.find(r =>
+        r.ts >= clickTs && r.ts <= clickTs + WINDOW_MS &&
+        (!candidate || (r.url === candidate.url && r.method === candidate.method))
+      );
+      if (!hit) continue;
+      if (!candidate) candidate = { url: hit.url, method: hit.method };
+      matches++;
+    }
+    if (!candidate || matches < 2) return null;
+    return { url: candidate.url, method: candidate.method, occurrences: matches };
+  }
+
+  /**
    * Synthesize a transparent summary when the agent hits the step limit
    * without producing a final answer. See chrome's copy for the rationale.
    */
@@ -570,9 +606,15 @@ export class Agent {
         message: `Stopped: I detected I was looping on ${desc} without making progress after multiple warnings. Please tell me what's blocking, give me a different instruction, or take a look at the page yourself.`,
       };
     }
-    const warning = loop.type === 'repeat'
-      ? `[LOOP DETECTED: You've just called ${loop.name} ${loop.count} times with the same arguments and the same outcome. The current approach is NOT working. Try something fundamentally different: a different selector, a different tool, scroll to find a different element, or take a screenshot to see what's actually on screen. DO NOT repeat this exact call again — try a creative alternative.]`
-      : `[LOOP DETECTED: You're oscillating between ${loop.a} and ${loop.b} without making progress. Stop. Take a screenshot to see what's actually happening, then try a completely different approach.]`;
+    let warning;
+    if (loop.type === 'repeat') {
+      const shortcut = this._detectApiShortcut(tabId, loop, buf);
+      warning = shortcut
+        ? `[LOOP DETECTED + API SHORTCUT FOUND: You've called ${loop.name} ${loop.count} times. Each click triggered the same background request: ${shortcut.method} ${shortcut.url}. Instead of clicking again, call fetch_url({url: "${shortcut.url}", method: "${shortcut.method}"}) directly to get the next page's data.]`
+        : `[LOOP DETECTED: You've just called ${loop.name} ${loop.count} times with the same arguments and the same outcome. The current approach is NOT working. Try something fundamentally different: a different selector, a different tool, scroll to find a different element, or take a screenshot to see what's actually on screen. DO NOT repeat this exact call again — try a creative alternative.]`;
+    } else {
+      warning = `[LOOP DETECTED: You're oscillating between ${loop.a} and ${loop.b} without making progress. Stop. Take a screenshot to see what's actually happening, then try a completely different approach.]`;
+    }
     return { kind: 'nudge', warning };
   }
 
