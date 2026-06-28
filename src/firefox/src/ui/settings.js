@@ -8,9 +8,13 @@ import { CAPABILITY_LABEL } from '../agent/permission-gate.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '18.0.13';
+const EXT_VERSION = '18.0.14';
 
 const providersContainer = document.getElementById('providers');
+const displaySettings = document.getElementById('display-settings');
+const generalSearchInput = document.getElementById('input-general-search');
+const generalSearchEmpty = document.getElementById('general-search-empty');
+const advancedSettings = document.querySelector('.advanced-settings');
 const verboseToggle = document.getElementById('toggle-verbose');
 const screenshotToggle = document.getElementById('toggle-screenshot-fallback');
 const maxStepsRange = document.getElementById('range-max-steps');
@@ -102,17 +106,80 @@ function renderSubtitle() {
 }
 renderSubtitle();
 
+function normalizeGeneralSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function searchTextForGeneralItem(item) {
+  const searchableNodes = [item, ...Array.from(item.querySelectorAll('[id], [data-i18n], [data-i18n-html], [data-i18n-placeholder]'))];
+  const keyedText = searchableNodes
+    .map((el) => [
+      el.id,
+      el.dataset?.i18n,
+      el.dataset?.i18nHtml,
+      el.dataset?.i18nPlaceholder,
+    ].filter(Boolean).join(' '))
+    .join(' ');
+  return normalizeGeneralSearchText(`${item.textContent || ''} ${keyedText}`);
+}
+
+function setGeneralSearchHidden(item, hidden) {
+  item.hidden = hidden;
+  item.classList.toggle('general-search-hidden', hidden);
+}
+
+function filterGeneralSettings() {
+  if (!displaySettings || !generalSearchInput) return;
+  const query = normalizeGeneralSearchText(generalSearchInput.value);
+  const visibleItems = Array.from(displaySettings.children)
+    .filter((el) => el.classList?.contains('setting-row'));
+  const advancedBody = advancedSettings?.querySelector('.advanced-settings-body');
+  const advancedItems = advancedBody
+    ? Array.from(advancedBody.children).filter((el) => el.classList?.contains('setting-row') || el.classList?.contains('provider-card'))
+    : [];
+
+  let visibleMatches = 0;
+  let advancedMatches = 0;
+  visibleItems.forEach((item) => {
+    const matches = !query || searchTextForGeneralItem(item).includes(query);
+    setGeneralSearchHidden(item, !!query && !matches);
+    if (matches) visibleMatches += 1;
+  });
+  advancedItems.forEach((item) => {
+    const matches = !query || searchTextForGeneralItem(item).includes(query);
+    setGeneralSearchHidden(item, !!query && !matches);
+    if (matches) advancedMatches += 1;
+  });
+
+  if (advancedSettings) {
+    setGeneralSearchHidden(advancedSettings, !!query && advancedMatches === 0);
+    if (query && advancedMatches > 0) advancedSettings.open = true;
+  }
+  if (generalSearchEmpty) {
+    generalSearchEmpty.hidden = !query || (visibleMatches + advancedMatches) > 0;
+  }
+}
+
+if (generalSearchInput) {
+  generalSearchInput.addEventListener('input', filterGeneralSettings);
+}
+
 if (languageSelect) {
   languageSelect.innerHTML = LANGUAGES.map((l) => `<option value="${l.code}">${l.label}</option>`).join('');
   languageSelect.value = getLocale();
   languageSelect.addEventListener('change', async () => {
     await setLocale(languageSelect.value);
     renderSubtitle();
+    filterGeneralSettings();
     renderProviders();
   });
   document.addEventListener('wb-locale-changed', () => {
     languageSelect.value = getLocale();
     renderSubtitle();
+    filterGeneralSettings();
     if (providersContainer) renderProviders();
     renderPermissions();
   });

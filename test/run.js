@@ -3212,14 +3212,14 @@ function runSettingsTabsScript(script, { saved = null, hash = '' } = {}) {
       },
     };
   }
-  const buttons = ['display', 'providers', 'multimodal', 'profile'].map((name) => ({
+  const buttons = ['display', 'providers', 'multimodal', 'permissions'].map((name) => ({
     dataset: { tab: name },
     classList: makeClassList(),
     addEventListener(type, handler) {
       if (type === 'click') this.clickHandler = handler;
     },
   }));
-  const panels = ['display', 'providers', 'multimodal', 'profile'].map((name) => ({
+  const panels = ['display', 'providers', 'multimodal', 'permissions'].map((name) => ({
     dataset: { panel: name },
     classList: makeClassList(),
   }));
@@ -3275,6 +3275,104 @@ test('settings tabs validate saved and hash tab names without selector interpola
     assert.equal(valid.activeButton, 'multimodal', `${label}: valid hash should override saved tab`);
     assert.equal(valid.activePanel, 'multimodal', `${label}: valid hash should activate its panel`);
     assert.equal(valid.stored, 'multimodal', `${label}: activated hash tab should persist`);
+
+    const removed = runSettingsTabsScript(script, { saved: 'profile', hash: '#captcha' });
+    assert.equal(removed.activeButton, 'providers', `${label}: removed profile/captcha tabs should fall back to providers`);
+    assert.equal(removed.activePanel, 'providers', `${label}: removed profile/captcha panels should not activate`);
+  }
+});
+
+test('settings moves profile and CAPTCHA controls into General advanced', () => {
+  for (const [label, htmlRel] of [
+    ['chrome', 'src/chrome/src/ui/settings.html'],
+    ['firefox', 'src/firefox/src/ui/settings.html'],
+  ]) {
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
+    assert.doesNotMatch(html, /data-tab="profile"/, `${label}: Profile should not be a top-level tab`);
+    assert.doesNotMatch(html, /data-tab="captcha"/, `${label}: CAPTCHA should not be a top-level tab`);
+    assert.doesNotMatch(html, /data-panel="profile"/, `${label}: Profile should not be a top-level panel`);
+    assert.doesNotMatch(html, /data-panel="captcha"/, `${label}: CAPTCHA should not be a top-level panel`);
+
+    const displayStart = html.indexOf('<section class="tab-panel" data-panel="display"');
+    assert.notEqual(displayStart, -1, `${label}: General panel missing`);
+    const providersStart = html.indexOf('<section class="tab-panel active" data-panel="providers"', displayStart);
+    assert.notEqual(providersStart, -1, `${label}: providers panel should follow General panel`);
+    const displayPanel = html.slice(displayStart, providersStart);
+    const advancedStart = displayPanel.indexOf('<details class="advanced-settings">');
+    assert.notEqual(advancedStart, -1, `${label}: General panel should include collapsed Advanced settings`);
+
+    const searchStart = displayPanel.indexOf('id="input-general-search"');
+    assert.notEqual(searchStart, -1, `${label}: General panel should include a search input`);
+    assert.ok(searchStart < advancedStart, `${label}: General search should stay above settings and Advanced`);
+    assert.match(displayPanel, /id="general-search-empty" hidden/, `${label}: General search should include an empty-result state`);
+    assert.match(html, /\.general-search-hidden \{ display: none !important; \}/, `${label}: General search should force-hide filtered rows/cards`);
+
+    for (const id of [
+      'toggle-screenshot-fallback',
+      'toggle-site-adapters',
+      'toggle-api-mutation-observer',
+      'select-auto-screenshot',
+      'toggle-tracing',
+      'input-cost-session-limit',
+      'input-cost-total-limit',
+      'toggle-strict-secret',
+      'toggle-allow-local-network',
+      'profile-card',
+      'captcha-card',
+    ]) {
+      const index = displayPanel.indexOf(`id="${id}"`);
+      assert.notEqual(index, -1, `${label}: ${id} should remain in General`);
+      assert.ok(index > advancedStart, `${label}: ${id} should be inside Advanced`);
+    }
+
+    for (const id of [
+      'select-language',
+      'select-theme',
+      'toggle-verbose',
+      'select-plan-before-act-mode',
+      'toggle-scheduled-tasks',
+      'toggle-scheduled-confirm',
+      'toggle-notify-sound',
+      'toggle-completion-confetti',
+      'range-max-steps',
+      'range-request-timeout',
+      'btn-open-traces',
+    ]) {
+      const index = displayPanel.indexOf(`id="${id}"`);
+      assert.notEqual(index, -1, `${label}: ${id} should remain visible in General`);
+      assert.ok(index < advancedStart, `${label}: ${id} should stay outside Advanced`);
+    }
+
+    assert.match(html, /\.advanced-settings \{[\s\S]*?margin: 22px 0 32px;[\s\S]*?padding: 16px 0 22px;[\s\S]*?border-bottom: 1px solid var\(--border\);/, `${label}: Advanced should have bottom padding and a clear lower boundary`);
+  }
+});
+
+test('settings General search filters visible and Advanced controls', () => {
+  for (const [label, settingsRel] of [
+    ['chrome', 'src/chrome/src/ui/settings.js'],
+    ['firefox', 'src/firefox/src/ui/settings.js'],
+  ]) {
+    const settings = fs.readFileSync(path.join(ROOT, settingsRel), 'utf8');
+    assert.match(settings, /const generalSearchInput = document\.getElementById\('input-general-search'\);/, `${label}: General search input should be wired`);
+    assert.match(settings, /const searchableNodes = \[item, \.\.\.Array\.from\(item\.querySelectorAll/, `${label}: General search should index the root row/card id as well as child controls`);
+    assert.match(settings, /function setGeneralSearchHidden\(item, hidden\) \{[\s\S]*?item\.hidden = hidden;[\s\S]*?item\.classList\.toggle\('general-search-hidden', hidden\);[\s\S]*?\}/, `${label}: General search should force-hide matching DOM nodes with a class`);
+    assert.match(settings, /function filterGeneralSettings\(\) \{[\s\S]*?const query = normalizeGeneralSearchText\(generalSearchInput\.value\);[\s\S]*?setGeneralSearchHidden\(item, !!query && !matches\);[\s\S]*?setGeneralSearchHidden\(advancedSettings, !!query && advancedMatches === 0\);[\s\S]*?if \(query && advancedMatches > 0\) advancedSettings\.open = true;[\s\S]*?generalSearchEmpty\.hidden = !query \|\| \(visibleMatches \+ advancedMatches\) > 0;[\s\S]*?\}/, `${label}: General search should filter rows, hide empty Advanced, and auto-open matched Advanced results`);
+    assert.match(settings, /generalSearchInput\.addEventListener\('input', filterGeneralSettings\);/, `${label}: General search should filter as the user types`);
+    assert.match(settings, /await setLocale\(languageSelect\.value\);[\s\S]*?filterGeneralSettings\(\);[\s\S]*?renderProviders\(\);/, `${label}: language changes should reapply the active General search`);
+  }
+});
+
+test('CAPTCHA guidance points to General Advanced settings', () => {
+  for (const [label, agentRel, toolsRel] of [
+    ['chrome', 'src/chrome/src/agent/agent.js', 'src/chrome/src/agent/tools.js'],
+    ['firefox', 'src/firefox/src/agent/agent.js', 'src/firefox/src/agent/tools.js'],
+  ]) {
+    const agent = fs.readFileSync(path.join(ROOT, agentRel), 'utf8');
+    const tools = fs.readFileSync(path.join(ROOT, toolsRel), 'utf8');
+    const removedSettingsPath = new RegExp('Settings → ' + 'CAPTCHA');
+    assert.doesNotMatch(`${agent}\n${tools}`, removedSettingsPath, `${label}: CAPTCHA setup guidance should not point to removed tab`);
+    assert.match(agent, /Settings → General → Advanced/, `${label}: solve_captcha runtime errors should point to General Advanced`);
+    assert.match(tools, /Settings → General → Advanced/, `${label}: solve_captcha tool description should point to General Advanced`);
   }
 });
 
@@ -10296,7 +10394,13 @@ test('planner: parse and format structured plan', () => {
   assert.equal(plan.scheduling.tool, 'schedule_task');
   const md = formatPlanMarkdown(plan);
   assert.match(md, /Follow GitHub stargazers/);
-  assert.match(md, /Progress ledger: yes/);
+  assert.match(md, /1\. Open stargazers/);
+  assert.doesNotMatch(md, /navigate|wait_for_stable/, 'compact plan should hide tool names');
+  assert.doesNotMatch(md, /Progress ledger|Scratchpad|schedule_task|bulk follow/, 'compact plan should hide planner internals');
+  const verboseMd = formatPlanMarkdown(plan, { verbose: true });
+  assert.match(verboseMd, /navigate, wait_for_stable/);
+  assert.match(verboseMd, /Progress ledger: yes/);
+  assert.match(verboseMd, /schedule_task/);
   const scratch = formatPlanScratchpad(plan);
   assert.match(scratch, /\[Approved plan/);
 });
@@ -10602,11 +10706,47 @@ test('planner gate: approving plan appends without deleting scratchpad facts', a
       const body = agent._extractScratchpadBody(agent.conversations.get(tabId)[idx].content);
       assert.match(body, /Existing downloadId=42/, `${label} should preserve existing scratchpad fact`);
       assert.match(body, /\[Approved plan — pinned by planner\]/, `${label} should append approved plan marker`);
+      assert.match(body, /read_page/, `${label} unedited approval should pin verbose tool detail for execution`);
+      assert.match(body, /Scratchpad: yes/, `${label} unedited approval should pin verbose memory strategy for execution`);
 
       const userIdx = agent.conversations.get(tabId).findIndex((m) => m.role === 'user' && m.content === 'collect account links');
       assert.ok(userIdx >= 0, `${label} user message present`);
       assert.ok(idx > userIdx, `${label} scratchpad should follow user task`);
       assert.equal(idx, agent.conversations.get(tabId).length - 1, `${label} scratchpad should be last`);
+    }
+  });
+});
+
+test('planner gate: review exposes compact markdown plus verbose markdown', async () => {
+  await withPlannerBrowserGlobals(async () => {
+    for (const [label, AgentClass] of [['chrome', AgentCh], ['firefox', AgentFx]]) {
+      const tabId = label === 'chrome' ? 9211 : 9212;
+      const agent = new AgentClass({ getActive: () => ({}) });
+      agent.conversations.set(tabId, [{ role: 'system', content: 'system' }]);
+      agent._chatWithCostAllowance = async () => ({ content: plannerFixtureJson() });
+      agent._waitForPlanReview = async (_tabId, _planId, _plan, markdown, _onUpdate, verboseMarkdown) => {
+        assert.match(markdown, /Open the page and collect visible account links/, `${label} compact plan should include summary`);
+        assert.doesNotMatch(markdown, /read_page|Scratchpad|Progress ledger/, `${label} compact plan should hide tools and memory internals`);
+        assert.match(verboseMarkdown, /read_page/, `${label} verbose plan should include tool names`);
+        assert.match(verboseMarkdown, /Scratchpad: yes/, `${label} verbose plan should include memory strategy`);
+        return {
+          action: 'approve',
+          editedText: '**Edited compact plan**\n\n### Steps\n1. Read the page and collect account links carefully',
+          markdownMode: 'compact',
+        };
+      };
+
+      const gate = await agent._runPlannerGate(
+        tabId,
+        { role: 'user', content: 'collect account links' },
+        () => {},
+        null,
+      );
+      assert.equal(gate.proceed, true, `${label} should proceed after approval`);
+      assert.doesNotMatch(gate.approvedScratchpadText, /read_page/, `${label} compact edits should not re-pin stale hidden tool detail`);
+      assert.match(gate.approvedScratchpadText, /Scratchpad: yes/, `${label} scratchpad handoff should keep verbose memory strategy`);
+      assert.match(gate.approvedScratchpadText, /Edited compact plan/, `${label} scratchpad handoff should preserve compact edits`);
+      assert.match(gate.approvedScratchpadText, /Planner execution metadata/, `${label} compact edits should keep non-step execution metadata`);
     }
   });
 });
@@ -10645,6 +10785,8 @@ test('planner gate: scheduled runs auto-approve plan review', async () => {
       assert.ok(idx >= 0, `${label} scheduled run should pin the approved plan`);
       const body = agent._extractScratchpadBody(agent.conversations.get(tabId)[idx].content);
       assert.match(body, /\[Approved plan — pinned by planner\]/, `${label} should append approved plan marker`);
+      assert.match(body, /read_page/, `${label} scheduled auto-approval should pin verbose tool detail`);
+      assert.match(body, /Scratchpad: yes/, `${label} scheduled auto-approval should pin verbose memory strategy`);
     }
   });
 });
@@ -10661,6 +10803,11 @@ test('sidepanel: restored plan review cards rebind approve and cancel actions', 
     assert.match(source, /rebindPlanReviewCards\(\);/, `${file} should call the rebinder after chat restore`);
     assert.match(source, /plan-review-approve[\s\S]*submitPlanReview\(card, tabId, planId, 'approve'/, `${file} should rebind approve`);
     assert.match(source, /plan-review-cancel[\s\S]*submitPlanReview\(card, tabId, planId, 'reject'/, `${file} should rebind cancel`);
+    assert.match(source, /const useVerbosePlan = verboseMode && !!data\.verboseMarkdown;/, `${file} should use the verbose plan only in verbose mode`);
+    assert.match(source, /card\.dataset\.planMarkdownMode = useVerbosePlan \? 'verbose' : 'compact';/, `${file} should remember which plan text was displayed`);
+    assert.match(source, /markdownMode === 'verbose'/, `${file} should pin the displayed verbose plan when approved`);
+    assert.match(source, /markdownMode = String\(card\.dataset\.planMarkdownMode \|\| 'compact'\)/, `${file} should send the displayed markdown mode with plan approval`);
+    assert.match(source, /decision: action, editedText, markdownMode/, `${file} should include markdown mode in plan responses`);
     assert.match(source, /const activeAssistantEl = action === 'approve' \? reattachPlanReviewActiveRun\(card\) : null;/, `${file} should mark approvals active before posting`);
     assert.match(source, /if \(action !== 'approve'\) \{[\s\S]*?card\.remove\(\);[\s\S]*?sendToBackground\('plan_response'/, `${file} should remove cancelled plan review cards`);
     assert.match(source, /if \(res\?\.matched\) \{[\s\S]*?card\.remove\(\);[\s\S]*?\} else \{[\s\S]*?note\.textContent = expiredText\(\);/, `${file} should remove successfully approved plan review cards`);

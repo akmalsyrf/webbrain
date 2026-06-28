@@ -828,7 +828,7 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'solve_captcha',
-      description: 'Solve a CAPTCHA on the current page using the CapSolver API (only available when the user has enabled CapSolver and provided an API key in Settings → CAPTCHA). If `type` and `websiteKey` are omitted, the tool scans the page for known widgets (reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile) and uses what it finds. Returns the solution token and whether it was injected into the page; you usually still need to click the form\'s submit button afterward. On failure (no CapSolver key configured, unknown captcha type, API error, timeout) the tool returns `{ success: false, error: "..." }` — fall back to asking the user to solve it manually.',
+      description: 'Solve a CAPTCHA on the current page using the CapSolver API (only available when the user has enabled CapSolver and provided an API key in Settings → General → Advanced). If `type` and `websiteKey` are omitted, the tool scans the page for known widgets (reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile) and uses what it finds. Returns the solution token and whether it was injected into the page; you usually still need to click the form\'s submit button afterward. On failure (no CapSolver key configured, unknown captcha type, API error, timeout) the tool returns `{ success: false, error: "..." }` — fall back to asking the user to solve it manually.',
       parameters: {
         type: 'object',
         properties: {
