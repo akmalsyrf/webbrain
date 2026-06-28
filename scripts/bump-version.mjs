@@ -35,9 +35,10 @@
  * automatic — the operator runs `git push --follow-tags origin <branch>`.
  *
  * The pure helpers `bumpSemver`, `rewriteVersionInJsonText`,
- * `rewriteVersionByAnchor`, and `isReleaseBoundary` are exported for unit
- * tests — the CLI side is guarded by an `import.meta.url` check so
- * importing this file doesn't trigger filesystem writes or git calls.
+ * `rewriteVersionByAnchor`, `isReleaseBoundary`, `submissionZipPaths`, and
+ * `submissionZipRemoveCommand` are exported for unit tests — the CLI side is
+ * guarded by an `import.meta.url` check so importing this file doesn't
+ * trigger filesystem writes or git calls.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -118,6 +119,16 @@ export function isReleaseBoundary(version) {
   const match = SEMVER.exec(version);
   if (!match) throw new Error(`Not MAJOR.MINOR.PATCH: ${version}`);
   return parseInt(match[3], 10) === 0;
+}
+
+export const SUBMISSION_ZIP_PACKAGES = Object.freeze(['chrome', 'edge', 'firefox']);
+
+export function submissionZipPaths(version) {
+  return SUBMISSION_ZIP_PACKAGES.map((browser) => `dist/webbrain-${browser}-${version}.zip`);
+}
+
+export function submissionZipRemoveCommand(version) {
+  return `git rm --ignore-unmatch ${submissionZipPaths(version).join(' ')}`;
 }
 
 /**
@@ -299,9 +310,9 @@ function runCli() {
   if (isReleaseBoundary(newVersion)) {
     console.log(`  git tag -a v${newVersion} -m "Release v${newVersion}"   # ${newVersion} is a release boundary`);
   }
-  console.log('  npm run build:zip       # rebuild dist/webbrain-{chrome,firefox}-' + newVersion + '.zip');
-  console.log('  git rm dist/webbrain-{chrome,firefox}-' + oldVersion + '.zip');
-  console.log('  git add dist/webbrain-{chrome,firefox}-' + newVersion + '.zip');
+  console.log('  npm run build:zip       # rebuild ' + submissionZipPaths(newVersion).join(', '));
+  console.log('  ' + submissionZipRemoveCommand(oldVersion));
+  console.log('  git add ' + submissionZipPaths(newVersion).join(' '));
   console.log('  git commit -m "dist: rebuild submission zips for v' + newVersion + '"');
 }
 

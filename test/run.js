@@ -152,7 +152,7 @@ function allowProgress(agent, tabId, allowedActions = ['follow'], opts = {}) {
 
 // bump-version.mjs is the version-bump CLI but exports its pure helpers
 // for testing. The CLI body is guarded so importing it is side-effect-free.
-const { bumpSemver, rewriteVersionInJsonText, rewriteVersionByAnchor, isReleaseBoundary } = await import(
+const { bumpSemver, rewriteVersionInJsonText, rewriteVersionByAnchor, isReleaseBoundary, submissionZipPaths, submissionZipRemoveCommand } = await import(
   'file://' + path.join(ROOT, 'scripts/bump-version.mjs').replace(/\\/g, '/')
 );
 const { normalizeChangelogBody, buildChangelogSection, insertChangelogEntry } = await import(
@@ -453,6 +453,40 @@ test('agent URL normalization preserves query and hash for nav change detection'
       'https://example.com/inbox?page=2#/sent',
       `${label}: query/hash-only history entries should count as URL changes`
     );
+  }
+});
+
+test('chrome target blank redirect ignores browser new-tab placeholders', async () => {
+  const realChrome = globalThis.chrome;
+  const realSetTimeout = globalThis.setTimeout;
+  try {
+    globalThis.setTimeout = (fn, _delay, ...args) => realSetTimeout(fn, 0, ...args);
+
+    for (const url of ['chrome://newtab/', 'edge://newtab/']) {
+      const removedTabs = [];
+      const updatedTabs = [];
+      globalThis.chrome = {
+        tabs: {
+          query: async () => [
+            { id: 1, url: 'https://example.com/source' },
+            { id: 2, openerTabId: 1, url },
+          ],
+          remove: async (tabId) => { removedTabs.push(tabId); },
+          update: async (tabId, patch) => { updatedTabs.push({ tabId, patch }); },
+        },
+      };
+
+      const agent = new AgentCh({});
+      const result = await agent._redirectTargetBlankClick(1, new Set([1]));
+
+      assert.equal(result, null, `${url} should not be treated as a real target`);
+      assert.deepEqual(updatedTabs, [], `${url} should not navigate the source tab`);
+      assert.deepEqual(removedTabs, [2], `${url} placeholder tab should be closed`);
+    }
+  } finally {
+    if (realChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = realChrome;
+    globalThis.setTimeout = realSetTimeout;
   }
 });
 
@@ -2262,6 +2296,21 @@ test('isReleaseBoundary: composes with bumpSemver to classify the next version',
   // Explicit override path also routes through correctly.
   assert.equal(isReleaseBoundary(bumpSemver('7.0.5', '8.2.0')), true);
   assert.equal(isReleaseBoundary(bumpSemver('7.0.5', '8.2.3')), false);
+});
+
+test('submissionZipPaths includes every store package artifact', () => {
+  assert.deepEqual(submissionZipPaths('18.2.0'), [
+    'dist/webbrain-chrome-18.2.0.zip',
+    'dist/webbrain-edge-18.2.0.zip',
+    'dist/webbrain-firefox-18.2.0.zip',
+  ]);
+});
+
+test('submissionZipRemoveCommand tolerates missing first Edge artifact', () => {
+  assert.equal(
+    submissionZipRemoveCommand('18.1.0'),
+    'git rm --ignore-unmatch dist/webbrain-chrome-18.1.0.zip dist/webbrain-edge-18.1.0.zip dist/webbrain-firefox-18.1.0.zip'
+  );
 });
 
 // ────────────────────────────────────────────────────────────────────────

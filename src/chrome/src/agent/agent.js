@@ -51,10 +51,16 @@ const TOKENS_PER_MILLION = 1_000_000;
 const DEFAULT_INPUT_COST_PER_MILLION_USD = 3;
 const DEFAULT_OUTPUT_COST_PER_MILLION_USD = 15;
 const DONE_OUTCOMES = new Set(['success', 'partial', 'failed']);
+const BROWSER_NEW_TAB_URL_PREFIXES = ['chrome://newtab', 'edge://newtab'];
 
 function normalizeDoneOutcome(value) {
   const outcome = String(value || '').trim().toLowerCase();
   return DONE_OUTCOMES.has(outcome) ? outcome : null;
+}
+
+function isBrowserNewTabUrl(url) {
+  const value = String(url || '').toLowerCase();
+  return BROWSER_NEW_TAB_URL_PREFIXES.some(prefix => value.startsWith(prefix));
 }
 
 /**
@@ -1125,7 +1131,7 @@ export class Agent {
     try {
       let newTab = null;
       // Poll for up to ~900ms — the new tab needs a few ticks to appear
-      // and for Chrome to populate its URL past about:blank.
+      // and for the browser to populate its URL past about:blank/newtab.
       for (let i = 0; i < 9; i++) {
         await new Promise(r => setTimeout(r, 100));
         const all = await chrome.tabs.query({});
@@ -1137,7 +1143,7 @@ export class Agent {
         if (candidate) {
           const url = candidate.pendingUrl || candidate.url || '';
           // Wait a tick more if the URL hasn't resolved past about:blank.
-          if (url && url !== 'about:blank' && !url.startsWith('chrome://newtab')) {
+          if (url && url !== 'about:blank' && !isBrowserNewTabUrl(url)) {
             newTab = candidate;
             break;
           }
@@ -1147,7 +1153,7 @@ export class Agent {
       }
       if (!newTab) return null;
       const targetUrl = newTab.pendingUrl || newTab.url || '';
-      if (!targetUrl || targetUrl === 'about:blank' || targetUrl.startsWith('chrome://newtab')) {
+      if (!targetUrl || targetUrl === 'about:blank' || isBrowserNewTabUrl(targetUrl)) {
         // We saw a new tab but never got a real URL out of it. Close it
         // and move on — redirecting to about:blank would make things worse.
         try { await chrome.tabs.remove(newTab.id); } catch {}

@@ -1,4 +1,4 @@
-# WebBrain Chrome Extension — Architecture
+# WebBrain Chrome/Edge Extension — Architecture
 
 > Version 18.1.0 · Manifest V3 · Service Worker background
 
@@ -30,6 +30,9 @@ WebBrain is a browser extension that gives an LLM full control over the browser 
 
 ## Directory Structure
 
+The `src/chrome` tree is also the Microsoft Edge build. Edge supports the same
+Chromium extension APIs and the same `chrome.*` namespace used by this code.
+
 ```
 src/chrome/
 ├── manifest.json              # Manifest V3 config
@@ -43,7 +46,7 @@ src/chrome/
 │   │   ├── adapters.js         # Per-site guidance
 │   │   └── scheduler.js        # ScheduledJobManager — alarms-backed deferred tasks
 │   ├── cdp/
-│   │   └── cdp-client.js       # Chrome DevTools Protocol wrapper
+│   │   └── cdp-client.js       # DevTools Protocol wrapper
 │   ├── content/
 │   │   ├── accessibility-tree.js  # AX tree builder + ref_id registry
 │   │   └── content.js          # Injected DOM reader / typer / clicker
@@ -88,7 +91,7 @@ src/chrome/
 
 | Permission | Why |
 |---|---|
-| `debugger` | CDP access — trusted mouse/keyboard, pixel-perfect screenshots, shadow-DOM piercing. The single most important differentiator vs Firefox. |
+| `debugger` | CDP access — trusted mouse/keyboard, pixel-perfect screenshots, shadow-DOM piercing. The single most important differentiator in the Chrome/Edge build vs Firefox. |
 | `webRequest` | Opt-in, in-memory same-tab XHR/fetch observer for repeated-click API shortcut hints and opaque same-origin replay. Off by default. |
 | `alarms` | Scheduled tasks and scheduled resumes across browser sessions. |
 | `unlimitedStorage` | Optional trace recorder persists agent runs (LLM I/O + screenshots) into IndexedDB. A multi-step run can be 1–10 MB; the default ~10 MB origin cap fills after a few runs. |
@@ -167,7 +170,7 @@ sidepanel listens for recording_update broadcast events:
 
 ### Audio passthrough — the gotcha
 
-By default, when `chrome.tabCapture` is active, Chrome reroutes the tab's
+By default, when `chrome.tabCapture` is active, Chromium browsers reroute the tab's
 audio into the capture stream — the user can no longer hear what's playing
 in the tab. For a meeting recorder this is catastrophic (you can't follow
 the call). `offscreen/recorder.js` works around this with Web Audio:
@@ -183,7 +186,7 @@ that would feed back).
 
 ### Why a shared offscreen document
 
-Chrome MV3 allows exactly one offscreen document per extension. The
+Chrome/Edge MV3 allows exactly one offscreen document per extension. The
 localhost-fetch proxy already needs one for Private Network Access
 workarounds. Rather than fight over it, `offscreen/offscreen.html` loads
 both `offscreen.js` (fetch proxy) and `recorder.js` (tab recorder).
@@ -220,8 +223,8 @@ still saved.
 | Google Meet (browser) | ✓ |
 | Zoom web client (`zoom.us/wc/...`) | ✓ |
 | **Native Zoom desktop app** | ✗ — not in a tab; tabCapture cannot reach it. Would need `desktopCapture` (window picker) — deferred. |
-| DRM-protected video (Netflix, Disney+) | ✗ — Chrome blocks the encoder at the platform level. |
-| chrome:// / chrome-extension:// pages | ✗ — tabCapture is not allowed there. |
+| DRM-protected video (Netflix, Disney+) | ✗ — the browser blocks the encoder at the platform level. |
+| chrome:// / edge:// / chrome-extension:// pages | ✗ — tabCapture is not allowed there. |
 | Background tabs at start time | ⚠ — `getMediaStreamId` requires the target tab to be active; we briefly activate it before capture. The user can switch away after capture starts. |
 
 ### Firefox
@@ -360,7 +363,7 @@ When `click({text})` or `click({selector})` finds multiple matches, the error pa
 ### Interaction
 `click_ax`, `type_ax`, `set_field`, `hover` (CDP-trusted, for reveal-on-hover menus), `drag_drop` (CDP-trusted pointer sequence, for Trello/Linear-style reordering), `click` (by text/selector/index/coords — legacy), `type_text`, `press_keys`, `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `wait_for_stable` (DOM mutations + network idle), `iframe_read`, `iframe_click`, `iframe_type`, `upload_file`
 
-> **Note:** `execute_js` was removed from the Chrome MV3 tool schema — `new Function()` is blocked by the extension_pages CSP and always throws EvalError. The agent uses `read_page`, `click`, `type_text`, `scroll`, and other fine-grained tools instead. `execute_js` is still available on Firefox MV2.
+> **Note:** `execute_js` was removed from the Chrome/Edge MV3 tool schema — `new Function()` is blocked by the extension_pages CSP and always throws EvalError. The agent uses `read_page`, `click`, `type_text`, `scroll`, and other fine-grained tools instead. `execute_js` is still available on Firefox MV2.
 
 ### Network / files
 `fetch_url`, `research_url`, `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files`
@@ -372,7 +375,7 @@ Mode gating (Ask vs Act) continues as before — Ask mode is read-only.
 
 ---
 
-## Chrome DevTools Protocol (CDP)
+## DevTools Protocol (CDP)
 
 `cdp-client.js` wraps `chrome.debugger`:
 
@@ -393,7 +396,7 @@ CDP events are **trusted** (`event.isTrusted === true`). Many sites reject synth
 | How | `Input.dispatchMouseEvent(x,y)` | `el.click()` |
 | Trusted | Yes | No |
 | Cross-origin | Works | Blocked |
-| Used when | Default in Chrome, or `click({x,y})` / `click({text})` after coord resolution | `click_ax` (focuses the exact element, dispatches in-page) |
+| Used when | Default in Chrome/Edge, or `click({x,y})` / `click({text})` after coord resolution | `click_ax` (focuses the exact element, dispatches in-page) |
 
 ---
 
@@ -432,9 +435,9 @@ OpenAI format → Anthropic blocks: system → separate `system` field; `assista
 
 ## Scheduled Tasks (`scheduler.js`)
 
-`ScheduledJobManager` (Chrome build: `src/chrome/src/agent/scheduler.js`) is instantiated in `background.js` and uses `chrome.alarms` to fire deferred work.
+`ScheduledJobManager` (Chrome/Edge build: `src/chrome/src/agent/scheduler.js`) is instantiated in `background.js` and uses `chrome.alarms` to fire deferred work.
 
-**Chrome-specific behavior vs Firefox:**
+**Chromium/Edge-specific behavior vs Firefox:**
 
 - URL-target tasks open their tab in the **background** (`active: false`) so the user isn't interrupted.
 - A **service-worker keepalive** (`startChromeAlarmKeepAlive`) pings `chrome.runtime.getPlatformInfo` every 20 s while a scheduled job is executing, keeping the MV3 service worker alive for the duration of the run.
