@@ -5,6 +5,7 @@ import { detectProgressAction, formatLedgerSummary, isValidLedgerStatus, ledgerD
 import { buildGithubStargazerProgressItems } from './observers/github-stargazers.js';
 import { isProgressActionAllowed, isProgressIntentActive, normalizeProgressAction, normalizeProgressIntent } from './progress-intent.js';
 import { getActiveAdapter, UNIVERSAL_PREAMBLE } from './adapters.js';
+import { prewarmYoutubeTranscript, readYoutubeTranscript } from './youtube-transcript.js';
 import {
   fetchUrl,
   readPageSource,
@@ -5262,6 +5263,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // attach the user's cookies only for fetches that share the registrable
     // domain (eTLD+1) of the active tab — see network-tools.js for cookie &
     // redirect policy.
+    if (name === 'read_youtube_transcript') {
+      return await readYoutubeTranscript(tabId, args || {});
+    }
     if (name === 'fetch_url') {
       return await fetchUrl(args.url, args, { tabId });
     }
@@ -5977,6 +5981,32 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this._debugLog = [];
   }
 
+  _prewarmYoutubeTranscript(tabId) {
+    try {
+      const promise = prewarmYoutubeTranscript(tabId);
+      promise.then((result) => {
+        if (result?.prefetched) {
+          this._logDebug({
+            type: 'youtube_transcript_prewarm',
+            status: 'success',
+            tabId,
+            cached: !!result.cached,
+            videoId: result.video?.id || '',
+            segmentCount: result.segmentCount || 0,
+          });
+        } else if (result?.error && !/only available on YouTube/i.test(result.error)) {
+          this._logDebug({ type: 'youtube_transcript_prewarm', status: 'skipped', tabId, error: result.error });
+        }
+      }).catch((error) => {
+        this._logDebug({ type: 'youtube_transcript_prewarm', status: 'error', tabId, error: String(error?.message || error) });
+      });
+      return promise;
+    } catch (error) {
+      this._logDebug({ type: 'youtube_transcript_prewarm', status: 'error', tabId, error: String(error?.message || error) });
+      return Promise.resolve(null);
+    }
+  }
+
   /**
    * Attempt to parse tool calls from raw LLM text output.
    * Some local models emit tool calls as text markup instead of using the
@@ -6138,6 +6168,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.currentCostState.set(tabId, costState);
     // New user turn: drop transient "allow once" / "deny once" permission grants.
     this.permissions.beginTurn(tabId);
+    this._prewarmYoutubeTranscript(tabId);
 
     // Trim context if it's getting too long
     await this._manageContext(tabId, messages, onUpdate, costState);
@@ -6183,8 +6214,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       await this._ensureProgressSessionForCurrentTask(tabId, { provider, costState });
     }
     const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier: provider.promptTier, visionAvailable });
-    const allowedToolNames = new Set(tools.map(t => t.function.name));
+    let tools = [];
+    let allowedToolNames = new Set();
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     // Tracks whether we've already nudged the model after an empty
@@ -6216,6 +6247,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
       steps++;
       onUpdate('thinking', { step: steps });
+      const activeUrlForTools = await this._currentUrl(tabId);
+      tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier: provider.promptTier, visionAvailable, activeUrl: activeUrlForTools });
+      allowedToolNames = new Set(tools.map(t => t.function.name));
 
       let result;
       try {
@@ -6438,6 +6472,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     this.currentCostState.set(tabId, costState);
     // New user turn: drop transient "allow once" / "deny once" permission grants.
     this.permissions.beginTurn(tabId);
+    this._prewarmYoutubeTranscript(tabId);
 
     // Trim context if it's getting too long
     await this._manageContext(tabId, messages, onUpdate, costState);
@@ -6483,8 +6518,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       await this._ensureProgressSessionForCurrentTask(tabId, { provider, costState });
     }
     const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier: provider.promptTier, visionAvailable });
-    const allowedToolNames = new Set(tools.map(t => t.function.name));
+    let tools = [];
+    let allowedToolNames = new Set();
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
     // See processMessage — used to break the empty-response→nudge cycle.
@@ -6507,6 +6542,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
       steps++;
       onUpdate('thinking', { step: steps });
+      const activeUrlForTools = await this._currentUrl(tabId);
+      tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier: provider.promptTier, visionAvailable, activeUrl: activeUrlForTools });
+      allowedToolNames = new Set(tools.map(t => t.function.name));
 
       try {
         let fullText = '';

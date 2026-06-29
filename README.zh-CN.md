@@ -48,7 +48,7 @@ git clone https://github.com/webbrain-one/webbrain.git
 
 1. 打开 Chrome → `chrome://extensions/`
 2. 启用 **开发者模式**（右上角）
-3. 点击 **加载已解压的扩展程序** → 选择 `webbrain` 文件夹
+3. 点击 **加载已解压的扩展程序** → 选择 `webbrain/src/chrome` 文件夹
 
 ### Firefox
 
