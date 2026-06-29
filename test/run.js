@@ -234,6 +234,21 @@ const {
   'file://' + path.join(ROOT, 'src/firefox/src/agent/youtube-transcript.js').replace(/\\/g, '/')
 );
 
+function makeYoutubeUrl(pathname, params = {}, subdomain = 'www') {
+  const host = [subdomain, 'youtube', 'com'].join('.');
+  const url = new URL(pathname, `https://${host}`);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
+  return url.href;
+}
+
+function makeYoutubeWatchUrl(videoId, params = {}, subdomain = 'www') {
+  return makeYoutubeUrl('/watch', { v: videoId, ...params }, subdomain);
+}
+
+function makeYoutubeTimedTextUrl(videoId, language = 'en') {
+  return makeYoutubeUrl('/api/timedtext', { v: videoId, lang: language });
+}
+
 const SchedulerCh = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/agent/scheduler.js').replace(/\\/g, '/')
 );
@@ -535,9 +550,9 @@ test('matches twitter.com and x.com', () => {
 });
 
 test('matches youtube video URLs and includes transcript guidance', () => {
-  const a = getActiveAdapter('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  const a = getActiveAdapter(makeYoutubeWatchUrl('dQw4w9WgXcQ'));
   assert.equal(a?.name, 'youtube');
-  assert.equal(getActiveAdapter('https://m.youtube.com/watch?v=dQw4w9WgXcQ')?.name, 'youtube');
+  assert.equal(getActiveAdapter(makeYoutubeWatchUrl('dQw4w9WgXcQ', {}, 'm'))?.name, 'youtube');
   assert.equal(getActiveAdapter('https://youtu.be/dQw4w9WgXcQ')?.name, 'youtube');
   assert.match(a?.notes || '', /transcript/i);
   assert.match(a?.notes || '', /read_youtube_transcript/i);
@@ -548,7 +563,7 @@ test('matches youtube video URLs and includes transcript guidance', () => {
 });
 
 test('YouTube transcript helper extracts caption tracks and parses caption payloads', () => {
-  const baseUrl = 'https://www.youtube.com/api/timedtext?v=abc&lang=en';
+  const baseUrl = makeYoutubeTimedTextUrl('abc');
   const player = {
     videoDetails: {
       videoId: 'abc',
@@ -566,7 +581,7 @@ test('YouTube transcript helper extracts caption tracks and parses caption paylo
             vssId: '.en',
           },
           {
-            baseUrl: 'https://www.youtube.com/api/timedtext?v=abc&lang=tr',
+            baseUrl: makeYoutubeTimedTextUrl('abc', 'tr'),
             languageCode: 'tr',
             name: { runs: [{ text: 'Turkish' }] },
             kind: 'asr',
@@ -600,7 +615,8 @@ test('YouTube transcript prewarm caches parsed captions for later reads', async 
   clearYoutubeTranscriptCache();
   const previousChrome = globalThis.chrome;
   const previousFetch = globalThis.fetch;
-  const baseUrl = 'https://www.youtube.com/api/timedtext?v=abc&lang=en';
+  const baseUrl = makeYoutubeTimedTextUrl('abc');
+  const watchUrl = makeYoutubeWatchUrl('abc', { t: '12s' });
   const player = {
     videoDetails: { videoId: 'abc', title: 'Cached Transcript', author: 'WebBrain', lengthSeconds: '20' },
     captions: {
@@ -616,7 +632,7 @@ test('YouTube transcript prewarm caches parsed captions for later reads', async 
   try {
     globalThis.chrome = {
       tabs: {
-        get: async () => ({ url: 'https://www.youtube.com/watch?v=abc&t=12s', title: 'Cached Transcript - YouTube' }),
+        get: async () => ({ url: watchUrl, title: 'Cached Transcript - YouTube' }),
       },
       scripting: {
         executeScript: async (opts) => {
@@ -624,7 +640,7 @@ test('YouTube transcript prewarm caches parsed captions for later reads', async 
           assert.equal(opts.target.tabId, 42);
           return [{
             result: {
-              pageUrl: 'https://www.youtube.com/watch?v=abc&t=12s',
+              pageUrl: watchUrl,
               pageTitle: 'Cached Transcript - YouTube',
               playerResponse: player,
             },
@@ -634,7 +650,7 @@ test('YouTube transcript prewarm caches parsed captions for later reads', async 
     };
     globalThis.fetch = async (url) => {
       fetchCount++;
-      assert.match(String(url), /fmt=json3/);
+      assert.equal(new URL(String(url)).searchParams.get('fmt'), 'json3');
       return {
         status: 200,
         url: String(url),
@@ -650,7 +666,7 @@ test('YouTube transcript prewarm caches parsed captions for later reads', async 
 
     assert.equal(
       youtubeTranscriptCacheKey(42, 'https://youtu.be/abc?t=2', {}),
-      youtubeTranscriptCacheKey(42, 'https://www.youtube.com/watch?v=abc&t=12s', {}),
+      youtubeTranscriptCacheKey(42, watchUrl, {}),
       'video identity should ignore URL shape and timestamp params'
     );
 
@@ -685,7 +701,9 @@ test('Firefox YouTube transcript reader accepts browser executeScript return val
   clearYoutubeTranscriptCacheFx();
   const previousBrowser = globalThis.browser;
   const previousFetch = globalThis.fetch;
-  const baseUrl = 'https://www.youtube.com/api/timedtext?v=fxabc&lang=en';
+  const baseUrl = makeYoutubeTimedTextUrl('fxabc');
+  const staleBaseUrl = makeYoutubeTimedTextUrl('stale');
+  const watchUrl = makeYoutubeWatchUrl('fxabc');
   const player = {
     videoDetails: { videoId: 'fxabc', title: 'Firefox Transcript', author: 'WebBrain', lengthSeconds: '9' },
     captions: {
@@ -696,31 +714,57 @@ test('Firefox YouTube transcript reader accepts browser executeScript return val
       },
     },
   };
+  const stalePlayer = {
+    videoDetails: { videoId: 'stale', title: 'Stale Transcript', author: 'WebBrain', lengthSeconds: '99' },
+    captions: {
+      playerCaptionsTracklistRenderer: {
+        captionTracks: [
+          { baseUrl: staleBaseUrl, languageCode: 'en', name: { simpleText: 'English' }, vssId: '.en' },
+        ],
+      },
+    },
+  };
   try {
     globalThis.browser = {
       tabs: {
-        get: async () => ({ url: 'https://www.youtube.com/watch?v=fxabc', title: 'Firefox Transcript - YouTube' }),
+        get: async () => ({ url: watchUrl, title: 'Firefox Transcript - YouTube' }),
         executeScript: async (tabId, opts) => {
           assert.equal(tabId, 77);
           assert.match(opts.code, /collectYoutubeTranscriptSnapshot/);
-          return [{
-            pageUrl: 'https://www.youtube.com/watch?v=fxabc',
-            pageTitle: 'Firefox Transcript - YouTube',
-            playerResponse: player,
-          }];
+          assert.match(opts.code, /wrappedJSObject/);
+          const pageWindow = {
+            ytInitialPlayerResponse: stalePlayer,
+            wrappedJSObject: { ytInitialPlayerResponse: player },
+          };
+          const pageDocument = {
+            title: 'Firefox Transcript - YouTube',
+            documentElement: {
+              innerHTML: `<script>var ytInitialPlayerResponse = ${JSON.stringify(stalePlayer)};</script>`,
+            },
+          };
+          const pageLocation = { href: watchUrl };
+          const snapshot = Function('window', 'document', 'location', `return ${opts.code};`)(
+            pageWindow,
+            pageDocument,
+            pageLocation
+          );
+          return [snapshot];
         },
       },
     };
-    globalThis.fetch = async (url) => ({
-      status: 200,
-      url: String(url),
-      headers: { get: () => 'application/json' },
-      text: async () => JSON.stringify({
-        events: [
-          { tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'Firefox caption works.' }] },
-        ],
-      }),
-    });
+    globalThis.fetch = async (url) => {
+      assert.equal(new URL(String(url)).searchParams.get('v'), 'fxabc');
+      return {
+        status: 200,
+        url: String(url),
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({
+          events: [
+            { tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'Firefox caption works.' }] },
+          ],
+        }),
+      };
+    };
 
     const result = await readYoutubeTranscriptFx(77, { maxChars: 1000 });
     assert.equal(result.success, true);

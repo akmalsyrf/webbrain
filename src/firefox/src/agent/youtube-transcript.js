@@ -355,7 +355,7 @@ export function parseYoutubeCaptionPayload(payload, contentType = '') {
   }
   if (/<text\b/i.test(text)) return parseTextXmlCaptionPayload(text);
   if (/<p\b/i.test(text)) return parseSrv3CaptionPayload(text);
-  if (/WEBVTT/i.test(text) || /-->/i.test(text)) return parseVttCaptionPayload(text);
+  if (text.toUpperCase().includes('WEBVTT') || text.includes('-->')) return parseVttCaptionPayload(text);
   return [];
 }
 
@@ -428,13 +428,21 @@ function collectYoutubeTranscriptSnapshot() {
     }
     return null;
   };
+  const readPlayerResponse = (sourceWindow) => {
+    try {
+      const value = sourceWindow && sourceWindow.ytInitialPlayerResponse;
+      if (!looksLikePlayerResponse(value)) return null;
+      return compact(JSON.parse(JSON.stringify(value)));
+    } catch {
+      return null;
+    }
+  };
 
   let playerResponse = null;
   try {
-    if (window.ytInitialPlayerResponse && typeof window.ytInitialPlayerResponse === 'object') {
-      playerResponse = compact(JSON.parse(JSON.stringify(window.ytInitialPlayerResponse)));
-    }
+    playerResponse = readPlayerResponse(window.wrappedJSObject);
   } catch {}
+  if (!playerResponse) playerResponse = readPlayerResponse(window);
   if (!playerResponse) {
     try {
       playerResponse = extractFromHtml(document.documentElement ? document.documentElement.innerHTML : '');

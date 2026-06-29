@@ -355,7 +355,7 @@ export function parseYoutubeCaptionPayload(payload, contentType = '') {
   }
   if (/<text\b/i.test(text)) return parseTextXmlCaptionPayload(text);
   if (/<p\b/i.test(text)) return parseSrv3CaptionPayload(text);
-  if (/WEBVTT/i.test(text) || /-->/i.test(text)) return parseVttCaptionPayload(text);
+  if (text.toUpperCase().includes('WEBVTT') || text.includes('-->')) return parseVttCaptionPayload(text);
   return [];
 }
 
