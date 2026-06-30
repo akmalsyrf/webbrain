@@ -3583,6 +3583,7 @@ const PAGE_TOOLS = new Set(['read_page', 'read_page_source', 'get_interactive_el
 let inspectionBannerShown = false;
 
 function showInspectionBanner(toolName) {
+  return; // stop
   if (inspectionBannerShown || !PAGE_TOOLS.has(toolName)) return;
   inspectionBannerShown = true;
 
@@ -3597,6 +3598,7 @@ function showInspectionBanner(toolName) {
 }
 
 function hideInspectionBanner() {
+  return;
   inspectionBannerShown = false;
   const banner = document.getElementById('inspection-banner');
   if (banner) {
