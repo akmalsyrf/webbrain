@@ -285,6 +285,17 @@ function getResponseHeader(res, name) {
   }
 }
 
+function filterArgsToDeclaredParameters(args, tool) {
+  const properties = tool?.parameters?.properties;
+  if (!properties || typeof properties !== 'object') return {};
+  const allowed = new Set(Object.keys(properties));
+  const out = {};
+  for (const [key, value] of Object.entries(args || {})) {
+    if (allowed.has(key)) out[key] = value;
+  }
+  return out;
+}
+
 export async function executeHttpSkillTool(tool, args = {}, ctx = {}) {
   let endpoint;
   try {
@@ -297,7 +308,7 @@ export async function executeHttpSkillTool(tool, args = {}, ctx = {}) {
   }
 
   const method = String(tool.method || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET';
-  const payload = { ...(tool.defaultArgs || {}), ...(args || {}) };
+  const payload = { ...(tool.defaultArgs || {}), ...filterArgsToDeclaredParameters(args, tool) };
   if (tool.activeTabUrlArg && !payload[tool.activeTabUrlArg]) {
     payload[tool.activeTabUrlArg] = await currentTabUrl(ctx.tabId);
   }

@@ -2836,6 +2836,7 @@ test('executeHttpSkillTool rejects cross-origin redirects before replaying body'
         skillName: 'Example',
         endpoint: 'https://example.com/skill',
         method: 'POST',
+        parameters: { type: 'object', properties: { activeTabUrl: { type: 'string' }, query: { type: 'string' } } },
       }, { activeTabUrl: 'https://sensitive.example/path', query: 'private' });
       assert.equal(result.success, false, `${label}: cross-origin redirect should fail`);
       assert.match(result.error, /undeclared origin/i, `${label}: cross-origin redirect error missing`);
@@ -2888,6 +2889,35 @@ test('executeHttpSkillTool rejects blocked redirect targets before reading body'
       assert.equal(readBody, false, `${label}: blocked redirect body should not be read`);
       assert.equal(calls.length, 1, `${label}: blocked redirect target should not be requested`);
       assert.equal(calls[0].opts.redirect, 'manual', `${label}: redirect should not be auto-followed`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test('executeHttpSkillTool drops model args that are not in the declared parameter schema', async () => {
+  for (const [label, executeTool] of [
+    ['chrome', executeHttpSkillToolCh],
+    ['firefox', executeHttpSkillToolFx],
+  ]) {
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url, opts });
+      return { ok: true, status: 200, url, text: async () => JSON.stringify({ text: 'ok' }) };
+    };
+    try {
+      const tool = {
+        name: 'read_external',
+        skillName: 'Example',
+        endpoint: 'https://example.com/skill',
+        method: 'POST',
+        parameters: { type: 'object', properties: { query: { type: 'string' } } },
+      };
+      await executeTool(tool, { query: 'allowed', injectedField: 'should not be sent', activeTabUrl: 'https://victim.example/secret' });
+      assert.equal(calls.length, 1, `${label}: expected one provider call`);
+      const sentBody = JSON.parse(calls[0].opts.body);
+      assert.deepEqual(sentBody, { query: 'allowed' }, `${label}: undeclared args must be dropped before sending`);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -10693,6 +10723,30 @@ test('context compaction reserves provider-reported fixed prompt overhead', asyn
 
     const h = agent.persistTimers?.get?.(tabId);
     if (h) clearTimeout(h);
+  }
+});
+
+test('emergency truncation preserves the untrusted_page_content close tag', async () => {
+  for (const [label, AgentClass] of [['chrome', AgentCh], ['firefox', AgentFx]]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 4000, supportsVision: false }) });
+    const tabId = label === 'chrome' ? 91 : 92;
+    const wrapped = `<untrusted_page_content id="nonce123">\n${'x'.repeat(14000)}\n</untrusted_page_content id="nonce123">`;
+    const messages = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'keep working on the task' },
+      { role: 'assistant', tool_calls: [{ id: 'tool-1', function: { name: 'read_page' } }] },
+      { role: 'tool', tool_call_id: 'tool-1', content: wrapped },
+    ];
+
+    const trimmed = agent._truncateOversizedMessages(tabId, messages);
+    assert.equal(trimmed, true, `${label}: oversized wrapped tool result should be truncated`);
+    assert.ok(agent._hasUntrustedWrapper(messages[3].content), `${label}: truncated result must still be detected as wrapped`);
+    assert.match(messages[3].content, /<\/untrusted_page_content[^>]*>$/, `${label}: close tag must survive truncation`);
+
+    // Even if the producing skill is later removed/renamed (so _isUntrustedTool
+    // would say no), the wrapper alone must still mark this content untrusted.
+    const digest = agent._digestToolResult('removed_skill_tool', messages[3].content);
+    assert.match(digest, /untrusted page content/, `${label}: digest must not launder content once the tool name is unrecognized`);
   }
 });
 

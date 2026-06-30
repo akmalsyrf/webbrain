@@ -4220,6 +4220,30 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
    * would silently drop it. Clears the cached input-token count so the next
    * call re-measures the smaller size.
    */
+  /**
+   * Truncate `content` to `limit` chars, but if it's wrapped in an
+   * <untrusted_page_content> box, keep the closing tag intact instead of
+   * slicing it off. A naive slice can drop the close tag (and its nonce id),
+   * which makes _hasUntrustedWrapper() return false on a later pass — e.g.
+   * when the digest/summarizer runs after the skill that produced it was
+   * removed or renamed, so _isUntrustedTool() no longer recognizes it either.
+   * That combination would launder attacker-controlled page text into the
+   * trusted trim summary. Re-appending the matching close tag keeps the
+   * wrapper detectable regardless of skill registry state.
+   */
+  _truncatePreservingUntrustedWrapper(content, limit) {
+    const openMatch = content.match(/^<untrusted_page_content\b([^>]*)>\n?/);
+    if (!openMatch) {
+      return content.slice(0, limit) + '\n[...truncated to fit context]';
+    }
+    const closeMatch = content.match(/\n?<\/untrusted_page_content\b[^>]*>\s*$/);
+    const closeTag = closeMatch ? closeMatch[0] : `\n</untrusted_page_content${openMatch[1]}>`;
+    const openTag = openMatch[0];
+    const innerLimit = Math.max(0, limit - openTag.length - closeTag.length);
+    const inner = content.slice(openTag.length, openTag.length + innerLimit);
+    return `${openTag}${inner}\n[...truncated to fit context]${closeTag}`;
+  }
+
   _truncateOversizedMessages(tabId, messages) {
     const taskIdx = this._findOriginalTaskIndex(messages);
     let trimmed = false;
@@ -4229,10 +4253,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       if (this._isPinnedAgentStateMessage(m)) continue;
       if (typeof m.content !== 'string') continue; // image/array content handled by _pruneOldImages
       if (m.role === 'tool' && m.content.length > 2000) {
-        m.content = m.content.slice(0, 2000) + '\n[...truncated to fit context]';
+        m.content = this._truncatePreservingUntrustedWrapper(m.content, 2000);
         trimmed = true;
       } else if (m.content.length > 5000) {
-        m.content = m.content.slice(0, 5000) + '\n[...truncated to fit context]';
+        m.content = this._truncatePreservingUntrustedWrapper(m.content, 5000);
         trimmed = true;
       }
     }

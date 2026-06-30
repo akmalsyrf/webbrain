@@ -474,6 +474,10 @@ function flashSkillsResult(className, text) {
   if (resultEl) setTimeout(() => resultEl.classList.remove('show'), 3000);
 }
 
+function isLoopbackHostname(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+}
+
 function normalizeSkillUrl(raw) {
   let url;
   try {
@@ -481,7 +485,8 @@ function normalizeSkillUrl(raw) {
   } catch {
     throw new Error(t('st.skills.error.url'));
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  const isHttpLoopback = url.protocol === 'http:' && isLoopbackHostname(url.hostname);
+  if (url.protocol !== 'https:' && !isHttpLoopback) {
     throw new Error(t('st.skills.error.url'));
   }
   return url.href;
