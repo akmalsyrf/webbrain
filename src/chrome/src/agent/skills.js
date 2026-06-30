@@ -272,14 +272,6 @@ function isHttpRedirectStatus(status) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-function getResponseHeader(response, name) {
-  try {
-    return response?.headers?.get?.(name) || response?.headers?.get?.(String(name).toLowerCase()) || '';
-  } catch {
-    return '';
-  }
-}
-
 export async function fetchSkillImportResponse(url, opts = {}) {
   const fetchImpl = typeof opts.fetchImpl === 'function' ? opts.fetchImpl : globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
@@ -298,45 +290,12 @@ export async function fetchSkillImportResponse(url, opts = {}) {
   };
   init.redirect = 'manual';
 
-  let requestUrl = validateUrl(url);
-  let redirectCount = 0;
-  let response = await fetchImpl(requestUrl, init);
-  while (response?.type === 'opaqueredirect' || isHttpRedirectStatus(response?.status)) {
-    if (response?.type === 'opaqueredirect') {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-    const location = getResponseHeader(response, 'Location');
-    if (!location) {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-
-    let nextUrl;
-    try {
-      nextUrl = new URL(location, requestUrl);
-    } catch {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-
-    let nextHref;
-    try {
-      nextHref = validateUrl(nextUrl.href);
-    } catch (e) {
-      throw skillImportRedirectError(e?.message || opts.redirectMessage);
-    }
-    const currentUrl = new URL(requestUrl);
-    const validatedNext = new URL(nextHref);
-    if (currentUrl.protocol === 'https:' && validatedNext.protocol !== 'https:') {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-    if (validatedNext.origin !== currentUrl.origin) {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-    redirectCount += 1;
-    if (redirectCount > 5) {
-      throw skillImportRedirectError(opts.redirectMessage);
-    }
-    requestUrl = validatedNext.href;
-    response = await fetchImpl(requestUrl, init);
+  const requestUrl = validateUrl(url);
+  const response = await fetchImpl(requestUrl, init);
+  // Browser manual redirects are exposed as opaqueredirect responses with no
+  // inspectable Location header, so redirects cannot be safely allowlisted here.
+  if (response?.type === 'opaqueredirect' || isHttpRedirectStatus(response?.status)) {
+    throw skillImportRedirectError(opts.redirectMessage);
   }
 
   let finalHref;

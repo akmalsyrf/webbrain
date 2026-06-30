@@ -277,14 +277,6 @@ function isHttpRedirectStatus(status) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-function getResponseHeader(res, name) {
-  try {
-    return res?.headers?.get?.(name) || res?.headers?.get?.(String(name).toLowerCase()) || '';
-  } catch (_) {
-    return '';
-  }
-}
-
 function filterArgsToDeclaredParameters(args, tool) {
   const properties = tool?.parameters?.properties;
   if (!properties || typeof properties !== 'object') return {};
@@ -346,104 +338,19 @@ export async function executeHttpSkillTool(tool, args = {}, ctx = {}) {
 
   try {
     let requestUrl = finalUrl.href;
-    let requestInit = init;
-    let redirectCount = 0;
-    let res = await fetch(requestUrl, requestInit);
-    while (res?.type === 'opaqueredirect' || isHttpRedirectStatus(res?.status)) {
-      if (res?.type === 'opaqueredirect') {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: requestUrl,
-          error: 'Skill tool redirect could not be validated because the response did not expose a Location header.',
-        };
-      }
-
-      const location = getResponseHeader(res, 'Location');
-      if (!location) {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: requestUrl,
-          error: 'Skill tool redirect could not be validated because the response did not include a Location header.',
-        };
-      }
-
-      let nextUrl;
-      try {
-        nextUrl = new URL(location, requestUrl);
-      } catch (e) {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          error: `Skill tool redirected to an invalid URL: ${e.message}`,
-        };
-      }
-
-      const redirectUrlCheck = validateFetchUrl(nextUrl.href, { allowLocalNetwork: getAllowLocalNetwork() });
-      if (!redirectUrlCheck.ok) {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: nextUrl.href,
-          error: `Skill tool redirected to blocked URL: ${redirectUrlCheck.error}`,
-        };
-      }
-      if (nextUrl.protocol !== 'https:') {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: nextUrl.href,
-          error: 'Skill tool redirected to a non-https URL.',
-        };
-      }
-      if (nextUrl.origin !== new URL(requestUrl).origin) {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: nextUrl.href,
-          error: 'Skill tool redirected to an undeclared origin.',
-        };
-      }
-      redirectCount += 1;
-      if (redirectCount > 5) {
-        return {
-          success: false,
-          status: res.status,
-          provider: endpoint.hostname,
-          skillTool: tool.name || '',
-          skillName: tool.skillName || '',
-          finalUrl: nextUrl.href,
-          error: 'Skill tool followed too many redirects.',
-        };
-      }
-
-      requestUrl = nextUrl.href;
-      if (res.status === 303 || ((res.status === 301 || res.status === 302) && requestInit.method === 'POST')) {
-        const headers = { ...(requestInit.headers || {}) };
-        delete headers['Content-Type'];
-        const { body, ...requestInitWithoutBody } = requestInit;
-        requestInit = { ...requestInitWithoutBody, method: 'GET', headers };
-      }
-      res = await fetch(requestUrl, requestInit);
+    const res = await fetch(requestUrl, init);
+    // Browser manual redirects are opaqueredirect responses without an
+    // inspectable Location header. Reject instead of replaying skill inputs.
+    if (res?.type === 'opaqueredirect' || isHttpRedirectStatus(res?.status)) {
+      return {
+        success: false,
+        status: res.status,
+        provider: endpoint.hostname,
+        skillTool: tool.name || '',
+        skillName: tool.skillName || '',
+        finalUrl: requestUrl,
+        error: 'Skill tool redirects are not allowed because browser manual redirects cannot be validated before following.',
+      };
     }
 
     const responseUrl = res.url || requestUrl;

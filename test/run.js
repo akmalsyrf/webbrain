@@ -2865,8 +2865,8 @@ test('executeHttpSkillTool rejects cross-origin redirects before replaying body'
         parameters: { type: 'object', properties: { activeTabUrl: { type: 'string' }, query: { type: 'string' } } },
       }, { activeTabUrl: 'https://sensitive.example/path', query: 'private' });
       assert.equal(result.success, false, `${label}: cross-origin redirect should fail`);
-      assert.match(result.error, /undeclared origin/i, `${label}: cross-origin redirect error missing`);
-      assert.equal(result.finalUrl, 'https://collector.example/skill', `${label}: redirect URL missing`);
+      assert.match(result.error, /redirects are not allowed/i, `${label}: redirect error missing`);
+      assert.equal(result.finalUrl, 'https://example.com/skill', `${label}: redirect should not expose/follow target URL`);
       assert.equal(calls.length, 1, `${label}: cross-origin redirect target should not be requested`);
       assert.equal(calls[0].opts.method, 'POST', `${label}: setup should exercise body-preserving redirects`);
       assert.match(calls[0].opts.body, /sensitive\.example/, `${label}: setup should include sensitive request body`);
@@ -2910,11 +2910,52 @@ test('executeHttpSkillTool rejects blocked redirect targets before reading body'
         method: 'GET',
       });
       assert.equal(result.success, false, `${label}: blocked redirect should fail`);
-      assert.match(result.error, /redirected to blocked URL/i, `${label}: blocked redirect error missing`);
-      assert.equal(result.finalUrl, 'http://127.0.0.1/private', `${label}: final redirect URL missing`);
+      assert.match(result.error, /redirects are not allowed/i, `${label}: blocked redirect error missing`);
+      assert.equal(result.finalUrl, 'https://example.com/skill', `${label}: redirect should not expose/follow target URL`);
       assert.equal(readBody, false, `${label}: blocked redirect body should not be read`);
       assert.equal(calls.length, 1, `${label}: blocked redirect target should not be requested`);
       assert.equal(calls[0].opts.redirect, 'manual', `${label}: redirect should not be auto-followed`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test('executeHttpSkillTool rejects browser opaqueredirect responses before reading body', async () => {
+  for (const [label, executeTool] of [
+    ['chrome', executeHttpSkillToolCh],
+    ['firefox', executeHttpSkillToolFx],
+  ]) {
+    let readBody = false;
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url, opts });
+      return {
+        type: 'opaqueredirect',
+        ok: false,
+        status: 0,
+        url: '',
+        text: async () => {
+          readBody = true;
+          return '';
+        },
+      };
+    };
+    try {
+      const result = await executeTool({
+        name: 'read_redirecting',
+        skillName: 'Example',
+        endpoint: 'https://example.com/skill',
+        method: 'POST',
+        parameters: { type: 'object', properties: { query: { type: 'string' } } },
+      }, { query: 'private' });
+      assert.equal(result.success, false, `${label}: opaqueredirect should fail`);
+      assert.match(result.error, /redirects are not allowed/i, `${label}: opaqueredirect error missing`);
+      assert.equal(result.finalUrl, 'https://example.com/skill', `${label}: opaqueredirect should report the original URL`);
+      assert.equal(readBody, false, `${label}: opaqueredirect body should not be read`);
+      assert.equal(calls.length, 1, `${label}: opaqueredirect should not be followed`);
+      assert.equal(calls[0].opts.redirect, 'manual', `${label}: fetch should request manual redirects`);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3090,6 +3131,21 @@ test('skill URL import fetch validates redirects before fetching redirected bodi
     ['chrome', fetchSkillImportResponseCh],
     ['firefox', fetchSkillImportResponseFx],
   ]) {
+    const opaqueCalls = [];
+    await assert.rejects(
+      fetchImport('https://example.com/skill.md', {
+        validateUrl,
+        fetchImpl: async (url, init) => {
+          opaqueCalls.push({ url, init });
+          return { type: 'opaqueredirect', status: 0, url: '' };
+        },
+      }),
+      /redirect/i,
+      `${label}: browser opaqueredirect imports should reject`,
+    );
+    assert.equal(opaqueCalls.length, 1, `${label}: opaqueredirect must not be followed`);
+    assert.equal(opaqueCalls[0].init.redirect, 'manual', `${label}: import fetch must request manual redirects`);
+
     const downgradedCalls = [];
     await assert.rejects(
       fetchImport('https://example.com/skill.md', {
@@ -3099,7 +3155,7 @@ test('skill URL import fetch validates redirects before fetching redirected bodi
           return redirectResponse('http://127.0.0.1/skill.md', url);
         },
       }),
-      /invalid skill URL|blocked URL/i,
+      /redirect/i,
       `${label}: HTTPS-to-local/plain-HTTP redirect should reject`,
     );
     assert.equal(downgradedCalls.length, 1, `${label}: blocked redirect must not be fetched`);
@@ -3114,21 +3170,31 @@ test('skill URL import fetch validates redirects before fetching redirected bodi
           return redirectResponse('https://evil.example/skill.md', url);
         },
       }),
-      /blocked URL/i,
+      /redirect/i,
       `${label}: cross-origin import redirect should reject`,
     );
     assert.equal(crossOriginCalls.length, 1, `${label}: cross-origin redirect must not be fetched`);
 
-    const sameOriginResponses = [
-      redirectResponse('/skills/next.md'),
-      okSkillResponse('https://example.com/skills/next.md'),
-    ];
+    const sameOriginCalls = [];
+    await assert.rejects(
+      fetchImport('https://example.com/skill.md', {
+        validateUrl,
+        fetchImpl: async (url, init) => {
+          sameOriginCalls.push({ url, init });
+          return redirectResponse('/skills/next.md', url);
+        },
+      }),
+      /redirect/i,
+      `${label}: same-origin redirects should reject because browser Location is not inspectable`,
+    );
+    assert.equal(sameOriginCalls.length, 1, `${label}: same-origin redirect must not be followed`);
+
     const result = await fetchImport('https://example.com/skill.md', {
       validateUrl,
-      fetchImpl: async () => sameOriginResponses.shift(),
+      fetchImpl: async () => okSkillResponse('https://example.com/skill.md'),
     });
-    assert.equal(result.response.ok, true, `${label}: same-origin redirect should be allowed`);
-    assert.equal(result.url, 'https://example.com/skills/next.md', `${label}: final URL should be validated and returned`);
+    assert.equal(result.response.ok, true, `${label}: direct non-redirect import should be allowed`);
+    assert.equal(result.url, 'https://example.com/skill.md', `${label}: direct final URL should be returned`);
   }
 });
 
