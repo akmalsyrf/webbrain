@@ -175,7 +175,7 @@
 
 <div class="container">
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: June 18, 2026</p>
+  <p class="updated">Last updated: June 30, 2026</p>
 
   <div class="highlight-box">
     <p><strong>TL;DR:</strong> WebBrain can run with local or bring-your-own API providers, where your keys stay on your device and requests go directly to the provider you select. If you use WebBrain Cloud, the request is sent through our API so we can provide the hosted model, enforce quotas, process subscriptions, and keep privacy-preserving debug logs. WebBrain Cloud does not store prompt text, page content, screenshots, uploaded image data, or model responses by default.</p>
@@ -233,6 +233,9 @@
 
   <h2>Act Mode</h2>
   <p>When you enable Act mode, WebBrain can interact with web pages on your behalf (clicking, typing, scrolling, navigating). This is done via content scripts running in your browser — no data about these actions is sent to us. All actions are performed locally and are visible to you in real time. Act mode requires explicit activation and displays a visible warning banner.</p>
+
+  <h2>Bundled Skills</h2>
+  <p>WebBrain ships with one skill enabled by default: <strong>FreeSkillz.xyz</strong>, a first-party service we operate. It is used only for reading YouTube video transcripts — when you ask about a YouTube video's content, summary, or transcript, WebBrain sends just the video's URL (the current tab's URL, or one you specify) to <code>freeskillz.xyz</code>, restricted to youtube.com and youtu.be links. It does not receive your page content, chat history, or any other browsing data — only the YouTube URL needed to fetch that video's transcript. You can remove this skill at any time in Settings → Skills, and any additional skills you import yourself are off by default and run only against the HTTPS endpoint they declare.</p>
 
   <h2>Cookies &amp; Analytics</h2>
   <p>The WebBrain browser extension does not use cookies. The webbrain.one website uses Plausible Analytics for aggregate, privacy-friendly page-view metrics. There are no ads or tracking pixels. WebBrain Cloud API request logs are separate from website analytics.</p>
