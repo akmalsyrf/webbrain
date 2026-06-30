@@ -57,7 +57,7 @@ git clone https://github.com/webbrain-one/webbrain.git
 
 1. Open Firefox → `about:debugging#/runtime/this-firefox`
 2. Click **Load Temporary Add-on**
-3. Navigate to the `webbrain-firefox` folder and select `manifest.json`
+3. Navigate to `webbrain/src/firefox/` and select `manifest.json`
 
 > **Note:** Temporary add-ons are removed when Firefox restarts. For permanent installation, the extension needs to be signed via [addons.mozilla.org](https://addons.mozilla.org).
 
@@ -112,8 +112,8 @@ Click the gear icon or go to the extension's Options page to configure:
 ## Architecture
 
 ```
-webbrain/ (Chrome/Edge MV3)        webbrain-firefox/
-├── manifest.json                  ├── manifest.json (MV2)
+src/chrome/ (Chrome/Edge MV3)      src/firefox/ (Firefox MV2)
+├── manifest.json                  ├── manifest.json
 ├── src/                           ├── src/
 │   ├── background.js              │   ├── background.js (+ background.html)
 │   ├── agent/                     │   ├── agent/

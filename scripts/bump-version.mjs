@@ -17,8 +17,7 @@
  * Updates (in lockstep):
  *   package.json                       "version"
  *   package-lock.json                  top-level "version" + packages[""].version
- *   manifest.json                      "version"     (Chrome MV3, repo root)
- *   src/chrome/manifest.json           "version"     (Chrome MV3, in-source)
+ *   src/chrome/manifest.json           "version"     (Chrome MV3)
  *   src/firefox/manifest.json          "version"     (Firefox MV2)
  *   src/chrome/src/ui/settings.js      const EXT_VERSION = '...'   (settings UI)
  *   src/firefox/src/ui/settings.js     const EXT_VERSION = '...'   (settings UI)
@@ -161,7 +160,6 @@ const FILES_TO_UPDATE = [
   // twice (top-level + packages[""]).
   { path: 'package.json', kind: 'json' },
   { path: 'package-lock.json', kind: 'json', replaceAll: true },
-  { path: 'manifest.json', kind: 'json' },
   { path: 'src/chrome/manifest.json', kind: 'json' },
   { path: 'src/firefox/manifest.json', kind: 'json' },
   // Settings UI subtitle constant. The settings panel shows the version

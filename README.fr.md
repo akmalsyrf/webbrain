@@ -48,7 +48,7 @@ git clone https://github.com/webbrain-one/webbrain.git
 
 1. Ouvrez Chrome → `chrome://extensions/`
 2. Activez le **mode développeur** (en haut à droite)
-3. Cliquez sur **Charger l'extension non empaquetée** → sélectionnez le dossier `webbrain`
+3. Cliquez sur **Charger l'extension non empaquetée** → sélectionnez le dossier `webbrain/src/chrome`
 
 ### Firefox
 
