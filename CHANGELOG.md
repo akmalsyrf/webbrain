@@ -2,7 +2,12 @@
 
 All notable changes to WebBrain are documented in this file.
 
-This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / `manifest.json` version.
+This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
+
+## [18.3.0] - 2026-06-29
+
+### Changed
+- Deleted the stale root `manifest.json` and updated Chrome setup docs, version bumping, and release workflows to use `src/chrome/manifest.json` and `src/firefox/manifest.json` as the only extension manifests.
 
 ## [18.2.0] - 2026-06-28
 
