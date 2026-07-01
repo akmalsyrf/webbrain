@@ -54,6 +54,7 @@ const PAGE_SOURCE_RESULT_MAX_CHARS = 8000;
 const PAGE_SOURCE_RESULT_SAFETY_CHARS = 200;
 const PAGE_SOURCE_ASSET_KINDS = ['stylesheets', 'scripts'];
 const PAGE_SOURCE_BODY_MAX_BYTES = 1000000;
+const SKILL_DOWNLOAD_DATA_URL_MAX_BYTES = 25 * 1024 * 1024;
 
 /**
  * Validate a URL before the agent fetches it.
@@ -459,6 +460,60 @@ function arrayBufferToDataUrl(buffer, mimeType) {
   return `data:${safeDataUrlMimeType(mimeType)};base64,${btoa(binary)}`;
 }
 
+function skillDownloadTooLargeError(size) {
+  return `Skill download is too large for cookie-free saving (${size} bytes > ${SKILL_DOWNLOAD_DATA_URL_MAX_BYTES} bytes).`;
+}
+
+async function readSkillDownloadBuffer(res) {
+  const expectedSize = parseContentLength(res.headers?.get?.('content-length'));
+  if (expectedSize != null && expectedSize > SKILL_DOWNLOAD_DATA_URL_MAX_BYTES) {
+    return {
+      success: false,
+      bytesExpected: expectedSize,
+      error: skillDownloadTooLargeError(expectedSize),
+    };
+  }
+
+  const reader = res.body?.getReader?.();
+  if (reader) {
+    const chunks = [];
+    let bytesReceived = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      bytesReceived += chunk.byteLength;
+      if (bytesReceived > SKILL_DOWNLOAD_DATA_URL_MAX_BYTES) {
+        try { await reader.cancel(); } catch (_) {}
+        return {
+          success: false,
+          bytesReceived,
+          error: skillDownloadTooLargeError(bytesReceived),
+        };
+      }
+      chunks.push(chunk);
+    }
+    const buffer = new ArrayBuffer(bytesReceived);
+    const out = new Uint8Array(buffer);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { success: true, buffer, bytesReceived };
+  }
+
+  const buffer = await res.arrayBuffer();
+  if (buffer.byteLength > SKILL_DOWNLOAD_DATA_URL_MAX_BYTES) {
+    return {
+      success: false,
+      bytesReceived: buffer.byteLength,
+      error: skillDownloadTooLargeError(buffer.byteLength),
+    };
+  }
+  return { success: true, buffer, bytesReceived: buffer.byteLength };
+}
+
 async function fetchSkillDownloadData(url, expectedUrl) {
   const initialUrlCheck = validateSkillDownloadFinalUrl(url, expectedUrl);
   if (!initialUrlCheck.ok) {
@@ -499,14 +554,24 @@ async function fetchSkillDownloadData(url, expectedUrl) {
         error: `Skill download file request failed with HTTP ${res.status}.`,
       };
     }
-    const buffer = await res.arrayBuffer();
-    const dataUrl = arrayBufferToDataUrl(buffer, res.headers?.get?.('content-type'));
+    const file = await readSkillDownloadBuffer(res);
+    if (!file.success) {
+      return {
+        success: false,
+        status: res.status,
+        finalUrl: responseUrl,
+        ...(file.bytesExpected != null ? { bytesExpected: file.bytesExpected } : {}),
+        ...(file.bytesReceived != null ? { bytesReceived: file.bytesReceived } : {}),
+        error: file.error,
+      };
+    }
+    const dataUrl = arrayBufferToDataUrl(file.buffer, res.headers?.get?.('content-type'));
     return {
       success: true,
       status: res.status,
       finalUrl: responseUrl,
       dataUrl,
-      bytesReceived: buffer.byteLength,
+      bytesReceived: file.bytesReceived,
     };
   } catch (e) {
     return { success: false, finalUrl: url, error: `Skill download file request failed: ${e.message}` };
@@ -587,6 +652,8 @@ async function downloadSkillFile(url, filename, waitMs = 60000) {
       success: false,
       ...(file.blocked ? { blocked: true } : {}),
       ...(file.status != null ? { status: file.status } : {}),
+      ...(file.bytesExpected != null ? { bytesExpected: file.bytesExpected } : {}),
+      ...(file.bytesReceived != null ? { bytesReceived: file.bytesReceived } : {}),
       finalUrl: file.finalUrl || url,
       error: file.error,
     };

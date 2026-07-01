@@ -46,7 +46,7 @@ Use this test skill.
 `;
 }
 
-function binaryResponse(status, body = 'media-bytes', contentType = 'video/mp4', url = '') {
+function binaryResponse(status, body = 'media-bytes', contentType = 'video/mp4', url = '', headers = {}) {
   const bytes = new TextEncoder().encode(body);
   return {
     ok: status >= 200 && status < 300,
@@ -54,7 +54,10 @@ function binaryResponse(status, body = 'media-bytes', contentType = 'video/mp4',
     url,
     headers: {
       get(name) {
-        return String(name || '').toLowerCase() === 'content-type' ? contentType : null;
+        const key = String(name || '').toLowerCase();
+        if (key === 'content-type') return contentType;
+        if (key === 'content-length') return String(headers.contentLength ?? bytes.byteLength);
+        return null;
       },
     },
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
@@ -3448,6 +3451,113 @@ test('executeHttpSkillTool rejects failed skill download file requests before br
         ],
         `${label}: failed file request lifecycle mismatch`,
       );
+    }
+  } finally {
+    if (originalFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = originalFetch;
+    if (originalChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = originalChrome;
+    if (originalBrowser === undefined) delete globalThis.browser;
+    else globalThis.browser = originalBrowser;
+  }
+});
+
+test('executeHttpSkillTool rejects oversized skill download files before buffering', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalChrome = globalThis.chrome;
+  const originalBrowser = globalThis.browser;
+  try {
+    for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
+      ['chrome', 'src/chrome', executeHttpSkillToolCh, normalizeCustomSkillsCh, buildSkillToolRegistryCh],
+      ['firefox', 'src/firefox', executeHttpSkillToolFx, normalizeCustomSkillsFx, buildSkillToolRegistryFx],
+    ]) {
+      const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
+      const tool = buildRegistry(skills).get('download_public_media');
+      assert.ok(tool, `${label}: download_public_media manifest tool missing`);
+
+      const providerCalls = [];
+      const downloadCalls = [];
+      const tooLargeBytes = (25 * 1024 * 1024) + 1;
+      const jsonResponse = (status, body) => ({
+        ok: status >= 200 && status < 300,
+        status,
+        text: async () => JSON.stringify(body),
+      });
+      const oversizedResponse = (url) => ({
+        ok: true,
+        status: 200,
+        url,
+        headers: {
+          get(name) {
+            const key = String(name || '').toLowerCase();
+            if (key === 'content-type') return 'video/mp4';
+            if (key === 'content-length') return String(tooLargeBytes);
+            return null;
+          },
+        },
+        arrayBuffer: async () => {
+          throw new Error(`${label}: oversized response should not be buffered`);
+        },
+      });
+      globalThis.fetch = async (url, opts = {}) => {
+        providerCalls.push({ url, opts });
+        if (url === 'https://freeskillz.xyz/v1/media/jobs' && opts.method === 'POST') {
+          return jsonResponse(200, { job_id: 'job_oversized' });
+        }
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_oversized' && opts.method === 'GET') {
+          return jsonResponse(200, { status: 'complete' });
+        }
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_oversized/file' && opts.method === 'GET') {
+          return oversizedResponse(url);
+        }
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_oversized' && opts.method === 'DELETE') {
+          return jsonResponse(204, {});
+        }
+        throw new Error(`unexpected provider call: ${opts.method || 'GET'} ${url}`);
+      };
+
+      if (label === 'chrome') {
+        delete globalThis.browser;
+        globalThis.chrome = {
+          runtime: { lastError: null },
+          downloads: {
+            download(opts, cb) {
+              downloadCalls.push(opts);
+              cb(7801);
+            },
+          },
+        };
+      } else {
+        delete globalThis.chrome;
+        globalThis.browser = {
+          downloads: {
+            async download(opts) {
+              downloadCalls.push(opts);
+              return 8801;
+            },
+          },
+        };
+      }
+
+      const result = await executeTool(tool, { url: 'https://www.instagram.com/reel/abc/' });
+      assert.equal(result.success, false, `${label}: oversized file should fail`);
+      assert.equal(result.status, 200, `${label}: oversized file status missing`);
+      assert.equal(result.bytesExpected, tooLargeBytes, `${label}: oversized file length should be reported`);
+      assert.match(result.error, /too large for cookie-free saving/i, `${label}: oversized file error missing`);
+      assert.equal(result.finalUrl, 'https://freeskillz.xyz/v1/media/jobs/job_oversized/file', `${label}: oversized file URL should be reported`);
+      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after oversized file`);
+      assert.equal(downloadCalls.length, 0, `${label}: browser download must not start for oversized file`);
+      assert.deepEqual(
+        providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
+        [
+          'POST https://freeskillz.xyz/v1/media/jobs',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_oversized',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_oversized/file',
+          'DELETE https://freeskillz.xyz/v1/media/jobs/job_oversized',
+        ],
+        `${label}: oversized file lifecycle mismatch`,
+      );
+      assert.equal(providerCalls[2].opts.credentials, 'omit', `${label}: oversized file fetch should omit cookies`);
     }
   } finally {
     if (originalFetch === undefined) delete globalThis.fetch;
