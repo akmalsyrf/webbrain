@@ -623,6 +623,16 @@ test('matches apple store pages', () => {
   assert.equal(getActiveAdapter('https://secure.store.apple.com/shop/checkout')?.name, 'apple');
 });
 
+test('matches sahibinden.com and includes anti-bot guidance', () => {
+  assert.equal(getActiveAdapter('https://www.sahibinden.com/')?.name, 'sahibinden');
+  assert.equal(getActiveAdapter('https://sahibinden.com/kategori/vasita')?.name, 'sahibinden');
+  // lookalike / suffix domains must NOT match
+  assert.notEqual(getActiveAdapter('https://sahibinden.com.phishing.example/')?.name, 'sahibinden');
+  const a = getActiveAdapter('https://www.sahibinden.com/ilan/12345');
+  assert.match(a?.notes || '', /DataDome/);
+  assert.match(a?.notes || '', /classifieds/i);
+});
+
 test('matches stripe dashboard', () => {
   const a = getActiveAdapter('https://dashboard.stripe.com/payments');
   assert.equal(a?.name, 'stripe');

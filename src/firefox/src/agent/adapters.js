@@ -552,6 +552,23 @@ const ADAPTERS = [
 - Pre-orders / "Made to order" listings have a longer ship date — surface that to the user before buying.`,
   },
 
+  // ─── Regional — Türkiye (TR) ──────────────────────────────────────────
+  // Regional adapters are the project's #1 wanted contribution (CONTRIBUTIONS.md);
+  // Türkiye is top of the priority list. Add more TR sites (trendyol,
+  // hepsiburada, n11, getir, yemeksepeti) below as separate, focused entries.
+  {
+    name: 'sahibinden',
+    category: 'general',
+    match: (url) => /^https?:\/\/(www\.)?sahibinden\.com\//.test(url),
+    notes: `
+- sahibinden is Türkiye's largest CLASSIFIEDS site (vehicles/"Vasıta", real estate/"Emlak", and general goods), NOT a checkout store. Most listings are "contact the seller", so do NOT hunt for a "Sepete Ekle"/Add-to-cart button on a typical car or property listing — the task is to read the listing and surface the seller's contact. "Mesaj Gönder" sends a message; the phone/"Cep" number is often revealed only after login.
+- ANTI-BOT TRAP: sahibinden runs aggressive bot protection (DataDome). You may hit a security/verification wall — a page saying "Güvenlik kontrolü", "İşleminize devam edebilmek için...", a slider/CAPTCHA, or "Erişiminiz engellendi". If you see one, STOP and tell the user a security check is blocking automated access. Do NOT loop retrying navigations/fetches — repeated automated requests escalate the block.
+- Do NOT re-fetch the same search/results URL repeatedly. The results list is already on the page; extract items from it (extract_data / get_accessibility_tree) before paginating. Re-running research_url/fetch_url on the same sorted URL (e.g. a "?...&sorting=..." or "?sd=..." variant) returns the same page and wastes steps.
+- Filtering: filters live in the LEFT rail (price range, "İl"/"İlçe" = province/district location, date, and category-specific facets). Set the location filter for local results. Sort via the "Sıralama" dropdown (e.g. price ascending) rather than guessing URL params.
+- Labels are Turkish: "Giriş Yap" = log in, "Üye Ol" = sign up, "İlan Ver"/"Ücretsiz İlan Ver" = post a listing, "Filtrele" = apply filters, "Sıralama" = sort.
+- Posting an "İlan" requires login and a multi-step form; after submitting it appears under "İlanlarım" with a status such as "Onay Bekliyor" (pending approval) — it is NOT live immediately. Do not report it as published until the status shows it is active ("Yayında").`,
+  },
+
   {
     name: 'apple',
     category: 'general',
