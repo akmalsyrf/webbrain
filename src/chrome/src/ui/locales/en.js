@@ -29,6 +29,8 @@ export default {
   'sp.btn.mic_stop': 'Stop listening',
   'sp.mic.unsupported': 'Voice input is not supported in this browser',
   'sp.mic.disabled_settings': 'Enable voice input in settings',
+  'sp.mic.permission_denied': 'Microphone blocked — right-click the WebBrain icon in the toolbar → Manage extension → Site settings → set Microphone to Allow',
+  'sp.mic.use_allow_site': 'Please choose "Allow while visiting the site" (not "Allow this time") so the permission sticks across windows',
   'sp.attach.remove': 'Remove attachment',
   'sp.attach.too_large': '{name} is too large to attach (max 16MB).',
   'sp.attach.unsupported_type': '{name} is not a supported attachment type — only images and PDFs are supported.',

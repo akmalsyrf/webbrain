@@ -4028,23 +4028,30 @@ let speechRecognition = null;
 let isListening = false;
 let micInterimText = ''; // the interim transcript tail we last appended to the input
 let voiceInputSettingEnabled = true; // mirrors storage 'voiceInputEnabled', on by default
-let micDisabledReason = null; // null | 'unsupported' | 'settings'
+let micDisabledReason = null; // null | 'unsupported' | 'settings' | 'permission_denied'
+let micPermissionDenied = false; // latched when Chrome denies mic; cleared by permissionchange
+let micRequestInFlight = false; // prevents concurrent requestMicAndStart() calls
 
 function updateMicButtonState() {
   if (!micBtn) return;
   micDisabledReason = !SpeechRecognitionImpl ? 'unsupported'
     : !voiceInputSettingEnabled ? 'settings'
+    : micPermissionDenied ? 'permission_denied'
     : null;
   micBtn.classList.toggle('mic-disabled', !!micDisabledReason);
   micBtn.title = micDisabledReason === 'unsupported' ? t('sp.mic.unsupported')
     : micDisabledReason === 'settings' ? t('sp.mic.disabled_settings')
+    : micDisabledReason === 'permission_denied' ? t('sp.mic.permission_denied')
     : (isListening ? t('sp.btn.mic_stop') : t('sp.btn.mic'));
 }
 
 function stopListening() {
   if (!isListening) return;
   isListening = false;
-  micBtn?.classList.remove('listening');
+  if (micBtn) {
+    micBtn.classList.remove('listening');
+    micBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+  }
   updateMicButtonState();
   // Detach handlers before stop(): the engine can fire a trailing
   // onresult/onend *after* stop() for buffered audio. Left attached, that
@@ -4101,7 +4108,16 @@ function startListening() {
     handleInput();
   };
 
-  recognition.onerror = () => stopListening();
+  recognition.onerror = (e) => {
+    stopListening();
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      if (!micPermissionDenied) {
+        micPermissionDenied = true;
+        updateMicButtonState();
+        addMessage('system', t('sp.mic.permission_denied'));
+      }
+    }
+  };
   recognition.onend = () => {
     if (speechRecognition !== recognition) return; // superseded by a newer session
     isListening = false;
@@ -4112,9 +4128,77 @@ function startListening() {
   };
 
   isListening = true;
-  micBtn?.classList.add('listening');
+  if (micBtn) {
+    micBtn.classList.add('listening');
+    micBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>`;
+  }
   updateMicButtonState();
   recognition.start();
+}
+
+// Chrome's side panel context never surfaces the getUserMedia permission
+// dialog — it silently rejects. A real popup window does trigger it.
+// On first failure we open a small popup, wait for the user to click Allow,
+// then start listening once the permission is cached on the extension origin.
+function openMicPermissionPopup() {
+  return new Promise((resolve) => {
+    let popupId = null;
+    let settled = false;
+    const settle = (granted) => {
+      if (settled) return;
+      settled = true;
+      chrome.runtime.onMessage.removeListener(onMsg);
+      chrome.windows.onRemoved.removeListener(onRemoved);
+      resolve(granted);
+    };
+    const onMsg = (msg) => {
+      if (msg.type === 'mic-permission-granted') settle(true);
+      else if (msg.type === 'mic-permission-denied') settle(false);
+    };
+    const onRemoved = (id) => { if (id === popupId) settle(false); };
+    chrome.runtime.onMessage.addListener(onMsg);
+    chrome.windows.onRemoved.addListener(onRemoved);
+    chrome.windows.create({
+      url: chrome.runtime.getURL('src/ui/mic-permission.html'),
+      type: 'popup',
+      width: 380,
+      height: 240,
+    }, (win) => { popupId = win?.id ?? null; });
+  });
+}
+
+async function requestMicAndStart() {
+  if (micRequestInFlight) return;
+  micRequestInFlight = true;
+  try {
+    let granted = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      granted = true;
+    } catch {
+      // Side panel can't show the permission dialog — delegate to a popup window.
+      granted = await openMicPermissionPopup();
+    }
+    if (!granted) {
+      micPermissionDenied = true;
+      updateMicButtonState();
+      addMessage('system', t('sp.mic.permission_denied'));
+      return;
+    }
+    // "Allow this time" only grants access to the popup window, not the side
+    // panel. Verify the permission carried over before starting.
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach(t => t.stop());
+    } catch {
+      addMessage('system', t('sp.mic.use_allow_site'));
+      return;
+    }
+    startListening();
+  } finally {
+    micRequestInFlight = false;
+  }
 }
 
 if (micBtn) {
@@ -4129,7 +4213,7 @@ if (micBtn) {
       updateMicButtonState();
     }
   });
-  micBtn.addEventListener('click', () => {
+  micBtn.addEventListener('click', async () => {
     if (micDisabledReason === 'unsupported') {
       addMessage('system', t('sp.mic.unsupported'));
       return;
@@ -4138,9 +4222,18 @@ if (micBtn) {
       addMessage('system', t('sp.mic.disabled_settings'));
       return;
     }
+    if (micDisabledReason === 'permission_denied') return; // tooltip already explains; no spam
     if (isListening) stopListening();
-    else startListening();
+    else await requestMicAndStart();
   });
+  // Re-enable button automatically if the user grants mic from browser settings.
+  try {
+    const micPerm = await navigator.permissions.query({ name: 'microphone' });
+    micPerm.addEventListener('change', () => {
+      micPermissionDenied = micPerm.state === 'denied';
+      updateMicButtonState();
+    });
+  } catch { /* permissions API unavailable */ }
   updateMicButtonState();
 }
 
