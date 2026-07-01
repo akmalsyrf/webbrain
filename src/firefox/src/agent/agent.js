@@ -1646,6 +1646,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         // early return skips the post-loop flush, so emit any nav notices here
         // or the model would replay against stale URLs from the prior page.
         this._injectNavNotices(messages, navNotices, onUpdate);
+        this._persist(tabId);
         return { action: 'continue' };
       }
       if (this._shouldAutoScreenshot(fnName) && !toolResult?.error) {
@@ -2842,12 +2843,14 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // transcript.
     const priorMessages = runPlanner ? messages.slice() : null;
     messages.push(enriched);
+    this._persist(tabId);
     if (!runPlanner) return { proceed: true };
 
     const historyDigest = this._buildPlannerHistoryDigest(priorMessages);
     const gate = await this._runPlannerGate(tabId, enriched, onUpdate, costState, runId, historyDigest, tabInfo, plannerMode);
     if (!gate.proceed) {
       messages.push({ role: 'assistant', content: gate.message || 'Task cancelled.' });
+      this._persist(tabId);
       return { proceed: false, message: gate.message || 'Task cancelled.', reason: gate.reason };
     }
 
@@ -2866,6 +2869,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         // by submitPlanReview in the sidepanel, so there's no plan_approved
         // agent_update to emit here (no handler consumed it).
       }
+      this._persist(tabId);
     }
     return { proceed: true };
   }
