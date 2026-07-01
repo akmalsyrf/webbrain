@@ -2757,11 +2757,18 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
     assert.ok(downloadTool, `${label}: FreeSkillz media download tool missing`);
     assert.equal(transcriptTool.endpoint, 'https://freeskillz.xyz/v1/youtube/transcript', `${label}: wrong transcript endpoint`);
     assert.equal(transcriptTool.resultPolicy, 'untrusted', `${label}: transcript output should be untrusted`);
-      assert.equal(resolveTool.kind, 'http', `${label}: resolver should be read-only HTTP`);
-      assert.equal(resolveTool.readOnly, true, `${label}: resolver should be read-only`);
-      assert.equal(resolveTool.endpoint, 'https://freeskillz.xyz/v1/media/resolve', `${label}: wrong resolver endpoint`);
-      assert.equal(resolveTool.activeTabUrlArg, '', `${label}: resolver must not auto-send the active tab URL in Ask mode`);
-      assert.equal(downloadTool.kind, 'httpDownloadJob', `${label}: downloader should use job execution`);
+    assert.deepEqual(
+      transcriptTool.defaultArgs,
+      { timestamps: true, text_limit: 6000, include_segments: false },
+      `${label}: transcript defaults should request compact text windows`,
+    );
+    assert.equal(transcriptTool.responseLimits.maxTextChars, 'unlimited', `${label}: transcript provider text should not be pre-capped`);
+    assert.equal(transcriptTool.responseLimits.maxArrayItems.segments, 1200, `${label}: transcript segments should keep a provider response cap`);
+    assert.equal(resolveTool.kind, 'http', `${label}: resolver should be read-only HTTP`);
+    assert.equal(resolveTool.readOnly, true, `${label}: resolver should be read-only`);
+    assert.equal(resolveTool.endpoint, 'https://freeskillz.xyz/v1/media/resolve', `${label}: wrong resolver endpoint`);
+    assert.equal(resolveTool.activeTabUrlArg, '', `${label}: resolver must not auto-send the active tab URL in Ask mode`);
+    assert.equal(downloadTool.kind, 'httpDownloadJob', `${label}: downloader should use job execution`);
     assert.equal(downloadTool.readOnly, false, `${label}: downloader should not be read-only`);
     assert.equal(downloadTool.requiresDownloadPermission, true, `${label}: downloader should require download permission`);
     assert.equal(downloadTool.endpoint, 'https://freeskillz.xyz/v1/media/jobs', `${label}: wrong download job endpoint`);
@@ -2786,7 +2793,12 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
       assert.ok(transcript.function.parameters.properties.url, `${label} ${mode}: url param missing`);
       assert.ok(transcript.function.parameters.properties.lang, `${label} ${mode}: lang param missing`);
       assert.ok(transcript.function.parameters.properties.timestamps, `${label} ${mode}: timestamps param missing`);
+      assert.ok(transcript.function.parameters.properties.text_offset, `${label} ${mode}: text_offset param missing`);
+      assert.ok(transcript.function.parameters.properties.text_limit, `${label} ${mode}: text_limit param missing`);
+      assert.equal(transcript.function.parameters.properties.text_limit.maximum, 12000, `${label} ${mode}: text_limit should advertise a hard page ceiling`);
+      assert.ok(transcript.function.parameters.properties.include_segments, `${label} ${mode}: include_segments param missing`);
       assert.match(transcript.function.description, /Use this first/i, `${label} ${mode}: description should steer first use`);
+      assert.match(transcript.function.description, /next_text_offset/i, `${label} ${mode}: description should explain transcript continuation`);
       assert.match(transcript.function.description, /does not require \/allow-api/i, `${label} ${mode}: read-only skill tool should not ask for /allow-api`);
       assert.match(transcript.function.description, /FreeSkillz\.xyz/, `${label} ${mode}: provider missing`);
 
@@ -2901,7 +2913,105 @@ test('executeHttpSkillTool uses skill manifest endpoint for supported YouTube UR
       assert.equal(calls[0].opts.method, 'POST', `${label}: wrong method`);
       assert.equal(calls[0].opts.credentials, 'omit', `${label}: provider call should not send cookies`);
       assert.equal(calls[0].opts.redirect, 'manual', `${label}: provider redirects should be validated before following`);
-      assert.deepEqual(JSON.parse(calls[0].opts.body), { url: youtubeUrl, timestamps: false, lang: 'tr' }, `${label}: wrong request body`);
+      assert.deepEqual(
+        JSON.parse(calls[0].opts.body),
+        { timestamps: false, text_limit: 6000, include_segments: false, url: youtubeUrl, lang: 'tr' },
+        `${label}: wrong request body`,
+      );
+
+      await executeTool(tool, { url: youtubeUrl, text_limit: 999999, text_offset: -5 });
+      assert.equal(calls.length, 2, `${label}: expected second provider call`);
+      assert.deepEqual(
+        JSON.parse(calls[1].opts.body),
+        { timestamps: true, text_limit: 12000, include_segments: false, url: youtubeUrl, text_offset: 0 },
+        `${label}: declared numeric transcript args should be clamped before provider request`,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test('executeHttpSkillTool clamps oversized FreeSkillz transcript window requests', async () => {
+  const youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
+    ['chrome', 'src/chrome', executeHttpSkillToolCh, normalizeCustomSkillsCh, buildSkillToolRegistryCh],
+    ['firefox', 'src/firefox', executeHttpSkillToolFx, normalizeCustomSkillsFx, buildSkillToolRegistryFx],
+  ]) {
+    const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
+    const tool = buildRegistry(skills).get('read_youtube_transcript');
+    assert.ok(tool, `${label}: manifest tool missing`);
+
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (_url, opts) => {
+      const payload = JSON.parse(opts.body);
+      calls.push(payload);
+      const windowText = 'x'.repeat(payload.text_limit);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          video_id: 'dQw4w9WgXcQ',
+          selected_language: 'en',
+          text: windowText,
+          segments: [],
+          text_length: 50000,
+          text_offset: payload.text_offset || 0,
+          next_text_offset: (payload.text_offset || 0) + payload.text_limit,
+          has_more_text: true,
+        }),
+      };
+    };
+    try {
+      const result = await executeTool(tool, { url: youtubeUrl, text_offset: 1000, text_limit: 170500 });
+      assert.equal(result.success, true, `${label}: supported YouTube URL should succeed`);
+      assert.equal(calls[0].text_limit, 12000, `${label}: oversized text_limit should be clamped`);
+      assert.equal(calls[0].text_offset, 1000, `${label}: valid text_offset should pass through`);
+      assert.equal(result.data.text.length, 12000, `${label}: provider should receive only one bounded transcript window`);
+      assert.equal(result.data.next_text_offset, 13000, `${label}: bounded response should preserve continuation offset`);
+      assert.equal(result.data.truncated, undefined, `${label}: bounded transcript window should not be response-limit truncated`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test('executeHttpSkillTool caps FreeSkillz transcript segments while leaving text pageable', async () => {
+  const youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  const segments = Array.from({ length: 1305 }, (_, i) => ({
+    text: `segment ${i}`,
+    start: i,
+    duration: 1,
+    timestamp: `0:${String(i).padStart(2, '0')}`,
+  }));
+  for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
+    ['chrome', 'src/chrome', executeHttpSkillToolCh, normalizeCustomSkillsCh, buildSkillToolRegistryCh],
+    ['firefox', 'src/firefox', executeHttpSkillToolFx, normalizeCustomSkillsFx, buildSkillToolRegistryFx],
+  ]) {
+    const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
+    const tool = buildRegistry(skills).get('read_youtube_transcript');
+    assert.ok(tool, `${label}: manifest tool missing`);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        video_id: 'dQw4w9WgXcQ',
+        selected_language: 'en',
+        text: 'short transcript window',
+        segments,
+        total_segments: segments.length,
+        has_more_text: false,
+      }),
+    });
+    try {
+      const result = await executeTool(tool, { url: youtubeUrl, include_segments: true });
+      assert.equal(result.success, true, `${label}: supported YouTube URL should succeed`);
+      assert.equal(result.data.text, 'short transcript window', `${label}: transcript text should pass through unchanged`);
+      assert.equal(result.data.segments.length, 1200, `${label}: transcript segment array should be capped`);
+      assert.equal(result.data.truncated, true, `${label}: segment cap should mark the response truncated`);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -13382,6 +13492,7 @@ test('skill tool transcript data is trimmed as valid nested JSON', () => {
     ['firefox', AgentFx],
   ]) {
     const agent = new AgentClass({});
+    const providerNextTextOffset = 1200 + longText.length;
     const serialized = agent._limitToolResult({
       success: true,
       status: 200,
@@ -13391,6 +13502,8 @@ test('skill tool transcript data is trimmed as valid nested JSON', () => {
         video_id: 'dQw4w9WgXcQ',
         selected_language: 'en',
         text: longText,
+        next_text_offset: providerNextTextOffset,
+        has_more_text: false,
         segments,
       },
     });
@@ -13400,6 +13513,11 @@ test('skill tool transcript data is trimmed as valid nested JSON', () => {
     assert.equal(parsed.data.video_id, 'dQw4w9WgXcQ', `${label}: metadata should be preserved`);
     assert.match(parsed.data.text, /\[\.\.\.tool data text truncated\]/, `${label}: transcript text should be trimmed in data.text`);
     assert.ok(parsed.data.text.length < longText.length, `${label}: transcript text should be shortened`);
+    const deliveredTextLength = parsed.data.text.indexOf('\n[...tool data text truncated]');
+    assert.ok(deliveredTextLength > 0, `${label}: delivered text length should be measurable`);
+    assert.equal(parsed.data.next_text_offset, 1200 + deliveredTextLength, `${label}: continuation offset should point after delivered text`);
+    assert.equal(parsed.data.has_more_text, true, `${label}: local truncation should keep transcript paging active`);
+    assert.ok(parsed.data.next_text_offset < providerNextTextOffset, `${label}: provider offset should not skip locally hidden text`);
     assert.ok(parsed.data.segments.length < segments.length, `${label}: segments should be shortened`);
     assert.equal(parsed.data.segmentsTruncated, true, `${label}: segment truncation should be marked`);
     assert.equal(parsed.data.originalSegmentCount, segments.length, `${label}: original segment count should be preserved`);

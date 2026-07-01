@@ -4690,6 +4690,20 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
               data.text = `${originalText.slice(0, textLimit)}\n[...tool data text truncated]`;
               data.truncated = true;
               data.originalLength = data.originalLength ?? originalText.length;
+              const rawTextOffset = Number(originalData.text_offset);
+              const rawNextTextOffset = Number(originalData.next_text_offset);
+              const hasTextOffset = Number.isFinite(rawTextOffset) && rawTextOffset >= 0;
+              const hasNextTextOffset = Number.isFinite(rawNextTextOffset) && rawNextTextOffset >= 0;
+              const inferredTextOffset = hasTextOffset
+                ? rawTextOffset
+                : (hasNextTextOffset ? Math.max(0, rawNextTextOffset - originalText.length) : null);
+              if (inferredTextOffset != null) {
+                const deliveredNextTextOffset = inferredTextOffset + textLimit;
+                if (!hasNextTextOffset || deliveredNextTextOffset < rawNextTextOffset) {
+                  data.next_text_offset = deliveredNextTextOffset;
+                  data.has_more_text = true;
+                }
+              }
             }
             if (originalSegments && originalSegments.length > segmentLimit) {
               data.segments = originalSegments.slice(0, segmentLimit);

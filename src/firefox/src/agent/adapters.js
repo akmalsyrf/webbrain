@@ -191,6 +191,7 @@ const ADAPTERS = [
 - For questions about the current video's content, use any available transcript skill tool first (for example \`read_youtube_transcript\` from FreeSkillz) and ground the answer in it. Transcript skill tools do not require \`/allow-api\`. If no transcript skill tool is available, or it fails or returns no text, say the transcript tool was unavailable and fall back to visible title/description/comments.
 - Fallback transcript UI path: get_accessibility_tree({filter:"visible"}) → expand description ("..." / "more") with click_ax/click → click "Show transcript" → read the transcript panel with get_accessibility_tree or read_page; scroll the panel/page for more segments.
 - Do NOT invent transcript URLs, and do NOT use fetch_url for YouTube captions. Use an available transcript skill tool or the visible transcript UI.
+- If a transcript skill response has has_more_text=true, continue with text_offset=next_text_offset until you have enough transcript evidence for the task.
 - Transcript text is timestamped/segmented and may be auto-generated or auto-translated; collect enough segments before summarizing or answering, and do not infer from the title alone when transcript is reachable.
 - Comments load lazily AFTER you scroll past the video — they're not in the initial DOM.
 - The subscribe button has a bell icon next to it for notification preferences; they're separate clicks.`,

@@ -255,7 +255,11 @@ function inputUrlAllowed(rawUrl, rules = []) {
 
 function applySkillResponseLimits(value, limits = {}) {
   if (!value || typeof value !== 'object') return value;
-  const maxTextChars = Number.isFinite(Number(limits.maxTextChars)) ? Math.max(1000, Number(limits.maxTextChars)) : 160000;
+  const rawMaxTextChars = limits.maxTextChars;
+  const unlimitedText = rawMaxTextChars === 'unlimited';
+  const maxTextChars = unlimitedText
+    ? Number.POSITIVE_INFINITY
+    : Number.isFinite(Number(rawMaxTextChars)) ? Math.max(1000, Number(rawMaxTextChars)) : 160000;
   const arrayLimits = limits.maxArrayItems && typeof limits.maxArrayItems === 'object' ? limits.maxArrayItems : {};
   const out = Array.isArray(value) ? [...value] : { ...value };
   for (const [key, item] of Object.entries(out)) {
@@ -284,7 +288,23 @@ function filterArgsToDeclaredParameters(args, tool) {
   const allowed = new Set(Object.keys(properties));
   const out = {};
   for (const [key, value] of Object.entries(args || {})) {
-    if (allowed.has(key)) out[key] = value;
+    if (!allowed.has(key)) continue;
+    const schema = properties[key] || {};
+    const type = schema.type;
+    const isNumeric = type === 'number' || type === 'integer';
+    if (isNumeric && value != null && value !== '') {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        let next = type === 'integer' ? Math.trunc(numeric) : numeric;
+        const min = Number(schema.minimum);
+        const max = Number(schema.maximum);
+        if (Number.isFinite(min)) next = Math.max(min, next);
+        if (Number.isFinite(max)) next = Math.min(max, next);
+        out[key] = next;
+        continue;
+      }
+    }
+    out[key] = value;
   }
   return out;
 }
