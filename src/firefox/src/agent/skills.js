@@ -142,6 +142,11 @@ function normalizeModes(value) {
   return set.size ? [...set] : ['ask', 'act'];
 }
 
+function normalizeToolModes(value, kind) {
+  if (kind === 'httpDownloadJob') return ['act'];
+  return normalizeModes(value);
+}
+
 function normalizeTiers(value) {
   const raw = Array.isArray(value) ? value : ['full', 'mid', 'compact'];
   const set = new Set(raw.map((v) => cleanSingleLine(v).toLowerCase()).filter((v) => v === 'full' || v === 'mid' || v === 'compact'));
@@ -217,7 +222,7 @@ function normalizeSkillTools(value, skillId) {
       resultPolicy: cleanSingleLine(item.resultPolicy || item.result_policy).toLowerCase() === 'trusted' ? 'trusted' : 'untrusted',
       responseLimits: cloneJsonObject(item.responseLimits || item.response_limits, {}),
       job,
-      modes: normalizeModes(item.modes),
+      modes: normalizeToolModes(item.modes, kind),
       tiers: normalizeTiers(item.tiers),
     });
   }

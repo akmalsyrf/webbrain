@@ -2775,6 +2775,53 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
   }
 });
 
+test('getToolsForMode: custom download-job skill tools are Act-only by policy', () => {
+  for (const [label, normalizeSkills, buildDefs, buildRegistry] of [
+    ['chrome', normalizeCustomSkillsCh, buildSkillToolDefinitionsCh, buildSkillToolRegistryCh],
+    ['firefox', normalizeCustomSkillsFx, buildSkillToolDefinitionsFx, buildSkillToolRegistryFx],
+  ]) {
+    for (const [caseName, modesField] of [
+      ['missing modes', ''],
+      ['explicit ask mode', '"modes": ["ask", "act"],'],
+    ]) {
+      const content = `# Custom Download Skill
+Downloads test media.
+
+\`\`\`webbrain-tools
+[
+  {
+    "name": "download_custom_media",
+    "description": "Download custom media.",
+    ${modesField}
+    "kind": "httpDownloadJob",
+    "endpoint": "https://example.com/jobs",
+    "method": "POST",
+    "job": {
+      "statusEndpoint": "https://example.com/jobs/{job_id}",
+      "fileEndpoint": "https://example.com/jobs/{job_id}/file"
+    },
+    "parameters": {
+      "type": "object",
+      "properties": { "url": { "type": "string" } },
+      "required": ["url"]
+    }
+  }
+]
+\`\`\`
+`;
+      const skills = normalizeSkills([{ id: `custom-download-${caseName.replace(/\s+/g, '-')}`, name: 'Custom Download Skill', content }]);
+      const tool = buildRegistry(skills).get('download_custom_media');
+      assert.ok(tool, `${label} ${caseName}: custom download tool missing`);
+      assert.deepEqual(tool.modes, ['act'], `${label} ${caseName}: download-job tool should normalize to Act-only`);
+
+      const askNames = buildDefs(skills, { mode: 'ask' }).map(t => t.function?.name).filter(Boolean);
+      const actNames = buildDefs(skills, { mode: 'act', tier: 'full' }).map(t => t.function?.name).filter(Boolean);
+      assert.equal(askNames.includes('download_custom_media'), false, `${label} ${caseName}: download-job tool must not be exposed in Ask`);
+      assert.equal(actNames.includes('download_custom_media'), true, `${label} ${caseName}: download-job tool should be exposed in Act`);
+    }
+  }
+});
+
 test('executeHttpSkillTool uses skill manifest endpoint for supported YouTube URLs only', async () => {
   const youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
