@@ -3272,6 +3272,23 @@ test('sidepanel escapes dynamic system-message interpolation before raw HTML ins
   }
 });
 
+test('sidepanel subscribe error card clears DOM without HTML reinterpretation', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const start = panel.indexOf('function renderSubscribeError(textEl, content) {');
+    assert.notEqual(start, -1, `${label}: renderSubscribeError missing`);
+    const end = panel.indexOf('\n}\n\nfunction addMessage', start);
+    assert.notEqual(end, -1, `${label}: renderSubscribeError boundary missing`);
+    const body = panel.slice(start, end + 2);
+    assert.match(body, /textEl\.replaceChildren\(\);/, `${label}: subscribe card should clear via DOM APIs`);
+    assert.doesNotMatch(body, /textEl\.innerHTML\s*=\s*'';/, `${label}: subscribe card should not clear via innerHTML`);
+    assert.match(body, /msg\.textContent = parsed\.message \|\| t\('sp\.subscribe\.allowance_used'\);/, `${label}: subscribe message must remain textContent`);
+  }
+});
+
 test('sidepanel verbose tool-call headers treat tool names as text', () => {
   for (const [label, panelRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js'],

@@ -3196,7 +3196,7 @@ function renderSubscribeError(textEl, content) {
   const parsed = parseSubscribeError(content);
   if (!parsed) return false;
 
-  textEl.innerHTML = '';
+  textEl.replaceChildren();
   textEl.classList.add('subscribe-error');
 
   const msg = document.createElement('div');
