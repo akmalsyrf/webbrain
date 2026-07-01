@@ -479,7 +479,7 @@ function validateSkillDownloadFinalUrl(finalUrl, expectedUrl) {
 }
 
 function markUnsafeSkillDownload(info, expectedUrl) {
-  if (!info?.finalUrl) return info;
+  if (!info?.finalUrl || !expectedUrl) return info;
   const finalUrlCheck = validateSkillDownloadFinalUrl(info.finalUrl, expectedUrl);
   if (finalUrlCheck.ok) return info;
   return {
@@ -489,18 +489,31 @@ function markUnsafeSkillDownload(info, expectedUrl) {
   };
 }
 
-function isHeadUnsupportedStatus(status) {
-  return status === 405 || status === 501;
+function safeDataUrlMimeType(value) {
+  const type = String(value || '').split(';')[0].trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(type)
+    ? type
+    : 'application/octet-stream';
 }
 
-async function validateSkillDownloadStartUrl(url, expectedUrl) {
+function arrayBufferToDataUrl(buffer, mimeType) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return `data:${safeDataUrlMimeType(mimeType)};base64,${btoa(binary)}`;
+}
+
+async function fetchSkillDownloadData(url, expectedUrl) {
   const initialUrlCheck = validateSkillDownloadFinalUrl(url, expectedUrl);
   if (!initialUrlCheck.ok) {
     return { success: false, blocked: true, finalUrl: url, error: initialUrlCheck.error };
   }
   try {
     const res = await fetch(url, {
-      method: 'HEAD',
+      method: 'GET',
       credentials: 'omit',
       redirect: 'manual',
       cache: 'no-store',
@@ -525,20 +538,25 @@ async function validateSkillDownloadStartUrl(url, expectedUrl) {
         error: responseUrlCheck.error,
       };
     }
-    if (!res.ok && isHeadUnsupportedStatus(res.status)) {
-      return { success: true, status: res.status, finalUrl: responseUrl, preflightUnsupported: true };
-    }
     if (!res.ok) {
       return {
         success: false,
         status: res.status,
         finalUrl: responseUrl,
-        error: `Skill download preflight failed with HTTP ${res.status}.`,
+        error: `Skill download file request failed with HTTP ${res.status}.`,
       };
     }
-    return { success: true, status: res.status, finalUrl: responseUrl };
+    const buffer = await res.arrayBuffer();
+    const dataUrl = arrayBufferToDataUrl(buffer, res.headers?.get?.('content-type'));
+    return {
+      success: true,
+      status: res.status,
+      finalUrl: responseUrl,
+      dataUrl,
+      bytesReceived: buffer.byteLength,
+    };
   } catch (e) {
-    return { success: false, finalUrl: url, error: `Skill download preflight failed: ${e.message}` };
+    return { success: false, finalUrl: url, error: `Skill download file request failed: ${e.message}` };
   }
 }
 
@@ -573,11 +591,11 @@ function scheduleSkillDownloadCleanup(downloadId, cleanupUrl, endpoint, tool, ex
     pendingSkillDownloadCleanups.delete(key);
     try {
       let unsafe = null;
-      if (finalUrl) {
+      if (expectedUrl && finalUrl) {
         const finalUrlCheck = validateSkillDownloadFinalUrl(finalUrl, expectedUrl);
         if (!finalUrlCheck.ok) unsafe = finalUrlCheck.error;
       }
-      if (!unsafe) {
+      if (expectedUrl && !unsafe) {
         const item = await findDownloadItem(downloadId);
         const info = markUnsafeSkillDownload(summarizeDownloadItem(item), expectedUrl);
         if (info?.finalUrlBlocked) unsafe = info.finalUrlError;
@@ -595,7 +613,7 @@ function scheduleSkillDownloadCleanup(downloadId, cleanupUrl, endpoint, tool, ex
     if (!delta || delta.id !== downloadId) return;
     const state = delta.state?.current;
     const finalUrl = delta.finalUrl?.current || delta.url?.current || '';
-    if (finalUrl) {
+    if (expectedUrl && finalUrl) {
       const finalUrlCheck = validateSkillDownloadFinalUrl(finalUrl, expectedUrl);
       if (!finalUrlCheck.ok) {
         return finish(state || 'interrupted', finalUrl);
@@ -613,17 +631,17 @@ function scheduleSkillDownloadCleanup(downloadId, cleanupUrl, endpoint, tool, ex
 }
 
 async function downloadSkillFile(url, filename, waitMs = 60000) {
-  const startUrlCheck = await validateSkillDownloadStartUrl(url, url);
-  if (!startUrlCheck.success) {
+  const file = await fetchSkillDownloadData(url, url);
+  if (!file.success) {
     return {
       success: false,
-      ...(startUrlCheck.blocked ? { blocked: true } : {}),
-      ...(startUrlCheck.status != null ? { status: startUrlCheck.status } : {}),
-      finalUrl: startUrlCheck.finalUrl || url,
-      error: startUrlCheck.error,
+      ...(file.blocked ? { blocked: true } : {}),
+      ...(file.status != null ? { status: file.status } : {}),
+      finalUrl: file.finalUrl || url,
+      error: file.error,
     };
   }
-  const opts = { url, conflictAction: 'uniquify' };
+  const opts = { url: file.dataUrl, conflictAction: 'uniquify' };
   const safeName = safeDownloadFilename(filename);
   if (safeName) opts.filename = safeName;
   const downloadId = await new Promise((resolve, reject) => {
@@ -632,16 +650,23 @@ async function downloadSkillFile(url, filename, waitMs = 60000) {
       else resolve(id);
     });
   });
-  const info = await resolveDownloadInfo(downloadId, waitMs, { expectedUrl: url });
-  const result = { downloadId, success: false };
+  const info = await resolveDownloadInfo(downloadId, waitMs);
+  const result = {
+    downloadId,
+    success: false,
+    url,
+    finalUrl: file.finalUrl || url,
+    ...(file.status != null ? { status: file.status } : {}),
+    ...(file.bytesReceived != null ? { bytesReceived: file.bytesReceived, totalBytes: file.bytesReceived } : {}),
+  };
   if (info) {
     if (info.filename) result.filename = info.filename;
     if (info.state) result.state = info.state;
     if (info.error) result.error = info.error;
     if (info.bytesReceived != null) result.bytesReceived = info.bytesReceived;
     if (info.totalBytes != null) result.totalBytes = info.totalBytes;
-    if (info.url) result.url = info.url;
-    if (info.finalUrl) result.finalUrl = info.finalUrl;
+    if (info.url && !String(info.url).startsWith('data:')) result.url = info.url;
+    if (info.finalUrl && !String(info.finalUrl).startsWith('data:')) result.finalUrl = info.finalUrl;
     if (info.finalUrlBlocked) {
       await removeUnsafeSkillDownload(downloadId, info.state);
       result.blocked = true;
@@ -726,7 +751,7 @@ async function executeHttpDownloadJobSkillTool(tool, payload, endpoint) {
     const download = await downloadSkillFile(fileEndpoint.url, payload.filename, Math.min(tool.job?.timeoutMs || 90000, 120000));
     const cleanupDeferred = cleanupEndpoint.ok && download.pending === true;
     const cleanupScheduled = cleanupDeferred
-      ? scheduleSkillDownloadCleanup(download.downloadId, cleanupEndpoint.url, endpoint, tool, fileEndpoint.url)
+      ? scheduleSkillDownloadCleanup(download.downloadId, cleanupEndpoint.url, endpoint, tool)
       : false;
     if (cleanupEndpoint.ok && !cleanupDeferred) cleanup = await cleanupSkillDownloadJob(cleanupEndpoint.url, endpoint, tool);
     if (!download.success) {

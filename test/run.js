@@ -46,6 +46,22 @@ Use this test skill.
 `;
 }
 
+function binaryResponse(status, body = 'media-bytes', contentType = 'video/mp4', url = '') {
+  const bytes = new TextEncoder().encode(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url,
+    headers: {
+      get(name) {
+        return String(name || '').toLowerCase() === 'content-type' ? contentType : null;
+      },
+    },
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    text: async () => body,
+  };
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Module loading
 // ────────────────────────────────────────────────────────────────────────
@@ -2728,10 +2744,11 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
     assert.ok(downloadTool, `${label}: FreeSkillz media download tool missing`);
     assert.equal(transcriptTool.endpoint, 'https://freeskillz.xyz/v1/youtube/transcript', `${label}: wrong transcript endpoint`);
     assert.equal(transcriptTool.resultPolicy, 'untrusted', `${label}: transcript output should be untrusted`);
-    assert.equal(resolveTool.kind, 'http', `${label}: resolver should be read-only HTTP`);
-    assert.equal(resolveTool.readOnly, true, `${label}: resolver should be read-only`);
-    assert.equal(resolveTool.endpoint, 'https://freeskillz.xyz/v1/media/resolve', `${label}: wrong resolver endpoint`);
-    assert.equal(downloadTool.kind, 'httpDownloadJob', `${label}: downloader should use job execution`);
+      assert.equal(resolveTool.kind, 'http', `${label}: resolver should be read-only HTTP`);
+      assert.equal(resolveTool.readOnly, true, `${label}: resolver should be read-only`);
+      assert.equal(resolveTool.endpoint, 'https://freeskillz.xyz/v1/media/resolve', `${label}: wrong resolver endpoint`);
+      assert.equal(resolveTool.activeTabUrlArg, '', `${label}: resolver must not auto-send the active tab URL in Ask mode`);
+      assert.equal(downloadTool.kind, 'httpDownloadJob', `${label}: downloader should use job execution`);
     assert.equal(downloadTool.readOnly, false, `${label}: downloader should not be read-only`);
     assert.equal(downloadTool.requiresDownloadPermission, true, `${label}: downloader should require download permission`);
     assert.equal(downloadTool.endpoint, 'https://freeskillz.xyz/v1/media/jobs', `${label}: wrong download job endpoint`);
@@ -2762,6 +2779,7 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
 
       const resolver = tools.find(t => t.function?.name === 'resolve_public_media');
       assert.ok(resolver.function.parameters.properties.url, `${label} ${mode}: resolver url param missing`);
+      assert.deepEqual(resolver.function.parameters.required, ['url'], `${label} ${mode}: resolver should require an explicit URL`);
       assert.match(resolver.function.description, /before downloading/i, `${label} ${mode}: resolver should steer metadata-first workflow`);
       if (mode !== 'ask') {
         const downloader = tools.find(t => t.function?.name === 'download_public_media');
@@ -2905,8 +2923,8 @@ test('executeHttpSkillTool runs FreeSkillz media download jobs and cleans up', a
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_123' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_123/file' && opts.method === 'HEAD') {
-          return jsonResponse(200, {});
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_123/file' && opts.method === 'GET') {
+          return binaryResponse(200, 'media-bytes', 'video/mp4', url);
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_123' && opts.method === 'DELETE') {
           return jsonResponse(204, {});
@@ -2975,7 +2993,7 @@ test('executeHttpSkillTool runs FreeSkillz media download jobs and cleans up', a
       assert.equal(result.downloadId, label === 'chrome' ? 7101 : 8101, `${label}: wrong download id`);
       assert.equal(result.cleanup?.success, true, `${label}: cleanup should succeed`);
       assert.equal(downloadCalls.length, 1, `${label}: browser download should run once`);
-      assert.equal(downloadCalls[0].url, 'https://freeskillz.xyz/v1/media/jobs/job_123/file', `${label}: wrong browser download URL`);
+      assert.match(downloadCalls[0].url, /^data:video\/mp4;base64,/, `${label}: browser download should use fetched data URL`);
       assert.equal(downloadCalls[0].filename, 'evil.mp4', `${label}: filename should be sanitized to basename`);
 
       assert.deepEqual(
@@ -2983,12 +3001,13 @@ test('executeHttpSkillTool runs FreeSkillz media download jobs and cleans up', a
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_123',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_123/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_123/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_123',
         ],
         `${label}: wrong provider lifecycle`,
       );
       assert.equal(providerCalls[0].opts.credentials, 'omit', `${label}: create job should omit cookies`);
+      assert.equal(providerCalls[2].opts.credentials, 'omit', `${label}: file fetch should omit cookies`);
       assert.deepEqual(
         JSON.parse(providerCalls[0].opts.body),
         {
@@ -3041,8 +3060,8 @@ test('executeHttpSkillTool defers cleanup while skill downloads are still runnin
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_pending' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_pending/file' && opts.method === 'HEAD') {
-          return jsonResponse(200, {});
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_pending/file' && opts.method === 'GET') {
+          return binaryResponse(200, 'slow-media', 'video/mp4', url);
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_pending' && opts.method === 'DELETE') {
           return jsonResponse(204, {});
@@ -3066,8 +3085,8 @@ test('executeHttpSkillTool defers cleanup while skill downloads are still runnin
                 state: downloadComplete ? 'complete' : 'in_progress',
                 bytesReceived: downloadComplete ? 100 : 1,
                 totalBytes: 100,
-                url: 'https://freeskillz.xyz/v1/media/jobs/job_pending/file',
-                finalUrl: 'https://freeskillz.xyz/v1/media/jobs/job_pending/file',
+                url: 'data:video/mp4;base64,c2xvdy1tZWRpYQ==',
+                finalUrl: 'data:video/mp4;base64,c2xvdy1tZWRpYQ==',
               }]);
             },
             onChanged: {
@@ -3093,8 +3112,8 @@ test('executeHttpSkillTool defers cleanup while skill downloads are still runnin
                 state: downloadComplete ? 'complete' : 'in_progress',
                 bytesReceived: downloadComplete ? 100 : 1,
                 totalBytes: 100,
-                url: 'https://freeskillz.xyz/v1/media/jobs/job_pending/file',
-                finalUrl: 'https://freeskillz.xyz/v1/media/jobs/job_pending/file',
+                url: 'data:video/mp4;base64,c2xvdy1tZWRpYQ==',
+                finalUrl: 'data:video/mp4;base64,c2xvdy1tZWRpYQ==',
               }];
             },
             onChanged: {
@@ -3121,7 +3140,7 @@ test('executeHttpSkillTool defers cleanup while skill downloads are still runnin
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_pending',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_pending/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_pending/file',
         ],
         `${label}: pending local download should not delete provider job`,
       );
@@ -3130,14 +3149,14 @@ test('executeHttpSkillTool defers cleanup while skill downloads are still runnin
       await onChangedListener({
         id: label === 'chrome' ? 7201 : 8201,
         state: { current: 'complete' },
-        finalUrl: { current: 'https://freeskillz.xyz/v1/media/jobs/job_pending/file' },
+        finalUrl: { current: 'data:video/mp4;base64,c2xvdy1tZWRpYQ==' },
       });
       assert.deepEqual(
         providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_pending',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_pending/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_pending/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_pending',
         ],
         `${label}: completed local download should clean up provider job`,
@@ -3168,7 +3187,6 @@ test('executeHttpSkillTool rejects unsafe final URLs for skill downloads and cle
 
       const providerCalls = [];
       const downloadCalls = [];
-      const removalCalls = [];
       const jsonResponse = (status, body) => ({
         ok: status >= 200 && status < 300,
         status,
@@ -3182,8 +3200,8 @@ test('executeHttpSkillTool rejects unsafe final URLs for skill downloads and cle
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_unsafe' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_unsafe/file' && opts.method === 'HEAD') {
-          return jsonResponse(200, {});
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_unsafe/file' && opts.method === 'GET') {
+          return binaryResponse(200, 'unsafe-media', 'video/mp4', 'https://127.0.0.1:8443/private.mp4');
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_unsafe' && opts.method === 'DELETE') {
           return jsonResponse(204, {});
@@ -3211,14 +3229,6 @@ test('executeHttpSkillTool rejects unsafe final URLs for skill downloads and cle
                 finalUrl: 'https://127.0.0.1:8443/private.mp4',
               }]);
             },
-            removeFile(id, cb) {
-              removalCalls.push(`removeFile:${id}`);
-              cb();
-            },
-            erase(query, cb) {
-              removalCalls.push(`erase:${query.id}`);
-              cb([query.id]);
-            },
           },
         };
       } else {
@@ -3240,13 +3250,6 @@ test('executeHttpSkillTool rejects unsafe final URLs for skill downloads and cle
                 finalUrl: 'https://127.0.0.1:8443/private.mp4',
               }];
             },
-            async removeFile(id) {
-              removalCalls.push(`removeFile:${id}`);
-            },
-            async erase(query) {
-              removalCalls.push(`erase:${query.id}`);
-              return [query.id];
-            },
           },
         };
       }
@@ -3258,24 +3261,16 @@ test('executeHttpSkillTool rejects unsafe final URLs for skill downloads and cle
       assert.match(result.error, /blocked URL/i, `${label}: unsafe final URL error should mention blocking`);
       assert.equal(result.cleanup?.success, true, `${label}: provider job should still be cleaned up`);
       assert.equal(result.cleanupDeferred, undefined, `${label}: unsafe complete downloads should not defer cleanup`);
-      assert.equal(downloadCalls.length, 1, `${label}: browser download should be started once`);
-      assert.deepEqual(
-        removalCalls,
-        [
-          `removeFile:${label === 'chrome' ? 7301 : 8301}`,
-          `erase:${label === 'chrome' ? 7301 : 8301}`,
-        ],
-        `${label}: unsafe completed download should be removed from disk and history`,
-      );
+      assert.equal(downloadCalls.length, 0, `${label}: browser download should not start after unsafe file response URL`);
       assert.deepEqual(
         providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_unsafe',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_unsafe/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_unsafe/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_unsafe',
         ],
-        `${label}: unsafe local download should still clean up provider job`,
+        `${label}: unsafe file response should still clean up provider job`,
       );
     }
   } finally {
@@ -3316,7 +3311,7 @@ test('executeHttpSkillTool blocks skill download redirects before starting brows
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_redirect' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_redirect/file' && opts.method === 'HEAD') {
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_redirect/file' && opts.method === 'GET') {
           return jsonResponse(302, {});
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_redirect' && opts.method === 'DELETE') {
@@ -3352,18 +3347,18 @@ test('executeHttpSkillTool blocks skill download redirects before starting brows
       assert.equal(result.success, false, `${label}: redirecting file endpoint should fail`);
       assert.equal(result.blocked, true, `${label}: redirecting file endpoint should be blocked`);
       assert.match(result.error, /redirects are not allowed/i, `${label}: redirect error should be explicit`);
-      assert.equal(result.finalUrl, 'https://freeskillz.xyz/v1/media/jobs/job_redirect/file', `${label}: redirect preflight should report original URL`);
-      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after blocked preflight`);
-      assert.equal(downloadCalls.length, 0, `${label}: browser download must not start after redirect preflight`);
+      assert.equal(result.finalUrl, 'https://freeskillz.xyz/v1/media/jobs/job_redirect/file', `${label}: redirect check should report original URL`);
+      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after blocked file redirect`);
+      assert.equal(downloadCalls.length, 0, `${label}: browser download must not start after file redirect`);
       assert.deepEqual(
         providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_redirect',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_redirect/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_redirect/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_redirect',
         ],
-        `${label}: redirect preflight lifecycle mismatch`,
+        `${label}: redirect file-fetch lifecycle mismatch`,
       );
     }
   } finally {
@@ -3376,7 +3371,7 @@ test('executeHttpSkillTool blocks skill download redirects before starting brows
   }
 });
 
-test('executeHttpSkillTool rejects failed skill download preflights before browser downloads', async () => {
+test('executeHttpSkillTool rejects failed skill download file requests before browser downloads', async () => {
   const originalFetch = globalThis.fetch;
   const originalChrome = globalThis.chrome;
   const originalBrowser = globalThis.browser;
@@ -3404,7 +3399,7 @@ test('executeHttpSkillTool rejects failed skill download preflights before brows
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_missing_file' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_missing_file/file' && opts.method === 'HEAD') {
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_missing_file/file' && opts.method === 'GET') {
           return jsonResponse(404, { error: 'expired' });
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_missing_file' && opts.method === 'DELETE') {
@@ -3437,21 +3432,21 @@ test('executeHttpSkillTool rejects failed skill download preflights before brows
       }
 
       const result = await executeTool(tool, { url: 'https://www.instagram.com/reel/abc/' });
-      assert.equal(result.success, false, `${label}: failed file preflight should fail`);
-      assert.equal(result.status, 404, `${label}: failed file preflight status missing`);
-      assert.match(result.error, /preflight failed with HTTP 404/i, `${label}: failed file preflight error missing`);
-      assert.equal(result.finalUrl, 'https://freeskillz.xyz/v1/media/jobs/job_missing_file/file', `${label}: failed preflight should report file URL`);
-      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after failed preflight`);
-      assert.equal(downloadCalls.length, 0, `${label}: browser download must not start after failed preflight`);
+      assert.equal(result.success, false, `${label}: failed file request should fail`);
+      assert.equal(result.status, 404, `${label}: failed file request status missing`);
+      assert.match(result.error, /file request failed with HTTP 404/i, `${label}: failed file request error missing`);
+      assert.equal(result.finalUrl, 'https://freeskillz.xyz/v1/media/jobs/job_missing_file/file', `${label}: failed file request should report file URL`);
+      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after failed file request`);
+      assert.equal(downloadCalls.length, 0, `${label}: browser download must not start after failed file request`);
       assert.deepEqual(
         providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_missing_file',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_missing_file/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_missing_file/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_missing_file',
         ],
-        `${label}: failed preflight lifecycle mismatch`,
+        `${label}: failed file request lifecycle mismatch`,
       );
     }
   } finally {
@@ -3464,7 +3459,7 @@ test('executeHttpSkillTool rejects failed skill download preflights before brows
   }
 });
 
-test('executeHttpSkillTool falls back when skill download HEAD preflight is unsupported', async () => {
+test('executeHttpSkillTool does not require HEAD support for skill downloads', async () => {
   const originalFetch = globalThis.fetch;
   const originalChrome = globalThis.chrome;
   const originalBrowser = globalThis.browser;
@@ -3492,8 +3487,8 @@ test('executeHttpSkillTool falls back when skill download HEAD preflight is unsu
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported' && opts.method === 'GET') {
           return jsonResponse(200, { status: 'complete' });
         }
-        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file' && opts.method === 'HEAD') {
-          return jsonResponse(405, { error: 'method not allowed' });
+        if (url === 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file' && opts.method === 'GET') {
+          return binaryResponse(200, 'head-unsupported-media', 'video/mp4', url);
         }
         if (url === 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported' && opts.method === 'DELETE') {
           return jsonResponse(204, {});
@@ -3517,8 +3512,8 @@ test('executeHttpSkillTool falls back when skill download HEAD preflight is unsu
                 state: 'complete',
                 bytesReceived: 11,
                 totalBytes: 11,
-                url: 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
-                finalUrl: 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
+                url: 'data:video/mp4;base64,aGVhZC11bnN1cHBvcnRlZC1tZWRpYQ==',
+                finalUrl: 'data:video/mp4;base64,aGVhZC11bnN1cHBvcnRlZC1tZWRpYQ==',
               }]);
             },
           },
@@ -3538,8 +3533,8 @@ test('executeHttpSkillTool falls back when skill download HEAD preflight is unsu
                 state: 'complete',
                 bytesReceived: 11,
                 totalBytes: 11,
-                url: 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
-                finalUrl: 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
+                url: 'data:video/mp4;base64,aGVhZC11bnN1cHBvcnRlZC1tZWRpYQ==',
+                finalUrl: 'data:video/mp4;base64,aGVhZC11bnN1cHBvcnRlZC1tZWRpYQ==',
               }];
             },
           },
@@ -3547,20 +3542,21 @@ test('executeHttpSkillTool falls back when skill download HEAD preflight is unsu
       }
 
       const result = await executeTool(tool, { url: 'https://www.instagram.com/reel/abc/' });
-      assert.equal(result.success, true, `${label}: HEAD-unsupported preflight should fall back to browser download`);
+      assert.equal(result.success, true, `${label}: file download should not require HEAD support`);
       assert.equal(result.downloadId, label === 'chrome' ? 7701 : 8701, `${label}: download id missing`);
-      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after fallback download`);
-      assert.equal(downloadCalls.length, 1, `${label}: browser download should run once after HEAD fallback`);
-      assert.equal(downloadCalls[0].url, 'https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file', `${label}: wrong browser download URL`);
+      assert.equal(result.cleanup?.success, true, `${label}: provider job should be cleaned up after file download`);
+      assert.equal(downloadCalls.length, 1, `${label}: browser download should run once after cookie-free file fetch`);
+      assert.match(downloadCalls[0].url, /^data:video\/mp4;base64,/, `${label}: browser download should use fetched data URL`);
+      assert.equal(providerCalls.some(call => call.opts.method === 'HEAD'), false, `${label}: skill download should not require HEAD support`);
       assert.deepEqual(
         providerCalls.map(call => `${call.opts.method || 'GET'} ${call.url}`),
         [
           'POST https://freeskillz.xyz/v1/media/jobs',
           'GET https://freeskillz.xyz/v1/media/jobs/job_head_unsupported',
-          'HEAD https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
+          'GET https://freeskillz.xyz/v1/media/jobs/job_head_unsupported/file',
           'DELETE https://freeskillz.xyz/v1/media/jobs/job_head_unsupported',
         ],
-        `${label}: HEAD-unsupported fallback lifecycle mismatch`,
+        `${label}: no-HEAD file download lifecycle mismatch`,
       );
     }
   } finally {
