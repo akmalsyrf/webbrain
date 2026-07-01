@@ -1287,7 +1287,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           if (capability === Capability.NETWORK && isNetworkMutation(fnName, fnArgs) && this.apiAllowedTabs.has(tabId)) continue;
           // Every distinct host the call touches must be granted. Usually one,
           // but download_files takes a urls[] array that can span many hosts.
-          const hosts = requiredHosts(capability, fnArgs, curUrl, fnName);
+          const gateArgs = this._skillPermissionArgsForCapability(skillCallTool, capability, fnArgs);
+          const hosts = requiredHosts(capability, gateArgs, curUrl, fnName);
           if (hosts.length === 0) { failClosed = true; break; }
           for (const host of hosts) {
             const verdict = this.permissions.check(host, capability, tabId);
@@ -3102,6 +3103,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   _skillToolForName(name) {
     if (!name) return null;
     return this._skillToolRegistry().get(name) || null;
+  }
+
+  _skillPermissionArgsForCapability(skillTool, capability, args) {
+    if (capability !== Capability.DOWNLOAD || !skillTool?.requiresDownloadPermission) return args;
+    const inputUrlArg = skillTool.inputUrlArg || 'url';
+    if (!inputUrlArg || inputUrlArg === 'url') return args;
+    const inputUrl = args?.[inputUrlArg];
+    if (typeof inputUrl !== 'string' || !inputUrl.trim()) return args;
+    return { ...args, url: inputUrl };
   }
 
   _skillToolForEndpoint(url) {

@@ -420,6 +420,12 @@ async function cleanupSkillDownloadJob(url, endpoint, tool) {
   return { success: false, status: result.status, error: result.error };
 }
 
+async function withSkillDownloadJobCleanup(result, cleanupEndpoint, endpoint, tool) {
+  if (!cleanupEndpoint?.ok) return result;
+  const cleanup = await cleanupSkillDownloadJob(cleanupEndpoint.url, endpoint, tool);
+  return { ...result, cleanup };
+}
+
 const pendingSkillDownloadCleanups = new Map();
 
 function summarizeDownloadItem(item) {
@@ -657,20 +663,24 @@ async function executeHttpDownloadJobSkillTool(tool, payload, endpoint) {
   const statusEndpoint = fillSkillJobEndpoint(tool.job?.statusEndpoint, jobId, endpoint, 'statusEndpoint');
   const fileEndpoint = fillSkillJobEndpoint(tool.job?.fileEndpoint, jobId, endpoint, 'fileEndpoint');
   const cleanupEndpoint = fillSkillJobEndpoint(tool.job?.cleanupEndpoint || tool.job?.statusEndpoint, jobId, endpoint, 'cleanupEndpoint');
-  if (!statusEndpoint.ok) return { success: false, provider: endpoint.hostname, skillTool: tool.name || '', skillName: tool.skillName || '', jobId, error: statusEndpoint.error };
-  if (!fileEndpoint.ok) return { success: false, provider: endpoint.hostname, skillTool: tool.name || '', skillName: tool.skillName || '', jobId, error: fileEndpoint.error };
+  if (!statusEndpoint.ok) {
+    return await withSkillDownloadJobCleanup({ success: false, provider: endpoint.hostname, skillTool: tool.name || '', skillName: tool.skillName || '', jobId, error: statusEndpoint.error }, cleanupEndpoint, endpoint, tool);
+  }
+  if (!fileEndpoint.ok) {
+    return await withSkillDownloadJobCleanup({ success: false, provider: endpoint.hostname, skillTool: tool.name || '', skillName: tool.skillName || '', jobId, error: fileEndpoint.error }, cleanupEndpoint, endpoint, tool);
+  }
 
   const deadline = Date.now() + (tool.job?.timeoutMs || 90000);
   const pollIntervalMs = tool.job?.pollIntervalMs || 1000;
   let lastStatus = create.data;
   while (Date.now() < deadline) {
     const poll = await fetchSkillJson(statusEndpoint.url, { method: 'GET' }, endpoint, tool);
-    if (!poll.success) return { ...poll, jobId };
+    if (!poll.success) return await withSkillDownloadJobCleanup({ ...poll, jobId }, cleanupEndpoint, endpoint, tool);
     lastStatus = poll.data;
     const status = String(poll.data?.status || '').toLowerCase();
     if (status === 'complete' || status === 'completed' || status === 'done' || status === 'success') break;
     if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'canceled') {
-      return {
+      return await withSkillDownloadJobCleanup({
         success: false,
         provider: endpoint.hostname,
         skillTool: tool.name || '',
@@ -678,14 +688,14 @@ async function executeHttpDownloadJobSkillTool(tool, payload, endpoint) {
         jobId,
         jobStatus: status,
         error: providerError(502, poll.data, '') || `Skill download job ${jobId} failed.`,
-      };
+      }, cleanupEndpoint, endpoint, tool);
     }
     await new Promise(r => setTimeout(r, pollIntervalMs));
   }
 
   const finalStatus = String(lastStatus?.status || '').toLowerCase();
   if (!(finalStatus === 'complete' || finalStatus === 'completed' || finalStatus === 'done' || finalStatus === 'success')) {
-    return {
+    return await withSkillDownloadJobCleanup({
       success: false,
       provider: endpoint.hostname,
       skillTool: tool.name || '',
@@ -693,7 +703,7 @@ async function executeHttpDownloadJobSkillTool(tool, payload, endpoint) {
       jobId,
       jobStatus: finalStatus || 'unknown',
       error: `Skill download job timed out before completion.`,
-    };
+    }, cleanupEndpoint, endpoint, tool);
   }
 
   let cleanup = null;

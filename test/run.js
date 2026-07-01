@@ -3376,6 +3376,126 @@ test('executeHttpSkillTool blocks skill download redirects before starting brows
   }
 });
 
+test('executeHttpSkillTool cleans up provider jobs on pre-download failures', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalChrome = globalThis.chrome;
+  const originalBrowser = globalThis.browser;
+  try {
+    const scenarios = [
+      {
+        name: 'poll failure',
+        jobId: 'job_poll_failure',
+        statusResponse: () => ({ status: 500, body: { error: 'poll failed' } }),
+        assertResult(result, label) {
+          assert.equal(result.status, 500, `${label}: poll failure status missing`);
+          assert.match(result.error, /poll failed/i, `${label}: poll failure error missing`);
+        },
+      },
+      {
+        name: 'terminal failure',
+        jobId: 'job_failed',
+        statusResponse: () => ({ status: 200, body: { status: 'failed', error: 'encoding failed' } }),
+        assertResult(result, label) {
+          assert.equal(result.jobStatus, 'failed', `${label}: terminal job status missing`);
+          assert.match(result.error, /encoding failed|failed/i, `${label}: terminal failure error missing`);
+        },
+      },
+      {
+        name: 'timeout',
+        jobId: 'job_timeout',
+        beforeRun(tool) {
+          tool.job.timeoutMs = 5;
+          tool.job.pollIntervalMs = 1;
+        },
+        statusResponse: () => ({ status: 200, body: { status: 'running' } }),
+        assertResult(result, label) {
+          assert.match(result.error, /timed out/i, `${label}: timeout error missing`);
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
+        ['chrome', 'src/chrome', executeHttpSkillToolCh, normalizeCustomSkillsCh, buildSkillToolRegistryCh],
+        ['firefox', 'src/firefox', executeHttpSkillToolFx, normalizeCustomSkillsFx, buildSkillToolRegistryFx],
+      ]) {
+        const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
+        const tool = buildRegistry(skills).get('download_public_media');
+        assert.ok(tool, `${label}: download_public_media manifest tool missing`);
+        scenario.beforeRun?.(tool);
+
+        const providerCalls = [];
+        const downloadCalls = [];
+        const jsonResponse = (status, body) => ({
+          ok: status >= 200 && status < 300,
+          status,
+          text: async () => JSON.stringify(body),
+        });
+        globalThis.fetch = async (url, opts = {}) => {
+          providerCalls.push({ url, opts });
+          if (url === 'https://freeskillz.xyz/v1/media/jobs' && opts.method === 'POST') {
+            return jsonResponse(200, { job_id: scenario.jobId });
+          }
+          if (url === `https://freeskillz.xyz/v1/media/jobs/${scenario.jobId}` && opts.method === 'GET') {
+            const { status, body } = scenario.statusResponse();
+            return jsonResponse(status, body);
+          }
+          if (url === `https://freeskillz.xyz/v1/media/jobs/${scenario.jobId}` && opts.method === 'DELETE') {
+            return jsonResponse(204, {});
+          }
+          throw new Error(`unexpected provider call: ${opts.method || 'GET'} ${url}`);
+        };
+
+        if (label === 'chrome') {
+          delete globalThis.browser;
+          globalThis.chrome = {
+            runtime: { lastError: null },
+            downloads: {
+              download(opts, cb) {
+                downloadCalls.push(opts);
+                cb(7501);
+              },
+            },
+          };
+        } else {
+          delete globalThis.chrome;
+          globalThis.browser = {
+            downloads: {
+              async download(opts) {
+                downloadCalls.push(opts);
+                return 8501;
+              },
+            },
+          };
+        }
+
+        const result = await executeTool(tool, { url: 'https://www.instagram.com/reel/abc/' });
+        assert.equal(result.success, false, `${label} ${scenario.name}: pre-download failure should fail`);
+        assert.equal(result.jobId, scenario.jobId, `${label} ${scenario.name}: job id missing`);
+        assert.equal(result.cleanup?.success, true, `${label} ${scenario.name}: provider cleanup should run`);
+        assert.equal(downloadCalls.length, 0, `${label} ${scenario.name}: browser download should not start`);
+        assert.equal(providerCalls[0].opts.method, 'POST', `${label} ${scenario.name}: create job should be first`);
+        const lastProviderCall = providerCalls.at(-1);
+        assert.equal(lastProviderCall.url, `https://freeskillz.xyz/v1/media/jobs/${scenario.jobId}`, `${label} ${scenario.name}: cleanup URL should be last`);
+        assert.equal(lastProviderCall.opts.method, 'DELETE', `${label} ${scenario.name}: cleanup method should be DELETE`);
+        assert.equal(
+          providerCalls.some(call => call.url.endsWith('/file')),
+          false,
+          `${label} ${scenario.name}: file endpoint should not be requested`,
+        );
+        scenario.assertResult(result, `${label} ${scenario.name}`);
+      }
+    }
+  } finally {
+    if (originalFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = originalFetch;
+    if (originalChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = originalChrome;
+    if (originalBrowser === undefined) delete globalThis.browser;
+    else globalThis.browser = originalBrowser;
+  }
+});
+
 test('executeHttpSkillTool rejects blocked skill endpoints before fetching', async () => {
   for (const [label, executeTool] of [
     ['chrome', executeHttpSkillToolCh],
@@ -9414,6 +9534,84 @@ test('agent gates download-job skill tools with download permission', async () =
     const denied = JSON.parse(messages[0].content);
     assert.equal(denied.denied, true, `${label}: denied result missing`);
     assert.match(denied.error, /download files from instagram\.com/i, `${label}: denial should mention download capability and host`);
+  }
+});
+
+test('agent gates custom download-job skill tools on declared inputUrlArg host', async () => {
+  const customToolContent = `# Custom Media Skill
+
+\`\`\`webbrain-tools
+${JSON.stringify([
+  {
+    name: 'download_custom_media',
+    description: 'Download public media through a provider job.',
+    kind: 'httpDownloadJob',
+    endpoint: 'https://provider.example/v1/jobs',
+    method: 'POST',
+    inputUrlArg: 'mediaUrl',
+    allowedInputUrls: ['https://media.example/*'],
+    parameters: {
+      type: 'object',
+      properties: {
+        mediaUrl: { type: 'string' },
+      },
+      required: ['mediaUrl'],
+    },
+    job: {
+      statusEndpoint: 'https://provider.example/v1/jobs/{job_id}',
+      fileEndpoint: 'https://provider.example/v1/jobs/{job_id}/file',
+      cleanupEndpoint: 'https://provider.example/v1/jobs/{job_id}',
+    },
+  },
+], null, 2)}
+\`\`\`
+`;
+  for (const [label, AgentClass] of [
+    ['chrome', AgentCh],
+    ['firefox', AgentFx],
+  ]) {
+    const agent = new AgentClass({ getVisionProvider: async () => null });
+    agent.setCustomSkills([{ id: 'custom-media', name: 'Custom Media', content: customToolContent }]);
+    let executed = false;
+    agent.executeTool = async () => {
+      executed = true;
+      return { success: true, downloadId: 7102 };
+    };
+    agent._ensureGateSetting = async () => {};
+    agent._currentUrl = async () => 'https://trusted.example/page';
+    const prompts = [];
+    agent._promptPermission = async (_tabId, capability, host) => {
+      prompts.push({ capability, host });
+      return 'deny';
+    };
+    const messages = [];
+
+    await agent._executeToolBatch(
+      label === 'chrome' ? 4903 : 4904,
+      [{
+        id: 'tool_1',
+        function: {
+          name: 'download_custom_media',
+          arguments: JSON.stringify({
+            mediaUrl: 'https://media.example/assets/video.mp4',
+            url: 'https://trusted.example/decoy.mp4',
+          }),
+        },
+      }],
+      messages,
+      () => {},
+      { supportsVision: false },
+      '',
+      new Set(['download_custom_media']),
+      1,
+    );
+
+    assert.equal(executed, false, `${label}: custom download skill ran after permission denial`);
+    assert.deepEqual(prompts, [{ capability: Capability.DOWNLOAD, host: 'media.example' }], `${label}: custom download skill should gate the declared inputUrlArg host`);
+    assert.equal(messages.length, 1, `${label}: expected denied custom download result`);
+    const denied = JSON.parse(messages[0].content);
+    assert.equal(denied.denied, true, `${label}: denied result missing`);
+    assert.match(denied.error, /download files from media\.example/i, `${label}: denial should mention declared input URL host`);
   }
 });
 
