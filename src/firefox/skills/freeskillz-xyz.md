@@ -38,7 +38,10 @@ This skill exposes `read_youtube_transcript`, `resolve_public_media`, and `downl
       ],
       "resultPolicy": "untrusted",
       "responseLimits": {
-        "maxTextChars": "unlimited"
+        "maxTextChars": "unlimited",
+        "maxArrayItems": {
+          "segments": 1200
+        }
       },
       "parameters": {
         "type": "object",

@@ -2763,6 +2763,7 @@ test('getToolsForMode: skill tools are exposed only when enabled skills declare 
       `${label}: transcript defaults should request compact text windows`,
     );
     assert.equal(transcriptTool.responseLimits.maxTextChars, 'unlimited', `${label}: transcript provider text should not be pre-capped`);
+    assert.equal(transcriptTool.responseLimits.maxArrayItems.segments, 1200, `${label}: transcript segments should keep a provider response cap`);
     assert.equal(resolveTool.kind, 'http', `${label}: resolver should be read-only HTTP`);
     assert.equal(resolveTool.readOnly, true, `${label}: resolver should be read-only`);
     assert.equal(resolveTool.endpoint, 'https://freeskillz.xyz/v1/media/resolve', `${label}: wrong resolver endpoint`);
@@ -2951,6 +2952,47 @@ test('executeHttpSkillTool honors unlimited FreeSkillz transcript response text 
       assert.equal(result.success, true, `${label}: supported YouTube URL should succeed`);
       assert.equal(result.data.text.length, longText.length, `${label}: transcript text should not be capped before agent paging`);
       assert.equal(result.data.truncated, undefined, `${label}: unlimited transcript response should not be marked truncated`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test('executeHttpSkillTool caps FreeSkillz transcript segments while leaving text pageable', async () => {
+  const youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  const segments = Array.from({ length: 1305 }, (_, i) => ({
+    text: `segment ${i}`,
+    start: i,
+    duration: 1,
+    timestamp: `0:${String(i).padStart(2, '0')}`,
+  }));
+  for (const [label, prefix, executeTool, normalizeSkills, buildRegistry] of [
+    ['chrome', 'src/chrome', executeHttpSkillToolCh, normalizeCustomSkillsCh, buildSkillToolRegistryCh],
+    ['firefox', 'src/firefox', executeHttpSkillToolFx, normalizeCustomSkillsFx, buildSkillToolRegistryFx],
+  ]) {
+    const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
+    const tool = buildRegistry(skills).get('read_youtube_transcript');
+    assert.ok(tool, `${label}: manifest tool missing`);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        video_id: 'dQw4w9WgXcQ',
+        selected_language: 'en',
+        text: 'short transcript window',
+        segments,
+        total_segments: segments.length,
+        has_more_text: false,
+      }),
+    });
+    try {
+      const result = await executeTool(tool, { url: youtubeUrl, include_segments: true });
+      assert.equal(result.success, true, `${label}: supported YouTube URL should succeed`);
+      assert.equal(result.data.text, 'short transcript window', `${label}: transcript text should pass through unchanged`);
+      assert.equal(result.data.segments.length, 1200, `${label}: transcript segment array should be capped`);
+      assert.equal(result.data.truncated, true, `${label}: segment cap should mark the response truncated`);
     } finally {
       globalThis.fetch = originalFetch;
     }
