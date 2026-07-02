@@ -1714,9 +1714,21 @@ function applyProviderBaseUrl(id, baseUrl) {
   if (input && input.value !== baseUrl) input.value = baseUrl;
 }
 
+function clearProviderLoadedModels(id) {
+  const loadedSelectEl = document.querySelector(`.loaded-model-select[data-loaded-models-for="${id}"]`);
+  if (loadedSelectEl) {
+    loadedSelectEl.innerHTML = '';
+    loadedSelectEl.value = '';
+    loadedSelectEl.style.display = 'none';
+  }
+  const datalistEl = document.getElementById(`models-${id}`);
+  if (datalistEl) datalistEl.innerHTML = '';
+}
+
 async function loadProviderModels(id) {
   let datalistEl = document.getElementById(`models-${id}`);
   if (!datalistEl) return;
+  clearProviderLoadedModels(id);
   // Persist whatever the user has typed in baseUrl/model so the background
   // call uses the current values, not stale storage.
   try {

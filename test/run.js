@@ -6069,6 +6069,16 @@ test('settings async test controls surface rejected background results', () => {
     );
     assert.match(
       settings,
+      /function clearProviderLoadedModels\(id\) \{[\s\S]*?loadedSelectEl\.innerHTML = '';[\s\S]*?loadedSelectEl\.value = '';[\s\S]*?loadedSelectEl\.style\.display = 'none';[\s\S]*?if \(datalistEl\) datalistEl\.innerHTML = '';[\s\S]*?\}/,
+      `${label}: model loading should have a helper that clears stale loaded-model choices`,
+    );
+    assert.match(
+      loadBody,
+      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?clearProviderLoadedModels\(id\);[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);/,
+      `${label}: model loading should clear stale model choices before saving or requesting new models`,
+    );
+    assert.match(
+      settings,
       /const loadedModelsSelectHTML = canLoadModels[\s\S]*class="loaded-model-select" data-loaded-models-for="\$\{id\}"[\s\S]*\$\{loadedModelsSelectHTML\}/,
       `${label}: local model loading should render a separate loaded-model selector`,
     );
