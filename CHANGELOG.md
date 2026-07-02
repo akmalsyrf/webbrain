@@ -4,6 +4,17 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [19.1.0] - 2026-07-02
+
+### Added
+- Added Ollama launch handoff integration for Chrome and Firefox so `webbrain.one/launch/ollama` links can configure the local Ollama provider, activate it, and carry over the selected model, loopback `/v1` base URL, and context window.
+
+### Changed
+- Updated release metadata, Settings subtitle versions, Chrome / Firefox manifests, package versions, and browser architecture docs for 19.1.0.
+
+### Tests
+- Added Chrome and Firefox regression coverage for Ollama launch handoff validation, loopback URL restrictions, provider activation, and launch-page content-script behavior.
+
 ## [19.0.11] - 2026-07-02
 
 ### Changed
