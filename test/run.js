@@ -231,6 +231,12 @@ const { inferContextWindow: inferContextWindowCh } = await import(
 const { inferContextWindow: inferContextWindowFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/context-windows.js').replace(/\\/g, '/')
 );
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/ollama-handoff.js').replace(/\\/g, '/')
+);
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/ollama-handoff.js').replace(/\\/g, '/')
+);
 const { OpenAICompatibleProvider: OpenAIProviderCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/openai.js').replace(/\\/g, '/')
 );
@@ -5931,7 +5937,7 @@ test('settings provider save and test status updates are DOM-safe', () => {
     const loadBody = settings.slice(loadStart, settings.indexOf('\n}\n\nfunction setProviderTestResult', loadStart) + 2);
     assert.match(
       loadBody,
-      /try \{[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, e\.message, 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}/,
+      /try \{[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}/,
       `${label}: model loading should stop and report if the pre-save fails`,
     );
   }
@@ -6000,11 +6006,12 @@ test('API mutation observer setting is opt-in and controls the request observer'
 });
 
 test('settings async test controls surface rejected background results', () => {
-  for (const [label, settingsRel] of [
-    ['chrome', 'src/chrome/src/ui/settings.js'],
-    ['firefox', 'src/firefox/src/ui/settings.js'],
+  for (const [label, settingsRel, htmlRel] of [
+    ['chrome', 'src/chrome/src/ui/settings.js', 'src/chrome/src/ui/settings.html'],
+    ['firefox', 'src/firefox/src/ui/settings.js', 'src/firefox/src/ui/settings.html'],
   ]) {
     const settings = fs.readFileSync(path.join(ROOT, settingsRel), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
 
     assert.match(
       settings,
@@ -6064,9 +6071,68 @@ test('settings async test controls surface rejected background results', () => {
     const loadBody = settings.slice(loadStart, settings.indexOf('\n}\n\nfunction setProviderTestResult', loadStart) + 2);
     assert.match(
       loadBody,
-      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?setProviderLoadModelsStatus\(id, t\('st\.providers\.loading'\)\);[\s\S]*?try \{[\s\S]*?res = await sendToBackground\('list_provider_models', \{ providerId: id \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, e\.message, 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?setProviderLoadModelsStatus\(id, res\?\.error \|\| 'Failed to load models', 'var\(--danger, #c33\)'\);/,
+      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?setProviderLoadModelsStatus\(id, t\('st\.providers\.loading'\)\);[\s\S]*?try \{[\s\S]*?res = await sendToBackground\('list_provider_models', \{ providerId: id \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(res\), 'var\(--danger, #c33\)'\);/,
       `${label}: model loading should report rejected background results and avoid stale datalist writes`,
     );
+    assert.match(
+      settings,
+      /function providerModelLoadErrorMessage\(resultOrError\) \{[\s\S]*?resultOrError\?\.errorKey[\s\S]*?t\(resultOrError\.errorKey\)[\s\S]*?\^HTTP\\s\+404\\b[\s\S]*?<!doctype\\s\+html\|<html\[\\s>\]\|file not found[\s\S]*?t\('ob\.tokens\.none_status'\)[\s\S]*?\}/,
+      `${label}: HTML 404 model-list failures should be shown as a concise local-server status`,
+    );
+    assert.match(
+      settings,
+      /function clearProviderLoadedModels\(id\) \{[\s\S]*?loadedDialogEl\.querySelector\('\.loaded-model-options'\);[\s\S]*?optionsEl\.innerHTML = '';[\s\S]*?closeLoadedModelDialog\(loadedDialogEl\);[\s\S]*?if \(datalistEl\) datalistEl\.innerHTML = '';[\s\S]*?\}/,
+      `${label}: model loading should have a helper that clears stale loaded-model choices`,
+    );
+    assert.match(
+      loadBody,
+      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?clearProviderLoadedModels\(id\);[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);/,
+      `${label}: model loading should clear stale model choices before saving or requesting new models`,
+    );
+    assert.match(
+      settings,
+      /const loadedModelsDialogHTML = canLoadModels[\s\S]*<dialog class="loaded-model-dialog" data-loaded-models-for="\$\{id\}"[\s\S]*class="loaded-model-options"[\s\S]*\$\{loadedModelsDialogHTML\}/,
+      `${label}: local model loading should render a loaded-model dialog`,
+    );
+    assert.doesNotMatch(
+      settings,
+      /loaded-model-select|loadedModelsSelectHTML|loaded-model-menu|loadedModelsMenuHTML/,
+      `${label}: local model loading should not render a second select control or inline menu`,
+    );
+    assert.match(
+      loadBody,
+      /const loadedDialogEl = document\.querySelector\(`\.loaded-model-dialog\[data-loaded-models-for="\$\{id\}"\]`\);[\s\S]*?const optionsEl = loadedDialogEl\.querySelector\('\.loaded-model-options'\);[\s\S]*?optionsEl\.innerHTML = res\.models[\s\S]*?class="loaded-model-option"[\s\S]*?if \(res\.models\.length\) openLoadedModelDialog\(loadedDialogEl\);/,
+      `${label}: loaded models should populate and open a dialog without replacing the current model text`,
+    );
+    assert.doesNotMatch(
+      loadBody,
+      /input\.value\s*=\s*res\.models/,
+      `${label}: loading models should not overwrite an existing model until the user chooses one`,
+    );
+    assert.match(
+      settings,
+      /document\.querySelectorAll\('\.loaded-model-dialog'\)\.forEach\(dialog => \{[\s\S]*?dialog\.addEventListener\('click', \(event\) => \{[\s\S]*?event\.target === dialog[\s\S]*?closeLoadedModelDialog\(dialog\);[\s\S]*?event\.target\.closest\('\.loaded-model-option'\);[\s\S]*?const providerId = dialog\.dataset\.loadedModelsFor;[\s\S]*?input\.value = option\.dataset\.model \|\| '';[\s\S]*?closeLoadedModelDialog\(dialog\);[\s\S]*?\}\);[\s\S]*?\}\);/,
+      `${label}: choosing a loaded model should write it back to the provider model input`,
+    );
+    assert.match(
+      settings,
+      /function openLoadedModelDialog\(dialog\) \{[\s\S]*?if \(!dialog\) return;[\s\S]*?if \(dialog\.open\) return;[\s\S]*?dialog\.showModal/,
+      `${label}: loaded-model dialog opening should tolerate repeated model-load responses`,
+    );
+    assert.match(
+      html,
+      /\.loaded-model-dialog \{[\s\S]*?position: fixed;[\s\S]*?inset: 0;[\s\S]*?margin: auto;[\s\S]*?width: min\(520px, calc\(100vw - 32px\)\);/,
+      `${label}: loaded-model dialog should stay centered despite the global margin reset`,
+    );
+    const localeDir = path.join(ROOT, label === 'chrome' ? 'src/chrome/src/ui/locales' : 'src/firefox/src/ui/locales');
+    for (const filename of fs.readdirSync(localeDir).filter((name) => name.endsWith('.js'))) {
+      const locale = fs.readFileSync(path.join(localeDir, filename), 'utf8');
+      assert.match(
+        locale,
+        /['"]st\.providers\.select_loaded_model['"]:\s*['"][^'"]+['"]/,
+        `${label}/${filename}: loaded-model selector copy should be localized`,
+      );
+    }
   }
 });
 
@@ -8698,6 +8764,68 @@ test('inferContextWindow: model-aware cloud/router defaults and local 16k fallba
   }
 });
 
+test('Ollama launch handoff normalizes safe loopback /v1 provider config', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    const handoff = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://localhost:11434/v1/',
+      contextWindow: '131072',
+    });
+    assert.equal(handoff.providerId, 'ollama');
+    assert.equal(handoff.model, 'qwen3:8b');
+    assert.equal(handoff.baseUrl, 'http://localhost:11434/v1');
+    assert.equal(handoff.contextWindow, 131072);
+    assert.deepEqual(handoff.config, {
+      type: 'openai',
+      category: 'local',
+      label: 'Ollama (Local)',
+      providerName: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'qwen3:8b',
+      contextWindow: 131072,
+      apiKey: 'ollama',
+      supportsVision: true,
+      promptTier: 'mid',
+      enabled: true,
+    });
+  }
+});
+
+test('Ollama launch handoff rejects unsafe base URLs and clamps context', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'https://evil.example/v1' }),
+      /loopback/
+    );
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/api' }),
+      /\/v1/
+    );
+    assert.throws(
+      () => normalize({ model: 'bad\nmodel', baseUrl: 'http://127.0.0.1:11434/v1' }),
+      /model/
+    );
+    const clamped = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://127.0.0.1:11434',
+      contextWindow: '9999999',
+    });
+    assert.equal(clamped.baseUrl, 'http://127.0.0.1:11434/v1');
+    assert.equal(clamped.contextWindow, 1048576);
+  }
+});
+
+test('Ollama launch handoff content script is shipped in both manifests', () => {
+  for (const manifestPath of ['src/chrome/manifest.json', 'src/firefox/manifest.json']) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, manifestPath), 'utf8'));
+    const scripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
+    assert.ok(
+      scripts.includes('src/content/ollama-launch-handoff.js'),
+      `${manifestPath}: expected Ollama launch handoff content script`
+    );
+  }
+});
+
 test('_extractModelIds: Ollama /api/tags format', () => {
   for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
     const mgr = new PM();
@@ -9066,6 +9194,43 @@ test('listProviderModels does not persist stale base URL repairs', async () => {
     else globalThis.chrome = originalChrome;
     if (originalBrowser === undefined) delete globalThis.browser;
     else globalThis.browser = originalBrowser;
+  }
+});
+
+test('listProviderModels normalizes HTML 404 model-list failures', async () => {
+  const originalFetch = globalThis.fetch;
+  const html404 = `<!DOCTYPE HTML>
+<html lang="en">
+<head><title>Error response</title></head>
+<body><h1>Error response</h1><p>Error code: 404</p><p>Message: File not found.</p></body>
+</html>`;
+
+  try {
+    for (const [label, PM] of [
+      ['chrome', ProviderManagerCh],
+      ['firefox', ProviderManagerFx],
+    ]) {
+      globalThis.fetch = async () => new Response(html404, {
+        status: 404,
+        statusText: 'File not found',
+        headers: { 'Content-Type': 'text/html' },
+      });
+
+      const mgr = new PM();
+      const config = {
+        ...mgr._defaultConfigs().vllm,
+        baseUrl: 'http://127.0.0.1:8000',
+      };
+      mgr.providers.set('vllm', mgr._createProvider('vllm', config));
+
+      const result = await mgr.listProviderModels('vllm');
+      assert.equal(result.ok, false, `${label}: HTML 404 should fail`);
+      assert.equal(result.errorKey, 'ob.tokens.none_status', `${label}: HTML 404 should carry a localizable error key`);
+      assert.equal(result.error, 'No local model server was detected.', `${label}: HTML 404 should use concise fallback text`);
+      assert.doesNotMatch(result.error, /<!DOCTYPE|<html|File not found/, `${label}: HTML body should not leak into the UI error`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

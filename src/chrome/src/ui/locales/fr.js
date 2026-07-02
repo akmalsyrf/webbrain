@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'Charger les modèles',
   'st.providers.loading': 'Chargement…',
   'st.providers.models_loaded': '{count} modèles chargés',
+  'st.providers.select_loaded_model': 'Sélectionner un modèle chargé',
 
   'st.provider.field.server_url': 'URL du serveur',
   'st.provider.field.api_base_url': 'URL de base de l\'API',

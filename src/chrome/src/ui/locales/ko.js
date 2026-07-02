@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': '모델 불러오기',
   'st.providers.loading': '불러오는 중…',
   'st.providers.models_loaded': '모델 {count}개를 불러왔습니다',
+  'st.providers.select_loaded_model': '불러온 모델 선택',
 
   'st.provider.field.server_url': '서버 URL',
   'st.provider.field.api_base_url': 'API 기본 URL',

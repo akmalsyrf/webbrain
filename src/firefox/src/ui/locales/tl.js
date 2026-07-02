@@ -196,6 +196,7 @@ export default {
   'st.providers.load_models': 'I-load ang mga modelo',
   'st.providers.loading': 'Naglo-load…',
   'st.providers.models_loaded': '{count} na modelo ang na-load',
+  'st.providers.select_loaded_model': 'Piliin ang na-load na modelo',
 
   'st.provider.field.server_url': 'Server URL',
   'st.provider.field.api_base_url': 'API Base URL',

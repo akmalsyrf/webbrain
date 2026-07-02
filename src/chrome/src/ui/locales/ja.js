@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'モデルを読み込み',
   'st.providers.loading': '読み込み中…',
   'st.providers.models_loaded': '{count} 個のモデルを読み込みました',
+  'st.providers.select_loaded_model': '読み込んだモデルを選択',
 
   'st.provider.field.server_url': 'サーバー URL',
   'st.provider.field.api_base_url': 'API ベース URL',

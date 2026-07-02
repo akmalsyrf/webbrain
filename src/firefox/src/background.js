@@ -19,6 +19,7 @@ import {
 } from './providers/oauth-claude.js';
 import { getBalance as capsolverGetBalance } from './agent/captcha-solver.js';
 import { buildContextMenuPrompt, createContextMenuStorage } from './context-menu-storage.js';
+import { normalizeOllamaLaunchHandoff } from './ollama-handoff.js';
 
 /**
  * WebBrain Background Script (Firefox)
@@ -996,6 +997,19 @@ async function handleMessage(msg, sender) {
     case 'update_provider': {
       await providerManager.updateProvider(msg.providerId, msg.config);
       return { ok: true };
+    }
+
+    case 'ollama_launch_handoff': {
+      const handoff = normalizeOllamaLaunchHandoff(msg.handoff || {});
+      await providerManager.updateProvider(handoff.providerId, handoff.config);
+      await providerManager.setActive(handoff.providerId);
+      return {
+        ok: true,
+        providerId: handoff.providerId,
+        model: handoff.model,
+        baseUrl: handoff.baseUrl,
+        contextWindow: handoff.contextWindow,
+      };
     }
 
     case 'test_provider': {
