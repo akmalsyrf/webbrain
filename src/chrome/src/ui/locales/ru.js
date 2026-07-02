@@ -516,7 +516,7 @@ export default {
   'sp.plan.approved': 'План утверждён — выполняется…',
   'sp.plan.cancelled': 'План отменён.',
   'sp.plan.expired': 'Этот план больше не ожидает рассмотрения — запуск отменён.',
-  'sp.slash.busy_only_oob': 'Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут работать, пока WebBrain занят. Остановите выполнение или повторите попытку, когда он закончит.',
+  'sp.slash.busy_only_oob': 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
   'tool.go_back': 'Назад',
   'tool.go_forward': 'Вперёд',
   'st.display.search.placeholder': 'Поиск в общих настройках',

@@ -15,6 +15,10 @@ export default {
   'sp.btn.send': 'Send',
   'sp.btn.stop.title': 'Stop agent',
   'sp.btn.stop.label': 'Stop',
+  'sp.queue.label': 'Queued',
+  'sp.queue.label_numbered': 'Queued {index}',
+  'sp.queue.edit': 'Edit queued message',
+  'sp.queue.delete': 'Delete queued message',
 
   'sp.inspection': 'WebBrain started inspecting this page',
 
@@ -168,7 +172,7 @@ export default {
   'sp.api.badge_html': '<span>🔓 API mutations allowed</span>',
 
   'sp.help_html': '<strong>Slash Commands</strong><br><code>/help</code> — Show this list<br><code>/schedule</code> — Create a scheduled task<br><code>/list-schedules</code> — Show scheduled tasks<br><code>/show-scratchpad</code> — Show current scratchpad<br><code>/edit-scratchpad &lt;text&gt;</code> — Append text to the current scratchpad<br><code>/clear-scratchpad</code> — Clear the current scratchpad<br><code>/allow-api</code> — Allow API mutations for this conversation<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Toggle verbose/compact tool display<br><code>/reset</code> — Clear conversation<br><code>/screenshot</code> — Capture current tab<br><code>/export</code> — Download conversation as Markdown<br><code>/profile</code> — Toggle profile auto-fill<br><code>/vision</code> — Toggle vision mode on active provider',
-  'sp.slash.busy_only_oob': 'Only /help, /show-scratchpad, /list-schedules, /screenshot, /export, and /verbose can run while WebBrain is busy. Stop the run or try again when it finishes.',
+  'sp.slash.busy_only_oob': 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /screenshot, /export, and /verbose can run immediately as slash commands.',
   'sp.compact.nothing_to_compact': 'Nothing to compact yet — there is not enough older context.',
   'sp.compact.busy': 'Cannot compact while a run is in progress — wait for it to finish.',
   'sp.compact.failed': 'Context compaction failed: {error}',

@@ -6411,7 +6411,7 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
   }
 });
 
-test('sidepanel allows only safe slash commands while busy', () => {
+test('sidepanel allows safe slash commands and queues normal messages while busy', () => {
   for (const [label, panelRel, localeRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
     ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/locales/en.js'],
@@ -6434,8 +6434,8 @@ test('sidepanel allows only safe slash commands while busy', () => {
     assert.doesNotMatch(oobBlock, /'\/full-page-screenshot'/, `${label}: /full-page-screenshot should not be allowed while busy`);
     assert.match(
       panel,
-      /function syncSendButtonState\(\) \{[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = false;[\s\S]*?\}[\s\S]*?const draft = normalizeScreenshotCommandText\(inputEl\?\.value \|\| ''\);[\s\S]*?sendBtn\.disabled = !isOutOfBandSlashDraft\(draft\);[\s\S]*?\}/,
-      `${label}: send button state should normalize screenshot requests and permit only out-of-band slash drafts while busy`,
+      /function syncSendButtonState\(\) \{[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = false;[\s\S]*?\}[\s\S]*?const draft = normalizeScreenshotCommandText\(inputEl\?\.value \|\| ''\)\.trim\(\);[\s\S]*?if \(!draft\) \{[\s\S]*?sendBtn\.disabled = true;[\s\S]*?\}[\s\S]*?sendBtn\.disabled = draft\.startsWith\('\/'\) && !isOutOfBandSlashDraft\(draft\);[\s\S]*?\}/,
+      `${label}: send button state should permit normal queued drafts and only safe slash drafts while busy`,
     );
     assert.match(
       panel,
@@ -6444,8 +6444,8 @@ test('sidepanel allows only safe slash commands while busy', () => {
     );
     assert.match(
       panel,
-      /text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?if \(!isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}/,
-      `${label}: busy send preflight should run safe slash commands without starting chat`,
+      /text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?if \(isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}[\s\S]*?if \(text\.startsWith\('\/'\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?return enqueueQueuedComposerMessage\(tabId, text\);[\s\S]*?\}/,
+      `${label}: busy send preflight should run safe slash commands and queue normal drafts`,
     );
     assert.match(
       panel,
@@ -6454,9 +6454,87 @@ test('sidepanel allows only safe slash commands while busy', () => {
     );
     assert.match(
       locale,
-      /'sp\.slash\.busy_only_oob': 'Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run while WebBrain is busy\./,
-      `${label}: busy slash notice should be localized`,
+      /'sp\.slash\.busy_only_oob': 'Messages are queued while WebBrain is busy\. Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run immediately as slash commands\./,
+      `${label}: busy slash notice should explain queued messages and safe slash commands`,
     );
+  }
+});
+
+test('sidepanel queued composer messages expose edit and delete controls', () => {
+  for (const [label, panelRel, htmlRel, cssRel, localeRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/sidepanel.html', 'src/chrome/styles/sidepanel.css', 'src/chrome/src/ui/locales/en.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/sidepanel.html', 'src/firefox/styles/sidepanel.css', 'src/firefox/src/ui/locales/en.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, cssRel), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+
+    assert.match(html, /id="queued-messages" class="queued-messages hidden" role="list"/, `${label}: queued message strip should exist above the composer`);
+    assert.match(panel, /const queuedComposerMessagesByTab = new Map\(\);/, `${label}: queued composer messages should be tracked per tab`);
+    assert.match(panel, /function enqueueQueuedComposerMessage\(tabId, text\) \{[\s\S]*?queue\.push\(\{[\s\S]*?text: queuedText,[\s\S]*?inputEl\.value = '';[\s\S]*?syncSendButtonState\(\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: busy drafts should be queued and clear the composer`);
+    assert.match(panel, /function editQueuedComposerMessage\(tabId, queueId\) \{[\s\S]*?removeQueuedComposerMessage\(tabId, queueId\);[\s\S]*?inputEl\.value = item\.text;[\s\S]*?inputEl\.setSelectionRange\(inputEl\.value\.length, inputEl\.value\.length\);[\s\S]*?\}/, `${label}: queued message edit should move text back into the composer`);
+    assert.match(panel, /function deleteQueuedComposerMessage\(tabId, queueId\) \{[\s\S]*?removeQueuedComposerMessage\(tabId, queueId\);[\s\S]*?\}/, `${label}: queued message delete should remove the queued item`);
+    assert.match(panel, /queued-message-edit/, `${label}: queued item should render an edit button`);
+    assert.match(panel, /queued-message-delete/, `${label}: queued item should render a delete button`);
+    const drainStart = panel.indexOf('function drainQueuedComposerMessageForCurrentTab()');
+    const drainEnd = panel.indexOf('function renderClearedConversationForTab', drainStart);
+    assert.notEqual(drainStart, -1, `${label}: queued composer drain helper should exist`);
+    assert.notEqual(drainEnd, -1, `${label}: queued composer drain helper boundary should exist`);
+    const drainBody = panel.slice(drainStart, drainEnd);
+    const draftGuardIdx = drainBody.indexOf('if (inputEl.value.trim()) return false;');
+    const queueShiftIdx = drainBody.indexOf('const item = shiftQueuedComposerMessage(currentTabId);');
+    assert.notEqual(draftGuardIdx, -1, `${label}: queued composer drain should preserve newly typed drafts`);
+    assert.notEqual(queueShiftIdx, -1, `${label}: queued composer drain should shift the next queued message`);
+    assert.equal(draftGuardIdx < queueShiftIdx, true, `${label}: queued composer drain must preserve drafts before removing queued messages`);
+    assert.match(panel, /if \(drainQueuedComposerMessageForCurrentTab\(\)\) return;[\s\S]*?drainQueuedContextMenuPrompts\(\);/, `${label}: run settlement should drain queued composer messages before context-menu recovery prompts`);
+    const helperStart = panel.indexOf('async function drainQueuedContextMenuPromptsAfterPendingTabSwitch()');
+    const helperEnd = panel.indexOf('function queueAgentUpdateDuringTabSwitch', helperStart);
+    assert.notEqual(helperStart, -1, `${label}: queued drain helper should exist`);
+    assert.notEqual(helperEnd, -1, `${label}: queued drain helper boundary should exist`);
+    const helperBody = panel.slice(helperStart, helperEnd);
+    const composerDrainIdx = helperBody.indexOf('if (drainQueuedComposerMessageForCurrentTab()) return;');
+    const pendingSwitchIdx = helperBody.indexOf('const pending = pendingTabSwitch;');
+    assert.notEqual(composerDrainIdx, -1, `${label}: completed-tab queued composer drain should run in the drain helper`);
+    assert.notEqual(pendingSwitchIdx, -1, `${label}: pending tab switch should still be applied in the drain helper`);
+    assert.equal(composerDrainIdx < pendingSwitchIdx, true, `${label}: queued composer messages for the completed tab must drain before applying a pending tab switch`);
+    assert.match(css, /\.queued-messages/, `${label}: queued message strip should be styled`);
+    assert.match(css, /\.queued-message-action/, `${label}: queued message controls should be styled`);
+    assert.match(locale, /'sp\.queue\.edit': 'Edit queued message'/, `${label}: queued edit label should have an English fallback`);
+    assert.match(locale, /'sp\.queue\.delete': 'Delete queued message'/, `${label}: queued delete label should have an English fallback`);
+  }
+});
+
+test('sidepanel busy slash notice is updated in every locale', () => {
+  const expected = {
+    en: 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /screenshot, /export, and /verbose can run immediately as slash commands.',
+    es: 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
+    fr: "Les messages sont mis en file d'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent s'exécuter immédiatement comme commandes slash.",
+    tr: 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
+    zh: 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
+    ru: 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
+    uk: 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
+    ar: 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
+    ja: 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
+    ko: 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
+    id: 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
+    th: 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
+    ms: 'Mesej dimasukkan ke giliran semasa WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose boleh berjalan serta-merta sebagai arahan slash.',
+    tl: 'Nakapila ang mga mensahe habang abala ang WebBrain. Tanging /help, /show-scratchpad, /list-schedules, /screenshot, /export, at /verbose ang maaaring tumakbo agad bilang mga slash command.',
+    pl: 'Wiadomości są kolejkowane, gdy WebBrain jest zajęty. Tylko /help, /show-scratchpad, /list-schedules, /screenshot, /export i /verbose mogą uruchamiać się od razu jako polecenia slash.',
+  };
+
+  for (const [label, localeDir] of [
+    ['chrome', 'src/chrome/src/ui/locales'],
+    ['firefox', 'src/firefox/src/ui/locales'],
+  ]) {
+    for (const [code, message] of Object.entries(expected)) {
+      const locale = fs.readFileSync(path.join(ROOT, localeDir, `${code}.js`), 'utf8');
+      const match = locale.match(/'sp\.slash\.busy_only_oob': '((?:\\'|[^'])*)'/);
+      assert.ok(match, `${label}/${code}: busy slash notice key missing`);
+      const actual = match[1].replace(/\\'/g, "'");
+      assert.equal(actual, message, `${label}/${code}: busy slash notice should match queued-send behavior`);
+    }
   }
 });
 

@@ -516,7 +516,7 @@ export default {
   'sp.plan.approved': 'Rencana disetujui — menjalankan…',
   'sp.plan.cancelled': 'Rencana dibatalkan.',
   'sp.plan.expired': 'Rencana ini tidak lagi menunggu peninjauan — proses dibatalkan.',
-  'sp.slash.busy_only_oob': 'Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat berjalan saat WebBrain sibuk. Hentikan proses atau coba lagi setelah selesai.',
+  'sp.slash.busy_only_oob': 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
   'tool.go_back': 'Kembali',
   'tool.go_forward': 'Maju',
   'st.display.search.placeholder': 'Cari pengaturan Umum',
