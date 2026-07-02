@@ -34,7 +34,7 @@ Differences below.)
 | `<all_urls>` | Content script injection anywhere — the agent can read and interact with any page the user visits | The user must explicitly switch to Act mode; Ask mode is read-only. The agent never auto-activates on new tabs. |
 | `debugger` | CDP access provides trusted events and full DOM/network control on any tab | The debugger is only attached during active agent runs and detached on completion/abort. |
 | `webRequest` | Can observe XHR/fetch metadata for requests made by the active page | API mutation observer is off by default; when enabled, it keeps only a bounded in-memory per-tab buffer for repeated-click shortcut hints and opaque same-origin replay. |
-| `downloads` | Can save files to the user's Downloads folder without prompting | Only the agent's explicit tool calls (`download_files`, `download_file`, `download_resource_from_page`, `download_social_media`, download-job skill tools, `screenshot({save:true})`) use this, and each is gated by the capability × origin permission prompt. |
+| `downloads` | Can save files to the user's Downloads folder without prompting | Only the agent's explicit download-capable tool calls (`download_files`, `download_file`, `download_resource_from_page`, `download_social_media`, download-job skill tools) use this, and each is gated by the capability × origin permission prompt. |
 | `alarms` | Can wake scheduled jobs in future browser sessions | Only `schedule_resume` / `schedule_task` create alarms, and those tools are gated. |
 | `offscreen` | An offscreen document can make HTTP requests immune to user CSP | Only used for localhost LLM provider proxy and tab recording. Never forwards arbitrary URLs. |
 

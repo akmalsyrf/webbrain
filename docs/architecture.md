@@ -4,7 +4,7 @@
 
 ## Overview
 
-WebBrain is a browser extension that gives an LLM control over the user's active browser tab. The user types a natural-language instruction in a side panel, and an autonomous agent loop calls the LLM, executes tool calls (click, type, navigate, screenshot, etc.), feeds results back to the LLM, and repeats until the task is done.
+WebBrain is a browser extension that gives an LLM control over the user's active browser tab. The user types a natural-language instruction in a side panel, and an autonomous agent loop calls the LLM, executes tool calls (click, type, navigate, read page state, etc.), feeds results back to the LLM, and repeats until the task is done.
 
 There are two builds that share almost all code:
 - **Chrome** — Manifest V3, service worker, CDP-backed trusted events
@@ -169,7 +169,7 @@ while (steps < maxSteps) {
 | Tool group | Handler | Where it runs |
 |---|---|---|
 | `get_accessibility_tree`, `click_ax`, `type_ax`, `set_field`, `hover` | content script message | Injected page context |
-| `click`, `type_text`, `press_keys`, `scroll`, `read_page`, `screenshot`, etc. | content script message | Injected page context |
+| `click`, `type_text`, `press_keys`, `scroll`, `read_page`, etc. | content script message | Injected page context |
 | `navigate`, `new_tab`, `go_back`, `go_forward` | `chrome.tabs` / `browser.tabs` API | Background script |
 | `fetch_url`, `research_url`, `list_downloads`, etc. | `network-tools.js` | Service worker |
 | Enabled skill tools | `skills.js` registry + `executeHttpSkillTool()` | Service worker |
@@ -390,7 +390,6 @@ MV3 service workers can die between turns. Conversations are persisted to `chrom
 | Background | Service worker (ephemeral) | Background page (persistent) |
 | Events | CDP-trusted (`isTrusted=true`) | Synthetic (`isTrusted=false`) |
 | Screenshots | CDP `Page.captureScreenshot` | `browser.tabs.captureVisibleTab()` |
-| Full-page screenshot | CDP scroll+stitch | Not available |
 | Conversation persistence | `chrome.storage.session` | In-memory only |
 | Offscreen document | Yes (fetch proxy + recorder) | Not available |
 | Trace recorder | IndexedDB (opt-in) | IndexedDB (opt-in) — same `trace/recorder.js` |

@@ -345,6 +345,32 @@ const OUT_OF_BAND_SLASH_COMMANDS = new Set([
   '/export',
   '/verbose',
 ]);
+
+function normalizeScreenshotRequestText(text) {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0131/g, 'i')
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function isPlainScreenshotRequest(text) {
+  const s = normalizeScreenshotRequestText(text);
+  if (!s || s.startsWith('/')) return false;
+  return /^(?:please |pls )?(?:screenshot|screen ?shot)(?: (?:please|pls))?$/.test(s)
+    || /^(?:please |pls |can you |could you |would you )?(?:take|capture|grab|show|get) (?:a |the |this |current )?(?:screen ?shot|screenshot)(?: (?:of|for) (?:the |this |current )?(?:page|tab|screen|window))?$/.test(s)
+    || /^(?:lutfen )?(?:screenshot|screen ?shot|ekran goruntusu)(?: (?:al|cek|goster|at))?$/.test(s)
+    || /^(?:lutfen )?(?:bu |mevcut |aktif )?(?:sekmenin|sayfanin|ekranin) ekran goruntusunu (?:al|cek|goster|at)$/.test(s);
+}
+
+function normalizeScreenshotCommandText(text) {
+  if (isPlainScreenshotRequest(text)) return '/screenshot';
+  return text;
+}
+
 const SLASH_COMMAND_OPTION_ID_PREFIX = 'slash-command-option-';
 const BUSY_SLASH_NOTICE_COOLDOWN_MS = 3000;
 
@@ -662,7 +688,6 @@ const TOOL_KEYS = {
   get_selection: 'tool.get_selection',
   execute_js: 'tool.execute_js',
   new_tab: 'tool.new_tab',
-  screenshot: 'tool.screenshot',
   schedule_resume: 'tool.schedule_resume',
   schedule_task: 'tool.schedule_task',
   done: 'tool.done',
@@ -2143,7 +2168,8 @@ function syncSendButtonState() {
     sendBtn.disabled = false;
     return;
   }
-  sendBtn.disabled = !isOutOfBandSlashDraft(inputEl?.value || '');
+  const draft = normalizeScreenshotCommandText(inputEl?.value || '');
+  sendBtn.disabled = !isOutOfBandSlashDraft(draft);
 }
 
 function showBusySlashCommandNotice() {
@@ -2372,6 +2398,7 @@ async function sendMessage(extraChatParams) {
   let text = inputEl.value.trim();
   if (!text) return;
   const tabId = currentTabId;
+  text = normalizeScreenshotCommandText(text);
   if (isProcessing) {
     if (!isOutOfBandSlashDraft(text)) {
       showBusySlashCommandNotice();
@@ -3321,7 +3348,7 @@ browser.storage.onChanged.addListener((changes) => {
 });
 
 // Page inspection banner
-const PAGE_TOOLS = new Set(['read_page', 'read_page_source', 'get_interactive_elements', 'click', 'type_text', 'scroll', 'extract_data', 'inspect_element_styles', 'wait_for_element', 'get_selection', 'execute_js', 'screenshot']);
+const PAGE_TOOLS = new Set(['read_page', 'read_page_source', 'get_interactive_elements', 'click', 'type_text', 'scroll', 'extract_data', 'inspect_element_styles', 'wait_for_element', 'get_selection', 'execute_js']);
 let inspectionBannerShown = false;
 
 function showInspectionBanner(toolName) {

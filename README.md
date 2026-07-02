@@ -98,7 +98,7 @@ Click the gear icon or go to the extension's Options page to configure:
 
 **Display Settings:**
 - Verbose Mode — Show full tool call JSON (off by default)
-- Screenshot Fallback — Use screenshots when DOM reading fails
+- Auto-screenshot — Provide visual context when DOM/page reads are insufficient
 - Max Agent Steps — Configurable step limit (5-200, default 60)
 - Plan before Act — Optionally generate and review a structured Act-mode plan before browser tools run (off by default)
 
@@ -165,8 +165,6 @@ Deeper docs live in [`docs/`](docs/): [architecture](docs/architecture.md), [sit
 | `get_accessibility_tree` | Yes | Yes | Yes | Flat indented text of the page's accessibility tree with persistent ref_ids |
 | `read_page` | Yes | Yes | Yes | Extract page text, links, forms (legacy prose fallback) |
 | `read_pdf` | Yes | Yes | -- | Extract text from PDF documents via vendored pdfjs-dist |
-| `screenshot` | Yes | Yes | Yes | Capture visible tab (with optional `save:true` to Downloads) |
-| `full_page_screenshot` | Yes | Yes | -- | Capture full scrollable page (Chrome only) |
 | `get_interactive_elements` | Yes | Yes | -- | List all clickable/interactive elements (legacy, pierces shadow DOM) |
 | `get_frames` | Yes | Yes | -- | List all iframes on the page |
 | `get_shadow_dom` | Yes | Yes | -- | Read shadow DOM trees |
@@ -246,6 +244,7 @@ WebBrain accepts slash commands as the first thing on a line in the input box. T
 | `/verbose` | Toggle verbose/compact tool display (same as the toolbar button) |
 | `/reset` | Clear the conversation and all per-conversation flags |
 | `/screenshot` | Capture the visible tab and display the image inline in chat |
+| `/full-page-screenshot` | Capture the full scrollable page and display it inline in chat (Chrome only) |
 | `/record` | Start recording the current tab |
 | `/export` | Download the current conversation as a Markdown file |
 | `/profile` | Toggle profile auto-fill on/off without opening Settings |
@@ -288,7 +287,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full version history. Recent highligh
 - [X] **Custom skill tools** — User-imported skills can expose read-only HTTP and download-job tools via `webbrain-tools` manifests
 - [X] **Keyboard shortcuts** — Hotkeys for opening panel, sending messages, switching modes
 - [X] **Context menu integration** — Right-click → "Ask WebBrain about this"
-- [X] **Screenshot/vision tool** — Send screenshots to multimodal models for visual understanding
+- [X] **Auto-screenshot vision context** — Send captured viewport context to multimodal models for visual understanding
 - [X] **Chrome Web Store / Firefox AMO** — Official store listings
 
 ## Adding a New Provider

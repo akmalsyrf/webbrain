@@ -165,8 +165,7 @@ CDP capture → JPEG/PNG data URL
   ├─ If main provider supports vision → image_url block attached to user message
   │   → the image is visible to the LLM
   │
-  └─ If no vision → screenshot still captured but only metadata returned to model
-      → if save:true → written to Downloads folder
+  └─ If no vision → screenshot still captured for internal state, but image data is not sent to the model
 ```
 
 ---

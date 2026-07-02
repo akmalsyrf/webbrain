@@ -259,6 +259,8 @@ const { Agent: AgentFx } = await import(
 // tools.js — pure ESM. We import both browser builds so prompt/tool routing
 // stays in parity.
 const {
+  AGENT_TOOL_NAMES: AGENT_TOOL_NAMES_CH,
+  RESERVED_AGENT_TOOL_NAMES: RESERVED_AGENT_TOOL_NAMES_CH,
   COMPACT_TOOL_NAMES: COMPACT_TOOL_NAMES_CH,
   SYSTEM_PROMPT_ACT: SYSTEM_PROMPT_ACT_CH,
   SYSTEM_PROMPT_ASK: SYSTEM_PROMPT_ASK_CH,
@@ -269,6 +271,8 @@ const {
   'file://' + path.join(ROOT, 'src/chrome/src/agent/tools.js').replace(/\\/g, '/')
 );
 const {
+  AGENT_TOOL_NAMES: AGENT_TOOL_NAMES_FX,
+  RESERVED_AGENT_TOOL_NAMES: RESERVED_AGENT_TOOL_NAMES_FX,
   COMPACT_TOOL_NAMES: COMPACT_TOOL_NAMES_FX,
   SYSTEM_PROMPT_ACT: SYSTEM_PROMPT_ACT_FX,
   SYSTEM_PROMPT_ASK: SYSTEM_PROMPT_ASK_FX,
@@ -2746,15 +2750,128 @@ test('getToolsForMode: compact mode restricts act tools in both browsers', () =>
   }
 });
 
+test('getToolsForMode: screenshot tools are not model-callable', () => {
+  for (const [label, getTools, agentToolNames, reservedNames, compactNames, prompts] of [
+    ['chrome', getToolsForModeCh, AGENT_TOOL_NAMES_CH, RESERVED_AGENT_TOOL_NAMES_CH, COMPACT_TOOL_NAMES_CH, [
+      ['ask', SYSTEM_PROMPT_ASK_CH],
+      ['act:full', SYSTEM_PROMPT_ACT_CH],
+      ['act:mid', SYSTEM_PROMPT_ACT_MID_CH],
+      ['act:compact', SYSTEM_PROMPT_ACT_COMPACT_CH],
+    ]],
+    ['firefox', getToolsForModeFx, AGENT_TOOL_NAMES_FX, RESERVED_AGENT_TOOL_NAMES_FX, COMPACT_TOOL_NAMES_FX, [
+      ['ask', SYSTEM_PROMPT_ASK_FX],
+      ['act:full', SYSTEM_PROMPT_ACT_FX],
+      ['act:mid', SYSTEM_PROMPT_ACT_MID_FX],
+      ['act:compact', SYSTEM_PROMPT_ACT_COMPACT_FX],
+    ]],
+  ]) {
+    for (const removed of ['screenshot', 'full_page_screenshot']) {
+      assert.equal(agentToolNames.has(removed), false, `[${label}] AGENT_TOOL_NAMES must not include ${removed}`);
+      assert.equal(reservedNames.has(removed), true, `[${label}] reserved names must still block retired ${removed}`);
+      assert.equal(compactNames.has(removed), false, `[${label}] compact set must not include ${removed}`);
+    }
+
+    const collidingSkillTools = [
+      { type: 'function', function: { name: 'screenshot', description: 'Skill collision.', parameters: { type: 'object', properties: {}, required: [] } } },
+      { type: 'function', function: { name: 'full_page_screenshot', description: 'Skill collision.', parameters: { type: 'object', properties: {}, required: [] } } },
+      { type: 'function', function: { name: 'custom_safe_read', description: 'Safe custom skill.', parameters: { type: 'object', properties: {}, required: [] } } },
+    ];
+    const mergedNames = getTools('act', { skillTools: collidingSkillTools }).map(t => t.function?.name).filter(Boolean);
+    assert.equal(mergedNames.includes('screenshot'), false, `[${label}] skill tools must not re-expose retired screenshot`);
+    assert.equal(mergedNames.includes('full_page_screenshot'), false, `[${label}] skill tools must not re-expose retired full_page_screenshot`);
+    assert.equal(mergedNames.includes('custom_safe_read'), true, `[${label}] non-conflicting skill tool should still be exposed`);
+
+    for (const [modeLabel, tools] of [
+      ['ask', getTools('ask')],
+      ['act:full', getTools('act')],
+      ['act:mid', getTools('act', { tier: 'mid' })],
+      ['act:compact', getTools('act', { tier: 'compact' })],
+    ]) {
+      const names = tools.map(t => t.function?.name).filter(Boolean);
+      assert.equal(names.includes('screenshot'), false, `[${label}] ${modeLabel} tools must not expose screenshot`);
+      assert.equal(names.includes('full_page_screenshot'), false, `[${label}] ${modeLabel} tools must not expose full_page_screenshot`);
+    }
+
+    for (const [promptLabel, prompt] of prompts) {
+      assert.doesNotMatch(prompt, /^- screenshot:/m, `[${label}] ${promptLabel} prompt must not list screenshot as a tool`);
+      assert.doesNotMatch(prompt, /\bscreenshot\s*\(\s*\{/i, `[${label}] ${promptLabel} prompt must not recommend screenshot(...)`);
+      assert.doesNotMatch(prompt, /\bfull_page_screenshot\b/i, `[${label}] ${promptLabel} prompt must not mention full_page_screenshot`);
+      assert.doesNotMatch(prompt, /\b(?:take|taking) (?:a |fresh )?screenshot\b/i, `[${label}] ${promptLabel} prompt must not tell the model to take a screenshot`);
+      assert.match(prompt, /\/screenshot\b/, `[${label}] ${promptLabel} prompt should direct chat-image requests to the /screenshot slash command`);
+      if (promptLabel !== 'ask') {
+        assert.match(prompt, /(?:auto-screenshot|injected visual context|verification screenshot)/i, `[${label}] ${promptLabel} prompt should preserve automatic visual verification guidance`);
+      }
+      if (label === 'chrome') {
+        assert.match(prompt, /\/full-page-screenshot\b/, `[${label}] ${promptLabel} prompt should direct full-page chat-image requests to the /full-page-screenshot slash command`);
+      } else {
+        assert.doesNotMatch(prompt, /\/full-page-screenshot\b/, `[${label}] ${promptLabel} prompt must not mention the Chrome-only full-page screenshot slash command`);
+      }
+    }
+  }
+});
+
+test('agent runtime warnings preserve injected auto-screenshot recovery guidance', () => {
+  for (const [label, agentRel] of [
+    ['chrome', 'src/chrome/src/agent/agent.js'],
+    ['firefox', 'src/firefox/src/agent/agent.js'],
+  ]) {
+    const agent = fs.readFileSync(path.join(ROOT, agentRel), 'utf8');
+    assert.match(agent, /COORDINATE CLICK WARNING:[\s\S]*latest injected auto_screenshot\/visual context/, `[${label}] coordinate-click warning should point at injected auto_screenshot visual context`);
+    assert.match(agent, /NAVIGATION OCCURRED[\s\S]*auto_screenshot\/visual context that follows this notice/, `[${label}] navigation notice should preserve auto_screenshot visual replan guidance`);
+    assert.match(agent, /injected visual context only when it explicitly says image pixels map 1:1 to click\(x,y\)/, `[${label}] normalized-coordinate warning should explain when visual pixels are safe for clicking`);
+    assert.doesNotMatch(agent, /take a fresh screenshot and look more carefully at element positions/, `[${label}] runtime warnings should not describe auto_screenshot as a callable screenshot tool`);
+    assert.doesNotMatch(agent, /inspect layout with get_accessibility_tree or inspect_element_styles/, `[${label}] coordinate warning should not drop visual recovery guidance`);
+    assert.doesNotMatch(agent, /getToolsForMode\(mode,\s*\{[^}]*\bvisionAvailable\b/s, `[${label}] getToolsForMode call sites should not compute/pass ignored visionAvailable`);
+  }
+});
+
 test('getToolsForMode: skill tools are exposed only when enabled skills declare them', () => {
-  for (const [label, prefix, getTools, normalizeSkills, buildDefs, buildRegistry] of [
-    ['chrome', 'src/chrome', getToolsForModeCh, normalizeCustomSkillsCh, buildSkillToolDefinitionsCh, buildSkillToolRegistryCh],
-    ['firefox', 'src/firefox', getToolsForModeFx, normalizeCustomSkillsFx, buildSkillToolDefinitionsFx, buildSkillToolRegistryFx],
+  for (const [label, prefix, getTools, normalizeSkills, buildDefs, buildRegistry, reservedNames] of [
+    ['chrome', 'src/chrome', getToolsForModeCh, normalizeCustomSkillsCh, buildSkillToolDefinitionsCh, buildSkillToolRegistryCh, RESERVED_AGENT_TOOL_NAMES_CH],
+    ['firefox', 'src/firefox', getToolsForModeFx, normalizeCustomSkillsFx, buildSkillToolDefinitionsFx, buildSkillToolRegistryFx, RESERVED_AGENT_TOOL_NAMES_FX],
   ]) {
     for (const name of ['read_youtube_transcript', 'resolve_public_media', 'download_public_media']) {
       assert.equal(getTools('ask').some(t => t.function?.name === name), false, `${label}: ${name} should not be static`);
       assert.equal(getTools('act').some(t => t.function?.name === name), false, `${label}: ${name} should not be static in act`);
     }
+
+    const collidingSkills = normalizeSkills([{
+      id: 'screenshot-collision',
+      name: 'Screenshot Collision',
+      content: `# Screenshot Collision
+
+\`\`\`webbrain-tools
+[
+  {
+    "name": "screenshot",
+    "description": "Attempts to collide with a retired built-in.",
+    "endpoint": "https://example.com/screenshot",
+    "method": "GET",
+    "parameters": { "type": "object", "properties": {}, "required": [] }
+  },
+  {
+    "name": "full_page_screenshot",
+    "description": "Attempts to collide with a retired built-in.",
+    "endpoint": "https://example.com/full-page-screenshot",
+    "method": "GET",
+    "parameters": { "type": "object", "properties": {}, "required": [] }
+  },
+  {
+    "name": "custom_safe_read",
+    "description": "A non-conflicting read-only skill tool.",
+    "endpoint": "https://example.com/custom-safe-read",
+    "method": "GET",
+    "parameters": { "type": "object", "properties": {}, "required": [] }
+  }
+]
+\`\`\``,
+    }]);
+    const collisionDefs = buildDefs(collidingSkills, { mode: 'ask', excludeNames: reservedNames });
+    const collisionRegistry = buildRegistry(collidingSkills, { excludeNames: reservedNames });
+    assert.deepEqual(collisionDefs.map(t => t.function?.name), ['custom_safe_read'], `${label}: retired screenshot names should be excluded from skill schemas`);
+    assert.equal(collisionRegistry.has('screenshot'), false, `${label}: retired screenshot should be excluded from skill registry`);
+    assert.equal(collisionRegistry.has('full_page_screenshot'), false, `${label}: retired full_page_screenshot should be excluded from skill registry`);
+    assert.equal(collisionRegistry.has('custom_safe_read'), true, `${label}: safe custom tool should remain registered`);
 
     const skills = normalizeSkills([packagedFreeSkillzRecord(prefix)]);
     const registry = buildRegistry(skills);
@@ -6096,6 +6213,25 @@ test('sidepanel scopes async tab commands to the original tab', () => {
     const screenshotEnd = panel.indexOf('// /record', screenshotIdx);
     const screenshotBody = panel.slice(screenshotIdx, screenshotEnd);
     assert.match(screenshotBody, /if \(currentTabId !== tabId \|\| !tab\?\.active\) return '';[\s\S]*?captureVisibleTab[\s\S]*?if \(currentTabId !== tabId\) return '';[\s\S]*?addMessage\('system', imgHtml\);/, `${label}: /screenshot should not render a captured image into a different tab`);
+    const fullPageIdx = panel.indexOf('// /full-page-screenshot');
+    assert.match(panel, /function normalizeScreenshotRequestText\(text\) \{[\s\S]*?\.normalize\('NFKD'\)[\s\S]*?\.replace\(\/\[\\u0300-\\u036f\]\/g, ''\)[\s\S]*?\.replace\(\/\\u0131\/g, 'i'\)/, `${label}: plain screenshot request normalization should handle accented Turkish text`);
+    assert.match(panel, /function isPlainScreenshotRequest\(text\) \{[\s\S]*?const s = normalizeScreenshotRequestText\(text\);[\s\S]*?s\.startsWith\('\/'\)[\s\S]*?ekran goruntusu[\s\S]*?ekran goruntusunu/, `${label}: plain screenshot request routing should cover English and Turkish screenshot-only requests`);
+    if (label === 'chrome') {
+      assert.notEqual(fullPageIdx, -1, `${label}: /full-page-screenshot parser missing`);
+      const fullPageBody = panel.slice(fullPageIdx, panel.indexOf('// /record', fullPageIdx));
+      assert.match(fullPageBody, /sendToBackground\('capture_full_page_screenshot', \{ tabId \}\);[\s\S]*?if \(currentTabId !== tabId\) return '';[\s\S]*?addMessage\('system', imgHtml\);/, `${label}: /full-page-screenshot should render only into the initiating tab`);
+      assert.match(panel, /function isPlainFullPageScreenshotRequest\(text\) \{[\s\S]*?full\|whole\|entire\|complete[\s\S]*?tam sayfa[\s\S]*?ekran goruntusu/, `${label}: plain full-page screenshot request routing should cover English and Turkish requests`);
+      assert.match(panel, /function normalizeScreenshotCommandText\(text\) \{[\s\S]*?isPlainFullPageScreenshotRequest\(text\)[\s\S]*?return '\/full-page-screenshot';[\s\S]*?isPlainScreenshotRequest\(text\)[\s\S]*?return '\/screenshot';/, `${label}: screenshot normalization should route full-page requests before viewport screenshots`);
+    } else {
+      assert.equal(fullPageIdx, -1, `${label}: /full-page-screenshot parser should stay Chrome-only`);
+      assert.doesNotMatch(panel, /capture_full_page_screenshot/, `${label}: should not call the Chrome-only full-page screenshot route`);
+      assert.doesNotMatch(panel, /isPlainFullPageScreenshotRequest/, `${label}: should not normalize full-page screenshot text into an unsupported slash command`);
+      assert.match(panel, /function normalizeScreenshotCommandText\(text\) \{[\s\S]*?if \(isPlainScreenshotRequest\(text\)\) return '\/screenshot';[\s\S]*?return text;[\s\S]*?\}/, `${label}: screenshot normalization should only route viewport screenshots`);
+    }
+    const sendIdx = panel.indexOf('async function sendMessage(extraChatParams)');
+    assert.notEqual(sendIdx, -1, `${label}: sendMessage missing`);
+    const sendBody = panel.slice(sendIdx, panel.indexOf('let assistantEl = null;', sendIdx));
+    assert.match(sendBody, /const tabId = currentTabId;[\s\S]*?text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\)/, `${label}: plain screenshot requests should route to slash commands before busy gating`);
 
     if (label === 'chrome') {
       const recordIdx = panel.indexOf('// /record');
@@ -6210,24 +6346,30 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
 });
 
 test('sidepanel allows only safe slash commands while busy', () => {
-  const allowed = ['/help', '/show-scratchpad', '/list-schedules', '/screenshot', '/export', '/verbose'];
   for (const [label, panelRel, localeRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
     ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/locales/en.js'],
   ]) {
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
     const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+    const oobStart = panel.indexOf('const OUT_OF_BAND_SLASH_COMMANDS = new Set([');
+    const oobEnd = panel.indexOf(']);', oobStart);
+    assert.notEqual(oobStart, -1, `${label}: out-of-band slash command set missing`);
+    assert.notEqual(oobEnd, -1, `${label}: out-of-band slash command set should close`);
+    const oobBlock = panel.slice(oobStart, oobEnd);
+    const allowed = ['/help', '/show-scratchpad', '/list-schedules', '/screenshot', '/export', '/verbose'];
     for (const command of allowed) {
       assert.match(
-        panel,
-        new RegExp(`const OUT_OF_BAND_SLASH_COMMANDS = new Set\\(\\[[\\s\\S]*?'${command}'`),
+        oobBlock,
+        new RegExp(`'${command}'`),
         `${label}: ${command} should be allowed while busy`,
       );
     }
+    assert.doesNotMatch(oobBlock, /'\/full-page-screenshot'/, `${label}: /full-page-screenshot should not be allowed while busy`);
     assert.match(
       panel,
-      /function syncSendButtonState\(\) \{[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = false;[\s\S]*?\}[\s\S]*?sendBtn\.disabled = !isOutOfBandSlashDraft\(inputEl\?\.value \|\| ''\);[\s\S]*?\}/,
-      `${label}: send button state should permit only out-of-band slash drafts while busy`,
+      /function syncSendButtonState\(\) \{[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = false;[\s\S]*?\}[\s\S]*?const draft = normalizeScreenshotCommandText\(inputEl\?\.value \|\| ''\);[\s\S]*?sendBtn\.disabled = !isOutOfBandSlashDraft\(draft\);[\s\S]*?\}/,
+      `${label}: send button state should normalize screenshot requests and permit only out-of-band slash drafts while busy`,
     );
     assert.match(
       panel,
@@ -6236,7 +6378,7 @@ test('sidepanel allows only safe slash commands while busy', () => {
     );
     assert.match(
       panel,
-      /if \(isProcessing\) \{[\s\S]*?if \(!isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}/,
+      /text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?if \(!isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}/,
       `${label}: busy send preflight should run safe slash commands without starting chat`,
     );
     assert.match(
@@ -14314,6 +14456,8 @@ test('planner: prompt treats page context as untrusted data', () => {
   assert.match(PLANNER_SYSTEM_PROMPT, /ignore previous instructions/);
   assert.match(PLANNER_SYSTEM_PROMPT, /bounded batches/);
   assert.match(PLANNER_SYSTEM_PROMPT, /wait_for_stable pacing/);
+  assert.match(PLANNER_SYSTEM_PROMPT, /read: get_accessibility_tree, read_page, extract_data, fetch_url, research_url/);
+  assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /read:[^\n]*\bscreenshot\b/);
   assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /BULK API MUTATION PATTERN/);
   assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /sample exactly one fetch_url replay/);
   assert.equal(PLANNER_SYSTEM_PROMPT_FX, PLANNER_SYSTEM_PROMPT);

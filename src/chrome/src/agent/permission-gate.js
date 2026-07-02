@@ -17,7 +17,7 @@
  * un-injectable: a page cannot talk the gate out of a decision because the
  * gate never reads page content — the human is the trust anchor.
  *
- * Read-only capabilities (read_page, get_accessibility_tree, screenshot, …)
+ * Read-only capabilities (read_page, get_accessibility_tree, get_selection, …)
  * are intentionally NOT gated; only state-changing / high-reach actions are.
  */
 
@@ -93,7 +93,7 @@ export const UNTRUSTED_CONTENT_TOOLS = new Set([
   // list_downloads returns each download's url + filename; the filename can
   // come from an attacker-set Content-Disposition header.
   'list_downloads',
-  // screenshot / full_page_screenshot: when a vision model is configured these
+  // Legacy screenshot handlers: when a vision model is configured these
   // return `description` = a transcription of the page (OCR/visual text). The
   // image itself is stripped to _attachImage (and framed there) before this
   // wrap, so only the page-derived text fields get wrapped here.
@@ -155,8 +155,8 @@ const TOOL_CAPABILITY = {
  *   - fetch_url/research_url: ALL methods — a GET can exfiltrate data in its
  *     query string to an attacker host, and research_url opens a background
  *     tab. Gated per destination host (egress is consequential).
- *   - screenshot/full_page_screenshot: read-only, EXCEPT save:true writes a
- *     file via chrome.downloads → DOWNLOAD.
+ *   - legacy screenshot handlers: read-only, EXCEPT save:true writes a file
+ *     via chrome.downloads → DOWNLOAD. These are not model-exposed tools.
  *   - set_field: TYPE normally, but CLICK when submit:true (pressing Enter
  *     submits the form — a TYPE grant must not authorize a submit).
  *   - press_keys: Enter can submit/activate → CLICK; Tab/Escape are benign.
