@@ -464,6 +464,30 @@
   "blogPost": [
     {
       "@type": "BlogPosting",
+      "headline": "WebBrain now has an Ollama launch handoff",
+      "url": "https://webbrain.one/blog/ollama-launch-handoff",
+      "datePublished": "2026-07-02",
+      "description": "A new Ollama launch handoff can configure WebBrain for a local Ollama model from one terminal command. The integration is not upstream in Ollama yet, but it is available today from the esokullu/ollama branch while we work toward official integration.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
+      "headline": "Qwen 3.7 Plus is a serious OpenRouter rival to MiniMax M3",
+      "url": "https://webbrain.one/blog/qwen37-plus-openrouter-planner-benchmark",
+      "datePublished": "2026-07-02",
+      "description": "We ran qwen/qwen3.7-plus through WebBrain's frozen 100-case browser-agent planner benchmark on OpenRouter. It ties MiniMax M3 on all-case Sonnet alignment, beats it on tool-call discipline, and lands just below the Gemma 4 31B QAT, Qwen 3.6 27B, and MiniMax M2.7 cluster.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
       "headline": "Qwen 3.6 27B NVFP4 is much faster, but not a clean planner upgrade",
       "url": "https://webbrain.one/blog/qwen36-27b-nvfp4-planner-benchmark",
       "datePublished": "2026-07-02",
@@ -711,7 +735,17 @@
     <p class="page-sub">Short write-ups on design decisions, failure modes, and benchmarks from building an open-source AI browser agent.</p>
 
     <div class="post-list">
-      <a href="/blog/qwen36-27b-nvfp4-planner-benchmark" class="post-card">
+      <a href="/blog/ollama-launch-handoff" class="post-card">
+        <div class="post-meta">July 2, 2026 &middot; 4 min read</div>
+        <div class="post-title">WebBrain now has an Ollama launch handoff</div>
+        <div class="post-excerpt">WebBrain can now be configured from an Ollama launch command: choose a local model, open the WebBrain handoff page, confirm the browser prompt, and the extension switches to Ollama automatically. It is not in upstream Ollama yet, but you can try it from the branch today.</div>
+      </a>
+<a href="/blog/qwen37-plus-openrouter-planner-benchmark" class="post-card">
+        <div class="post-meta">July 2, 2026 &middot; 6 min read</div>
+        <div class="post-title">Qwen 3.7 Plus is a serious OpenRouter rival to MiniMax M3</div>
+        <div class="post-excerpt">Qwen 3.7 Plus reached 75/100 Sonnet alignment, 95/100 parsed native tool calls, and the best ideal tool-name score in the top hosted slice of WebBrain&#39;s frozen planner table.</div>
+      </a>
+<a href="/blog/qwen36-27b-nvfp4-planner-benchmark" class="post-card">
         <div class="post-meta">July 2, 2026 &middot; 6 min read</div>
         <div class="post-title">Qwen 3.6 27B NVFP4 is much faster, but not a clean planner upgrade</div>
         <div class="post-excerpt">Qwen 3.6 27B NVFP4 gives WebBrain a big local latency win: 96/100 parsed calls, 1.8s median latency, and a top-10 Sonnet-reference result. The planner quality story is more mixed.</div>

@@ -27,6 +27,7 @@ import {
   getRecordingStateFresh,
   setProviderManager as setRecorderProviderManager,
 } from './recorder/host.js';
+import { normalizeOllamaLaunchHandoff } from './ollama-handoff.js';
 
 /**
  * WebBrain Service Worker (Background Script)
@@ -1150,6 +1151,19 @@ async function handleMessage(msg, sender) {
     case 'update_provider': {
       await providerManager.updateProvider(msg.providerId, msg.config);
       return { ok: true };
+    }
+
+    case 'ollama_launch_handoff': {
+      const handoff = normalizeOllamaLaunchHandoff(msg.handoff || {});
+      await providerManager.updateProvider(handoff.providerId, handoff.config);
+      await providerManager.setActive(handoff.providerId);
+      return {
+        ok: true,
+        providerId: handoff.providerId,
+        model: handoff.model,
+        baseUrl: handoff.baseUrl,
+        contextWindow: handoff.contextWindow,
+      };
     }
 
     case 'test_provider': {

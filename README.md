@@ -72,6 +72,7 @@ llama-server -m your-model.gguf --port 8080
 # Or using Ollama (OpenAI-compatible)
 ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
+# Or run: ollama launch webbrain --model <model>
 
 # Or using Jan (OpenAI-compatible)
 # Start Jan's local API server and use http://localhost:1337/v1
@@ -79,6 +80,25 @@ ollama serve
 # Or using vLLM / SGLang (OpenAI-compatible)
 vllm serve your-model --port 8000
 python -m sglang.launch_server --model-path your-model --port 30000
+```
+
+### Ollama launch handoff (preview)
+
+<p align="center">
+  <img src="web/assets/webbrain-ollama-heart.png" alt="WebBrain loves Ollama launch handoff" width="720">
+</p>
+
+WebBrain supports Ollama today through the local OpenAI-compatible provider. A new `ollama launch webbrain --model <model>` handoff can also configure WebBrain automatically, but it is not integrated into upstream Ollama yet. For now, try it from the [`codex/ollama-webbrain-launch-handoff` branch of `esokullu/ollama`](https://github.com/esokullu/ollama/tree/codex/ollama-webbrain-launch-handoff); we hope Ollama will integrate it upstream.
+
+```bash
+git clone https://github.com/esokullu/ollama.git
+cd ollama
+git switch codex/ollama-webbrain-launch-handoff
+cmake -S . -B build -G Ninja -DOLLAMA_MLX_BACKENDS=
+cmake --build build --parallel 8
+
+OLLAMA_ORIGINS="chrome-extension://*,moz-extension://*" ./ollama serve
+./ollama launch webbrain --model <model>
 ```
 
 > **Context window:** For reliable agent runs, load a local model with **at least a 16k-token context window** (the usable minimum). 8k can work with **Compact mode** enabled (Settings → per-provider checkbox); 4k is too small to hold the system prompt + tool schemas. WebBrain auto-compacts the conversation as it nears the window — it assumes 16k for local models unless you set an explicit context size, so give the model server (e.g. `llama-server -c 16384`) enough room.

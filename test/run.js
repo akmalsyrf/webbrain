@@ -231,6 +231,12 @@ const { inferContextWindow: inferContextWindowCh } = await import(
 const { inferContextWindow: inferContextWindowFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/context-windows.js').replace(/\\/g, '/')
 );
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/ollama-handoff.js').replace(/\\/g, '/')
+);
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/ollama-handoff.js').replace(/\\/g, '/')
+);
 const { OpenAICompatibleProvider: OpenAIProviderCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/openai.js').replace(/\\/g, '/')
 );
@@ -5959,7 +5965,7 @@ test('settings provider save and test status updates are DOM-safe', () => {
     const loadBody = settings.slice(loadStart, settings.indexOf('\n}\n\nfunction setProviderTestResult', loadStart) + 2);
     assert.match(
       loadBody,
-      /try \{[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, e\.message, 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}/,
+      /try \{[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}/,
       `${label}: model loading should stop and report if the pre-save fails`,
     );
   }
@@ -6028,11 +6034,12 @@ test('API mutation observer setting is opt-in and controls the request observer'
 });
 
 test('settings async test controls surface rejected background results', () => {
-  for (const [label, settingsRel] of [
-    ['chrome', 'src/chrome/src/ui/settings.js'],
-    ['firefox', 'src/firefox/src/ui/settings.js'],
+  for (const [label, settingsRel, htmlRel] of [
+    ['chrome', 'src/chrome/src/ui/settings.js', 'src/chrome/src/ui/settings.html'],
+    ['firefox', 'src/firefox/src/ui/settings.js', 'src/firefox/src/ui/settings.html'],
   ]) {
     const settings = fs.readFileSync(path.join(ROOT, settingsRel), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
 
     assert.match(
       settings,
@@ -6092,9 +6099,68 @@ test('settings async test controls surface rejected background results', () => {
     const loadBody = settings.slice(loadStart, settings.indexOf('\n}\n\nfunction setProviderTestResult', loadStart) + 2);
     assert.match(
       loadBody,
-      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?setProviderLoadModelsStatus\(id, t\('st\.providers\.loading'\)\);[\s\S]*?try \{[\s\S]*?res = await sendToBackground\('list_provider_models', \{ providerId: id \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, e\.message, 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?setProviderLoadModelsStatus\(id, res\?\.error \|\| 'Failed to load models', 'var\(--danger, #c33\)'\);/,
+      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?setProviderLoadModelsStatus\(id, t\('st\.providers\.loading'\)\);[\s\S]*?try \{[\s\S]*?res = await sendToBackground\('list_provider_models', \{ providerId: id \}\);[\s\S]*?\} catch \(e\) \{[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(e\.message\), 'var\(--danger, #c33\)'\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?setProviderLoadModelsStatus\(id, providerModelLoadErrorMessage\(res\), 'var\(--danger, #c33\)'\);/,
       `${label}: model loading should report rejected background results and avoid stale datalist writes`,
     );
+    assert.match(
+      settings,
+      /function providerModelLoadErrorMessage\(resultOrError\) \{[\s\S]*?resultOrError\?\.errorKey[\s\S]*?t\(resultOrError\.errorKey\)[\s\S]*?\^HTTP\\s\+404\\b[\s\S]*?<!doctype\\s\+html\|<html\[\\s>\]\|file not found[\s\S]*?t\('ob\.tokens\.none_status'\)[\s\S]*?\}/,
+      `${label}: HTML 404 model-list failures should be shown as a concise local-server status`,
+    );
+    assert.match(
+      settings,
+      /function clearProviderLoadedModels\(id\) \{[\s\S]*?loadedDialogEl\.querySelector\('\.loaded-model-options'\);[\s\S]*?optionsEl\.innerHTML = '';[\s\S]*?closeLoadedModelDialog\(loadedDialogEl\);[\s\S]*?if \(datalistEl\) datalistEl\.innerHTML = '';[\s\S]*?\}/,
+      `${label}: model loading should have a helper that clears stale loaded-model choices`,
+    );
+    assert.match(
+      loadBody,
+      /let datalistEl = document\.getElementById\(`models-\$\{id\}`\);[\s\S]*?if \(!datalistEl\) return;[\s\S]*?clearProviderLoadedModels\(id\);[\s\S]*?await saveProvider\(id, \{ showFlash: false \}\);/,
+      `${label}: model loading should clear stale model choices before saving or requesting new models`,
+    );
+    assert.match(
+      settings,
+      /const loadedModelsDialogHTML = canLoadModels[\s\S]*<dialog class="loaded-model-dialog" data-loaded-models-for="\$\{id\}"[\s\S]*class="loaded-model-options"[\s\S]*\$\{loadedModelsDialogHTML\}/,
+      `${label}: local model loading should render a loaded-model dialog`,
+    );
+    assert.doesNotMatch(
+      settings,
+      /loaded-model-select|loadedModelsSelectHTML|loaded-model-menu|loadedModelsMenuHTML/,
+      `${label}: local model loading should not render a second select control or inline menu`,
+    );
+    assert.match(
+      loadBody,
+      /const loadedDialogEl = document\.querySelector\(`\.loaded-model-dialog\[data-loaded-models-for="\$\{id\}"\]`\);[\s\S]*?const optionsEl = loadedDialogEl\.querySelector\('\.loaded-model-options'\);[\s\S]*?optionsEl\.innerHTML = res\.models[\s\S]*?class="loaded-model-option"[\s\S]*?if \(res\.models\.length\) openLoadedModelDialog\(loadedDialogEl\);/,
+      `${label}: loaded models should populate and open a dialog without replacing the current model text`,
+    );
+    assert.doesNotMatch(
+      loadBody,
+      /input\.value\s*=\s*res\.models/,
+      `${label}: loading models should not overwrite an existing model until the user chooses one`,
+    );
+    assert.match(
+      settings,
+      /document\.querySelectorAll\('\.loaded-model-dialog'\)\.forEach\(dialog => \{[\s\S]*?dialog\.addEventListener\('click', \(event\) => \{[\s\S]*?event\.target === dialog[\s\S]*?closeLoadedModelDialog\(dialog\);[\s\S]*?event\.target\.closest\('\.loaded-model-option'\);[\s\S]*?const providerId = dialog\.dataset\.loadedModelsFor;[\s\S]*?input\.value = option\.dataset\.model \|\| '';[\s\S]*?closeLoadedModelDialog\(dialog\);[\s\S]*?\}\);[\s\S]*?\}\);/,
+      `${label}: choosing a loaded model should write it back to the provider model input`,
+    );
+    assert.match(
+      settings,
+      /function openLoadedModelDialog\(dialog\) \{[\s\S]*?if \(!dialog\) return;[\s\S]*?if \(dialog\.open\) return;[\s\S]*?dialog\.showModal/,
+      `${label}: loaded-model dialog opening should tolerate repeated model-load responses`,
+    );
+    assert.match(
+      html,
+      /\.loaded-model-dialog \{[\s\S]*?position: fixed;[\s\S]*?inset: 0;[\s\S]*?margin: auto;[\s\S]*?width: min\(520px, calc\(100vw - 32px\)\);/,
+      `${label}: loaded-model dialog should stay centered despite the global margin reset`,
+    );
+    const localeDir = path.join(ROOT, label === 'chrome' ? 'src/chrome/src/ui/locales' : 'src/firefox/src/ui/locales');
+    for (const filename of fs.readdirSync(localeDir).filter((name) => name.endsWith('.js'))) {
+      const locale = fs.readFileSync(path.join(localeDir, filename), 'utf8');
+      assert.match(
+        locale,
+        /['"]st\.providers\.select_loaded_model['"]:\s*['"][^'"]+['"]/,
+        `${label}/${filename}: loaded-model selector copy should be localized`,
+      );
+    }
   }
 });
 
@@ -6373,7 +6439,7 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
   }
 });
 
-test('sidepanel allows only safe slash commands while busy', () => {
+test('sidepanel allows safe slash commands and queues normal messages while busy', () => {
   for (const [label, panelRel, localeRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
     ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/locales/en.js'],
@@ -6396,8 +6462,8 @@ test('sidepanel allows only safe slash commands while busy', () => {
     assert.doesNotMatch(oobBlock, /'\/full-page-screenshot'/, `${label}: /full-page-screenshot should not be allowed while busy`);
     assert.match(
       panel,
-      /function syncSendButtonState\(\) \{[\s\S]*?const draft = normalizeScreenshotCommandText\(inputEl\?\.value \|\| ''\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?sendBtn\.disabled = !isOutOfBandSlashDraft\(draft\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?sendBtn\.disabled = isAttachmentReadPendingForTab\(\);[\s\S]*?\}/,
-      `${label}: send button state should normalize screenshot requests while busy and gate attachment reads while idle`,
+      /function syncSendButtonState\(\) \{[\s\S]*?const draft = normalizeScreenshotCommandText\(inputEl\?\.value \|\| ''\)\.trim\(\);[\s\S]*?if \(!isProcessing\) \{[\s\S]*?sendBtn\.disabled = isAttachmentReadPendingForTab\(\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?if \(!draft\) \{[\s\S]*?sendBtn\.disabled = true;[\s\S]*?return;[\s\S]*?\}[\s\S]*?sendBtn\.disabled = draft\.startsWith\('\/'\) && !isOutOfBandSlashDraft\(draft\);[\s\S]*?\}/,
+      `${label}: send button state should gate attachment reads while idle, permit normal queued drafts while busy, and only block unsafe slash drafts`,
     );
     assert.match(
       panel,
@@ -6406,8 +6472,8 @@ test('sidepanel allows only safe slash commands while busy', () => {
     );
     assert.match(
       panel,
-      /text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?if \(!isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}/,
-      `${label}: busy send preflight should run safe slash commands without starting chat`,
+      /text = normalizeScreenshotCommandText\(text\);[\s\S]*?if \(isProcessing\) \{[\s\S]*?if \(isOutOfBandSlashDraft\(text\)\) \{[\s\S]*?await parseSlashCommands\(text, tabId\);[\s\S]*?return true;[\s\S]*?\}[\s\S]*?if \(text\.startsWith\('\/'\)\) \{[\s\S]*?showBusySlashCommandNotice\(\);[\s\S]*?return false;[\s\S]*?\}[\s\S]*?return enqueueQueuedComposerMessage\(tabId, text\);[\s\S]*?\}/,
+      `${label}: busy send preflight should run safe slash commands and queue normal drafts`,
     );
     assert.match(
       panel,
@@ -6416,9 +6482,91 @@ test('sidepanel allows only safe slash commands while busy', () => {
     );
     assert.match(
       locale,
-      /'sp\.slash\.busy_only_oob': 'Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run while WebBrain is busy\./,
-      `${label}: busy slash notice should be localized`,
+      /'sp\.slash\.busy_only_oob': 'Messages are queued while WebBrain is busy\. Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run immediately as slash commands\./,
+      `${label}: busy slash notice should explain queued messages and safe slash commands`,
     );
+  }
+});
+
+test('sidepanel queued composer messages expose edit and delete controls', () => {
+  for (const [label, panelRel, htmlRel, cssRel, localeRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/sidepanel.html', 'src/chrome/styles/sidepanel.css', 'src/chrome/src/ui/locales/en.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/sidepanel.html', 'src/firefox/styles/sidepanel.css', 'src/firefox/src/ui/locales/en.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, htmlRel), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, cssRel), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+
+    assert.match(html, /id="queued-messages" class="queued-messages hidden" role="list"/, `${label}: queued message strip should exist above the composer`);
+    assert.match(panel, /const queuedComposerMessagesByTab = new Map\(\);/, `${label}: queued composer messages should be tracked per tab`);
+    assert.match(panel, /function enqueueQueuedComposerMessage\(tabId, text\) \{[\s\S]*?queue\.push\(\{[\s\S]*?text: queuedText,[\s\S]*?inputEl\.value = '';[\s\S]*?syncSendButtonState\(\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: busy drafts should be queued and clear the composer`);
+    assert.match(panel, /function sameTabId\(a, b\) \{\s*return a != null && b != null && String\(a\) === String\(b\);\s*\}/, `${label}: queued-message tab checks should tolerate equivalent tab id types`);
+    assert.match(panel, /function editQueuedComposerMessage\(tabId, queueId\) \{[\s\S]*?!sameTabId\(currentTabId, tabId\)[\s\S]*?removeQueuedComposerMessage\(tabId, queueId\);[\s\S]*?inputEl\.value = item\.text;[\s\S]*?inputEl\.setSelectionRange\(inputEl\.value\.length, inputEl\.value\.length\);[\s\S]*?\}/, `${label}: queued message edit should guard the tab and move text back into the composer`);
+    assert.match(panel, /function editLastQueuedComposerMessageForCurrentTab\(\) \{[\s\S]*?const atStart = inputEl\.selectionStart === 0 && inputEl\.selectionEnd === 0;[\s\S]*?if \(inputEl\.value\.trim\(\) \|\| !atStart\) return false;[\s\S]*?const item = queue\[queue\.length - 1\];[\s\S]*?editQueuedComposerMessage\(currentTabId, item\.id\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: ArrowUp edit should only pull the latest queued message into an empty composer at the start`);
+    assert.match(panel, /function deleteQueuedComposerMessage\(tabId, queueId\) \{[\s\S]*?removeQueuedComposerMessage\(tabId, queueId\);[\s\S]*?\}/, `${label}: queued message delete should remove the queued item`);
+    assert.match(panel, /queued-message-edit/, `${label}: queued item should render an edit button`);
+    assert.match(panel, /queued-message-delete/, `${label}: queued item should render a delete button`);
+    assert.match(panel, /queuedMessagesEl\?\.addEventListener\('click', \(e\) => \{[\s\S]*?e\.target\.closest\('button\[data-queue-action\]\[data-queue-id\]'\);[\s\S]*?editQueuedComposerMessage\(currentTabId, queueId\);[\s\S]*?\}\);/, `${label}: queued edit button clicks should call the edit helper`);
+    assert.match(panel, /inputEl\.addEventListener\('keydown', \(e\) => \{[\s\S]*?if \(handleSlashCommandKeydown\(e\)\) return;[\s\S]*?if \(e\.key === 'ArrowUp' && editLastQueuedComposerMessageForCurrentTab\(\)\) \{[\s\S]*?e\.preventDefault\(\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?if \(e\.key === 'Enter' && !e\.shiftKey\)/, `${label}: ArrowUp should edit queued messages before Enter handling`);
+    const drainStart = panel.indexOf('function drainQueuedComposerMessageForCurrentTab()');
+    const drainEnd = panel.indexOf('function renderClearedConversationForTab', drainStart);
+    assert.notEqual(drainStart, -1, `${label}: queued composer drain helper should exist`);
+    assert.notEqual(drainEnd, -1, `${label}: queued composer drain helper boundary should exist`);
+    const drainBody = panel.slice(drainStart, drainEnd);
+    const draftGuardIdx = drainBody.indexOf('if (inputEl.value.trim()) return false;');
+    const queueShiftIdx = drainBody.indexOf('const item = shiftQueuedComposerMessage(currentTabId);');
+    assert.notEqual(draftGuardIdx, -1, `${label}: queued composer drain should preserve newly typed drafts`);
+    assert.notEqual(queueShiftIdx, -1, `${label}: queued composer drain should shift the next queued message`);
+    assert.equal(draftGuardIdx < queueShiftIdx, true, `${label}: queued composer drain must preserve drafts before removing queued messages`);
+    assert.match(panel, /if \(drainQueuedComposerMessageForCurrentTab\(\)\) return;[\s\S]*?drainQueuedContextMenuPrompts\(\);/, `${label}: run settlement should drain queued composer messages before context-menu recovery prompts`);
+    const helperStart = panel.indexOf('async function drainQueuedContextMenuPromptsAfterPendingTabSwitch()');
+    const helperEnd = panel.indexOf('function queueAgentUpdateDuringTabSwitch', helperStart);
+    assert.notEqual(helperStart, -1, `${label}: queued drain helper should exist`);
+    assert.notEqual(helperEnd, -1, `${label}: queued drain helper boundary should exist`);
+    const helperBody = panel.slice(helperStart, helperEnd);
+    const composerDrainIdx = helperBody.indexOf('if (drainQueuedComposerMessageForCurrentTab()) return;');
+    const pendingSwitchIdx = helperBody.indexOf('const pending = pendingTabSwitch;');
+    assert.notEqual(composerDrainIdx, -1, `${label}: completed-tab queued composer drain should run in the drain helper`);
+    assert.notEqual(pendingSwitchIdx, -1, `${label}: pending tab switch should still be applied in the drain helper`);
+    assert.equal(composerDrainIdx < pendingSwitchIdx, true, `${label}: queued composer messages for the completed tab must drain before applying a pending tab switch`);
+    assert.match(css, /\.queued-messages/, `${label}: queued message strip should be styled`);
+    assert.match(css, /\.queued-message-action/, `${label}: queued message controls should be styled`);
+    assert.match(locale, /'sp\.queue\.edit': 'Edit queued message'/, `${label}: queued edit label should have an English fallback`);
+    assert.match(locale, /'sp\.queue\.delete': 'Delete queued message'/, `${label}: queued delete label should have an English fallback`);
+  }
+});
+
+test('sidepanel busy slash notice is updated in every locale', () => {
+  const expected = {
+    en: 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /screenshot, /export, and /verbose can run immediately as slash commands.',
+    es: 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
+    fr: "Les messages sont mis en file d'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent s'exécuter immédiatement comme commandes slash.",
+    tr: 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
+    zh: 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
+    ru: 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
+    uk: 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
+    ar: 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
+    ja: 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
+    ko: 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
+    id: 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
+    th: 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
+    ms: 'Mesej dimasukkan ke giliran semasa WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose boleh berjalan serta-merta sebagai arahan slash.',
+    tl: 'Nakapila ang mga mensahe habang abala ang WebBrain. Tanging /help, /show-scratchpad, /list-schedules, /screenshot, /export, at /verbose ang maaaring tumakbo agad bilang mga slash command.',
+    pl: 'Wiadomości są kolejkowane, gdy WebBrain jest zajęty. Tylko /help, /show-scratchpad, /list-schedules, /screenshot, /export i /verbose mogą uruchamiać się od razu jako polecenia slash.',
+  };
+
+  for (const [label, localeDir] of [
+    ['chrome', 'src/chrome/src/ui/locales'],
+    ['firefox', 'src/firefox/src/ui/locales'],
+  ]) {
+    for (const [code, message] of Object.entries(expected)) {
+      const locale = fs.readFileSync(path.join(ROOT, localeDir, `${code}.js`), 'utf8');
+      const match = locale.match(/'sp\.slash\.busy_only_oob': '((?:\\'|[^'])*)'/);
+      assert.ok(match, `${label}/${code}: busy slash notice key missing`);
+      const actual = match[1].replace(/\\'/g, "'");
+      assert.equal(actual, message, `${label}/${code}: busy slash notice should match queued-send behavior`);
+    }
   }
 });
 
@@ -8726,6 +8874,68 @@ test('inferContextWindow: model-aware cloud/router defaults and local 16k fallba
   }
 });
 
+test('Ollama launch handoff normalizes safe loopback /v1 provider config', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    const handoff = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://localhost:11434/v1/',
+      contextWindow: '131072',
+    });
+    assert.equal(handoff.providerId, 'ollama');
+    assert.equal(handoff.model, 'qwen3:8b');
+    assert.equal(handoff.baseUrl, 'http://localhost:11434/v1');
+    assert.equal(handoff.contextWindow, 131072);
+    assert.deepEqual(handoff.config, {
+      type: 'openai',
+      category: 'local',
+      label: 'Ollama (Local)',
+      providerName: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'qwen3:8b',
+      contextWindow: 131072,
+      apiKey: 'ollama',
+      supportsVision: true,
+      promptTier: 'mid',
+      enabled: true,
+    });
+  }
+});
+
+test('Ollama launch handoff rejects unsafe base URLs and clamps context', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'https://evil.example/v1' }),
+      /loopback/
+    );
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/api' }),
+      /\/v1/
+    );
+    assert.throws(
+      () => normalize({ model: 'bad\nmodel', baseUrl: 'http://127.0.0.1:11434/v1' }),
+      /model/
+    );
+    const clamped = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://127.0.0.1:11434',
+      contextWindow: '9999999',
+    });
+    assert.equal(clamped.baseUrl, 'http://127.0.0.1:11434/v1');
+    assert.equal(clamped.contextWindow, 1048576);
+  }
+});
+
+test('Ollama launch handoff content script is shipped in both manifests', () => {
+  for (const manifestPath of ['src/chrome/manifest.json', 'src/firefox/manifest.json']) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, manifestPath), 'utf8'));
+    const scripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
+    assert.ok(
+      scripts.includes('src/content/ollama-launch-handoff.js'),
+      `${manifestPath}: expected Ollama launch handoff content script`
+    );
+  }
+});
+
 test('_extractModelIds: Ollama /api/tags format', () => {
   for (const PM of [ProviderManagerCh, ProviderManagerFx]) {
     const mgr = new PM();
@@ -9094,6 +9304,43 @@ test('listProviderModels does not persist stale base URL repairs', async () => {
     else globalThis.chrome = originalChrome;
     if (originalBrowser === undefined) delete globalThis.browser;
     else globalThis.browser = originalBrowser;
+  }
+});
+
+test('listProviderModels normalizes HTML 404 model-list failures', async () => {
+  const originalFetch = globalThis.fetch;
+  const html404 = `<!DOCTYPE HTML>
+<html lang="en">
+<head><title>Error response</title></head>
+<body><h1>Error response</h1><p>Error code: 404</p><p>Message: File not found.</p></body>
+</html>`;
+
+  try {
+    for (const [label, PM] of [
+      ['chrome', ProviderManagerCh],
+      ['firefox', ProviderManagerFx],
+    ]) {
+      globalThis.fetch = async () => new Response(html404, {
+        status: 404,
+        statusText: 'File not found',
+        headers: { 'Content-Type': 'text/html' },
+      });
+
+      const mgr = new PM();
+      const config = {
+        ...mgr._defaultConfigs().vllm,
+        baseUrl: 'http://127.0.0.1:8000',
+      };
+      mgr.providers.set('vllm', mgr._createProvider('vllm', config));
+
+      const result = await mgr.listProviderModels('vllm');
+      assert.equal(result.ok, false, `${label}: HTML 404 should fail`);
+      assert.equal(result.errorKey, 'ob.tokens.none_status', `${label}: HTML 404 should carry a localizable error key`);
+      assert.equal(result.error, 'No local model server was detected.', `${label}: HTML 404 should use concise fallback text`);
+      assert.doesNotMatch(result.error, /<!DOCTYPE|<html|File not found/, `${label}: HTML body should not leak into the UI error`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

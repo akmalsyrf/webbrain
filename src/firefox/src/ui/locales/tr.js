@@ -226,6 +226,7 @@ export default {
   'st.providers.load_models': 'Modelleri yükle',
   'st.providers.loading': 'Yükleniyor…',
   'st.providers.models_loaded': '{count} model yüklendi',
+  'st.providers.select_loaded_model': 'Yüklenen modeli seç',
 
   'st.provider.field.server_url': 'Sunucu URL\'si',
   'st.provider.field.api_base_url': 'API temel URL\'si',
@@ -504,4 +505,29 @@ export default {
   'sp.compact.failed': 'Bağlam sıkıştırma başarısız oldu: {error}',
   'tool.inspect_element_styles': 'Stiller inceleniyor',
   'tool.read_page_source': 'Sayfa kaynağı okunuyor',
+
+
+  // --- Missing translations added by translation script ---
+  'sp.record.mic_unavailable': 'Mikrofon kullanılamıyor: {error}. Kayıt yalnızca sekme sesi ve videosuyla başlatıldı.',
+  'sp.slash.full_page_screenshot': 'Sayfanın tamamını yakala',
+  'sp.plan.title': 'Planı incele',
+  'sp.plan.approve': 'Onayla ve çalıştır',
+  'sp.plan.cancel': 'İptal',
+  'sp.plan.edit_hint': 'İsteğe bağlı: onaylamadan önce planı düzenle',
+  'sp.plan.approved': 'Plan onaylandı — çalıştırılıyor…',
+  'sp.plan.cancelled': 'Plan iptal edildi.',
+  'sp.plan.expired': 'Bu plan artık inceleme beklenmiyor — çalıştırma iptal edildi.',
+  'sp.slash.busy_only_oob': 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
+  'tool.go_back': 'Geri gidiliyor',
+  'tool.go_forward': 'İleri gidiliyor',
+  'st.display.search.placeholder': 'Genel ayarları ara',
+  'st.display.search.empty': 'Eşleşen Genel ayar yok.',
+  'st.display.advanced': 'Gelişmiş',
+  'st.display.api_mutation_observer.label': 'API mutasyon gözlemcisi',
+  'st.display.api_mutation_observer.desc': 'WebBrain\'in tekrarlanan UI eylemlerini tespit etmesi ve API kısayol kalıpları önermesi için aynı sekmedeki XHR/fetch istek URL\'lerini ve yöntemlerini gözlemle. Varsayılan olarak kapalı; yalnızca kısayol davranışını veya gecikmeyi araştırırken etkinleştir.',
+  'st.display.plan_before_act.label': 'Eylemden önce planla',
+  'st.display.plan_before_act.desc': 'Aktif modunda, araçlar çalışmadan önce isteğe bağlı olarak yapılandırılmış bir plan oluştur. Varsayılan olarak kapalı. Dene modu planlama başarısız olursa sabit bir plan olmadan devam eder; katı mod iptal eder. Etkinleştirildiğinde her Aktif turda bir LLM çağrısı ekler.',
+  'st.display.plan_before_act.try': 'Planlamayı dene',
+  'st.display.plan_before_act.strict': 'Katı planlama',
+  'st.display.plan_before_act.off': 'Kapalı (varsayılan)',
 };
