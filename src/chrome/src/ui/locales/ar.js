@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'تحميل النماذج',
   'st.providers.loading': 'جارٍ التحميل…',
   'st.providers.models_loaded': 'تم تحميل {count} نموذجًا',
+  'st.providers.select_loaded_model': 'اختر النموذج المحمّل',
 
   'st.provider.field.server_url': 'عنوان الخادم',
   'st.provider.field.api_base_url': 'عنوان API الأساسي',

@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': '加载模型',
   'st.providers.loading': '加载中…',
   'st.providers.models_loaded': '已加载 {count} 个模型',
+  'st.providers.select_loaded_model': '选择已加载的模型',
 
   'st.provider.field.server_url': '服务器 URL',
   'st.provider.field.api_base_url': 'API 基础 URL',

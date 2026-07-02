@@ -196,6 +196,7 @@ export default {
   'st.providers.load_models': 'Muatkan model',
   'st.providers.loading': 'Memuatkan…',
   'st.providers.models_loaded': '{count} model dimuatkan',
+  'st.providers.select_loaded_model': 'Pilih model yang dimuatkan',
 
   'st.provider.field.server_url': 'URL pelayan',
   'st.provider.field.api_base_url': 'URL asas API',

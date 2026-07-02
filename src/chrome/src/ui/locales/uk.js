@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'Завантажити моделі',
   'st.providers.loading': 'Завантаження…',
   'st.providers.models_loaded': 'Завантажено моделей: {count}',
+  'st.providers.select_loaded_model': 'Виберіть завантажену модель',
 
   'st.provider.field.server_url': 'URL сервера',
   'st.provider.field.api_base_url': 'Базовий URL API',

@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'โหลดโมเดล',
   'st.providers.loading': 'กำลังโหลด…',
   'st.providers.models_loaded': 'โหลดแล้ว {count} โมเดล',
+  'st.providers.select_loaded_model': 'เลือกโมเดลที่โหลดแล้ว',
 
   'st.provider.field.server_url': 'URL เซิร์ฟเวอร์',
   'st.provider.field.api_base_url': 'URL ฐานของ API',

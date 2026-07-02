@@ -6087,8 +6087,15 @@ test('settings async test controls surface rejected background results', () => {
       /document\.querySelectorAll\('\.loaded-model-select'\)\.forEach\(sel => \{[\s\S]*?sel\.addEventListener\('change', \(\) => \{[\s\S]*?const providerId = sel\.dataset\.loadedModelsFor;[\s\S]*?input\.value = sel\.value;[\s\S]*?\}\);[\s\S]*?\}\);/,
       `${label}: selecting a loaded model should write it back to the provider model input`,
     );
-    const locale = fs.readFileSync(path.join(ROOT, label === 'chrome' ? 'src/chrome/src/ui/locales/en.js' : 'src/firefox/src/ui/locales/en.js'), 'utf8');
-    assert.match(locale, /'st\.providers\.select_loaded_model': 'Select loaded model'/, `${label}: loaded-model selector copy should be localized`);
+    const localeDir = path.join(ROOT, label === 'chrome' ? 'src/chrome/src/ui/locales' : 'src/firefox/src/ui/locales');
+    for (const filename of fs.readdirSync(localeDir).filter((name) => name.endsWith('.js'))) {
+      const locale = fs.readFileSync(path.join(localeDir, filename), 'utf8');
+      assert.match(
+        locale,
+        /['"]st\.providers\.select_loaded_model['"]:\s*['"][^'"]+['"]/,
+        `${label}/${filename}: loaded-model selector copy should be localized`,
+      );
+    }
   }
 });
 

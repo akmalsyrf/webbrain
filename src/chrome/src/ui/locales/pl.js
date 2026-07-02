@@ -311,6 +311,7 @@ export default {
   'st.providers.load_models': 'Załaduj modele',
   'st.providers.loading': 'Ładowanie…',
   'st.providers.models_loaded': 'Załadowano {count} modeli',
+  'st.providers.select_loaded_model': 'Wybierz załadowany model',
   'st.providers.get_api_key': 'Uzyskaj klucz API',
   'st.providers.webbrain_note.body': 'Darmowe dzienne korzystanie z WebBrain Cloud jest wliczone. Żądania przechodzą przez api.webbrain.one; domyślnie rejestrujemy metadane na potrzeby limitów i debugowania, a nie tekst poleceń, treść stron, zrzuty ekranu ani odpowiedzi modelu. {privacyLink}. Aby korzystać więcej, subskrybuj na {subscribeLink}. Zarządzaj rozliczeniami na {accountLink}.',
   'st.providers.webbrain_note.privacy_link': 'Polityka prywatności',

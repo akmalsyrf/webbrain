@@ -226,6 +226,7 @@ export default {
   'st.providers.load_models': 'Modelleri yükle',
   'st.providers.loading': 'Yükleniyor…',
   'st.providers.models_loaded': '{count} model yüklendi',
+  'st.providers.select_loaded_model': 'Yüklenen modeli seç',
 
   'st.provider.field.server_url': 'Sunucu URL\'si',
   'st.provider.field.api_base_url': 'API temel URL\'si',

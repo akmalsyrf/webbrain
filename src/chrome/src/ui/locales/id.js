@@ -198,6 +198,7 @@ export default {
   'st.providers.load_models': 'Muat model',
   'st.providers.loading': 'Memuat…',
   'st.providers.models_loaded': '{count} model dimuat',
+  'st.providers.select_loaded_model': 'Pilih model yang dimuat',
 
   'st.provider.field.server_url': 'URL server',
   'st.provider.field.api_base_url': 'URL dasar API',
