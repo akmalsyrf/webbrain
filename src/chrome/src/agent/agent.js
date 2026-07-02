@@ -9687,10 +9687,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (mode === 'act') {
       await this._ensureProgressSessionForCurrentTask(tabId, { provider, costState });
     }
-    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
     const tier = provider.promptTier;
     const skillTools = this._skillToolDefinitions(mode, tier);
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier, visionAvailable, skillTools });
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier, skillTools });
     const allowedToolNames = new Set(tools.map(t => t.function.name));
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;
@@ -10051,10 +10050,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (mode === 'act') {
       await this._ensureProgressSessionForCurrentTask(tabId, { provider, costState });
     }
-    const visionAvailable = !!(provider?.supportsVision) || !!(await this.providerManager.getVisionProvider());
     const tier = provider.promptTier;
     const skillTools = this._skillToolDefinitions(mode, tier);
-    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier, visionAvailable, skillTools });
+    const tools = getToolsForMode(mode, { strictSecretMode: this.strictSecretMode, tier, skillTools });
     const allowedToolNames = new Set(tools.map(t => t.function.name));
     const plannerTemperature = mode === 'act' ? 0.15 : 0.3;
     let steps = 0;

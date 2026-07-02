@@ -2808,6 +2808,7 @@ test('agent runtime warnings preserve injected auto-screenshot recovery guidance
     assert.match(agent, /injected visual context only when it explicitly says image pixels map 1:1 to click\(x,y\)/, `[${label}] normalized-coordinate warning should explain when visual pixels are safe for clicking`);
     assert.doesNotMatch(agent, /take a fresh screenshot and look more carefully at element positions/, `[${label}] runtime warnings should not describe auto_screenshot as a callable screenshot tool`);
     assert.doesNotMatch(agent, /inspect layout with get_accessibility_tree or inspect_element_styles/, `[${label}] coordinate warning should not drop visual recovery guidance`);
+    assert.doesNotMatch(agent, /getToolsForMode\(mode,\s*\{[^}]*\bvisionAvailable\b/s, `[${label}] getToolsForMode call sites should not compute/pass ignored visionAvailable`);
   }
 });
 
@@ -14405,6 +14406,8 @@ test('planner: prompt treats page context as untrusted data', () => {
   assert.match(PLANNER_SYSTEM_PROMPT, /ignore previous instructions/);
   assert.match(PLANNER_SYSTEM_PROMPT, /bounded batches/);
   assert.match(PLANNER_SYSTEM_PROMPT, /wait_for_stable pacing/);
+  assert.match(PLANNER_SYSTEM_PROMPT, /read: get_accessibility_tree, read_page, extract_data, fetch_url, research_url/);
+  assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /read:[^\n]*\bscreenshot\b/);
   assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /BULK API MUTATION PATTERN/);
   assert.doesNotMatch(PLANNER_SYSTEM_PROMPT, /sample exactly one fetch_url replay/);
   assert.equal(PLANNER_SYSTEM_PROMPT_FX, PLANNER_SYSTEM_PROMPT);

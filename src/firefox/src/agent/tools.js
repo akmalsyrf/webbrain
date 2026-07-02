@@ -929,7 +929,6 @@ const DONE_TOOL_STRICT_WITH_OUTCOME = {
  *
  * `opts.compact` shrinks Act mode to COMPACT_TOOL_NAMES.
  * `opts.strictSecretMode` swaps in the strict `done` description.
- * `opts.strictSecretMode` swaps in the strict `done` description.
  */
 export function getToolsForMode(mode, opts = {}) {
   // Back-compat: callers used to pass `compact: true/false`; the tier knob
