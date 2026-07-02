@@ -4,6 +4,21 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [19.2.0] - 2026-07-02
+
+### Added
+- Added a Chrome and Firefox side-panel message queue so normal composer messages sent while WebBrain is busy are kept per tab, shown above the composer, and can be edited or deleted before they run.
+
+### Changed
+- Kept `/help`, `/show-scratchpad`, `/list-schedules`, `/screenshot`, `/export`, and `/verbose` available as immediate slash commands during active runs while other slash commands show the queued-message busy notice.
+- Updated release metadata, Settings subtitle versions, Chrome / Firefox manifests, package versions, and browser architecture docs for 19.2.0.
+
+### Fixed
+- Fixed queued-message editing so pressing ArrowUp in an empty composer pulls the latest queued message back into the composer before it runs.
+
+### Tests
+- Added Chrome and Firefox regression coverage for busy-run message queueing, queued-message edit/delete controls, per-tab queue draining, safe busy slash commands, and localized busy notices.
+
 ## [19.1.0] - 2026-07-02
 
 ### Added

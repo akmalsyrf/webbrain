@@ -517,7 +517,7 @@ export default {
   'sp.plan.approved': 'Plan onaylandı — çalıştırılıyor…',
   'sp.plan.cancelled': 'Plan iptal edildi.',
   'sp.plan.expired': 'Bu plan artık inceleme beklenmiyor — çalıştırma iptal edildi.',
-  'sp.slash.busy_only_oob': 'WebBrain meşgulken yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose çalışabilir. Çalıştırmayı durdurun veya bittiğinde tekrar deneyin.',
+  'sp.slash.busy_only_oob': 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
   'tool.go_back': 'Geri gidiliyor',
   'tool.go_forward': 'İleri gidiliyor',
   'st.display.search.placeholder': 'Genel ayarları ara',

@@ -516,7 +516,7 @@ export default {
   'sp.plan.approved': 'Plan approuvé — exécution…',
   'sp.plan.cancelled': 'Plan annulé.',
   'sp.plan.expired': 'Ce plan n\'est plus en attente de révision — l\'exécution a été annulée.',
-  'sp.slash.busy_only_oob': 'Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent fonctionner pendant que WebBrain est occupé. Arrêtez l\'exécution ou réessayez quand il a terminé.',
+  'sp.slash.busy_only_oob': 'Les messages sont mis en file d\'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent s\'exécuter immédiatement comme commandes slash.',
   'tool.go_back': 'Revenir en arrière',
   'tool.go_forward': 'Aller en avant',
   'st.display.search.placeholder': 'Rechercher dans les paramètres généraux',

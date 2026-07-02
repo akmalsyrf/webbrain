@@ -313,6 +313,7 @@ const modeActBtn = document.getElementById('btn-mode-act');
 const actWarning = document.getElementById('act-warning');
 const inputArea = document.getElementById('input-area');
 const slashCommandMenuEl = document.getElementById('slash-command-menu');
+const queuedMessagesEl = document.getElementById('queued-messages');
 const recommendedActionsEl = document.getElementById('recommended-actions');
 const recommendedActionsToggleEl = document.getElementById('recommended-actions-toggle');
 const recommendedActionsListEl = document.getElementById('recommended-actions-list');
@@ -536,6 +537,8 @@ const tabChats = new Map();
 const TAB_CHAT_PREFIX = 'tabChat:';
 const tabChatOperations = new Map();
 const tabInputDrafts = new Map();
+const queuedComposerMessagesByTab = new Map();
+let queuedComposerMessageSeq = 0;
 
 function enqueueTabChatOperation(tabId, fn) {
   const numericTabId = Number(tabId);
@@ -655,9 +658,175 @@ function restoreInputDraftForTab(tabId) {
   syncSendButtonState();
 }
 
+function sameTabId(a, b) {
+  return a != null && b != null && String(a) === String(b);
+}
+
+function getQueuedComposerMessages(tabId) {
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return [];
+  return queuedComposerMessagesByTab.get(numericTabId) || [];
+}
+
+function setQueuedComposerMessages(tabId, messages) {
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return;
+  if (messages.length) {
+    queuedComposerMessagesByTab.set(numericTabId, messages);
+  } else {
+    queuedComposerMessagesByTab.delete(numericTabId);
+  }
+  if (sameTabId(currentTabId, numericTabId)) renderQueuedComposerMessages(numericTabId);
+}
+
+function queuedComposerButton(className, action, queueId, labelKey, svgPath) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `queued-message-action ${className}`;
+  btn.dataset.queueAction = action;
+  btn.dataset.queueId = queueId;
+  btn.title = t(labelKey);
+  btn.setAttribute('aria-label', t(labelKey));
+  btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${svgPath}</svg>`;
+  return btn;
+}
+
+function renderQueuedComposerMessages(tabId = currentTabId) {
+  if (!queuedMessagesEl) return;
+  const messages = getQueuedComposerMessages(tabId);
+  queuedMessagesEl.replaceChildren();
+  queuedMessagesEl.classList.toggle('hidden', messages.length === 0);
+  if (!messages.length) return;
+
+  messages.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'queued-message';
+    row.dataset.queueId = item.id;
+    row.setAttribute('role', 'listitem');
+
+    const label = document.createElement('span');
+    label.className = 'queued-message-label';
+    label.textContent = messages.length > 1
+      ? t('sp.queue.label_numbered', { index: index + 1 })
+      : t('sp.queue.label');
+
+    const text = document.createElement('span');
+    text.className = 'queued-message-text';
+    text.textContent = item.text;
+    text.title = item.text;
+
+    const edit = queuedComposerButton(
+      'queued-message-edit',
+      'edit',
+      item.id,
+      'sp.queue.edit',
+      '<path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path>',
+    );
+    const remove = queuedComposerButton(
+      'queued-message-delete',
+      'delete',
+      item.id,
+      'sp.queue.delete',
+      '<path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>',
+    );
+
+    row.append(label, text, edit, remove);
+    queuedMessagesEl.appendChild(row);
+  });
+}
+
+function shiftQueuedComposerMessage(tabId) {
+  const queue = getQueuedComposerMessages(tabId);
+  if (!queue.length) return null;
+  const [item, ...remaining] = queue;
+  setQueuedComposerMessages(tabId, remaining);
+  return item;
+}
+
+function removeQueuedComposerMessage(tabId, queueId) {
+  const queue = getQueuedComposerMessages(tabId);
+  const index = queue.findIndex((item) => item.id === queueId);
+  if (index === -1) return null;
+  const nextQueue = queue.slice();
+  const [item] = nextQueue.splice(index, 1);
+  setQueuedComposerMessages(tabId, nextQueue);
+  return item;
+}
+
+function enqueueQueuedComposerMessage(tabId, text) {
+  const numericTabId = Number(tabId);
+  const queuedText = String(text || '').trim();
+  if (!Number.isFinite(numericTabId) || !queuedText) return false;
+  const queue = getQueuedComposerMessages(numericTabId).slice();
+  queue.push({
+    id: `queued-${Date.now()}-${++queuedComposerMessageSeq}`,
+    text: queuedText,
+  });
+  setQueuedComposerMessages(numericTabId, queue);
+  if (sameTabId(currentTabId, numericTabId)) {
+    saveInputDraftForTab(numericTabId, '');
+    hideSlashCommandAutocomplete();
+    inputEl.value = '';
+    autoResizeInput();
+    syncSendButtonState();
+  }
+  return true;
+}
+
+function editQueuedComposerMessage(tabId, queueId) {
+  if (!sameTabId(currentTabId, tabId)) return;
+  const item = removeQueuedComposerMessage(tabId, queueId);
+  if (!item) return;
+  inputEl.value = item.text;
+  saveInputDraftForTab(tabId, item.text);
+  autoResizeInput();
+  updateSlashCommandAutocomplete();
+  syncSendButtonState();
+  inputEl.focus();
+  inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+}
+
+function editLastQueuedComposerMessageForCurrentTab() {
+  if (!inputEl || currentTabId == null) return false;
+  const atStart = inputEl.selectionStart === 0 && inputEl.selectionEnd === 0;
+  if (inputEl.value.trim() || !atStart) return false;
+  const queue = getQueuedComposerMessages(currentTabId);
+  const item = queue[queue.length - 1];
+  if (!item) return false;
+  editQueuedComposerMessage(currentTabId, item.id);
+  return true;
+}
+
+function deleteQueuedComposerMessage(tabId, queueId) {
+  removeQueuedComposerMessage(tabId, queueId);
+}
+
+function clearQueuedComposerMessagesForTab(tabId) {
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return;
+  queuedComposerMessagesByTab.delete(numericTabId);
+  if (sameTabId(currentTabId, numericTabId)) renderQueuedComposerMessages(numericTabId);
+}
+
+function drainQueuedComposerMessageForCurrentTab() {
+  if (isProcessing || currentTabId == null || renderedTabId !== currentTabId) return false;
+  if (inputEl.value.trim()) return false;
+  const item = shiftQueuedComposerMessage(currentTabId);
+  if (!item) return false;
+  inputEl.value = item.text;
+  autoResizeInput();
+  updateSlashCommandAutocomplete();
+  syncSendButtonState();
+  Promise.resolve().then(() => sendMessage()).catch((e) => {
+    addMessage('error', t('sp.error_prefix', { msg: e?.message || String(e) }));
+  });
+  return true;
+}
+
 function renderClearedConversationForTab(tabId) {
   clearCachedTabChat(tabId);
   saveInputDraftForTab(tabId, '');
+  clearQueuedComposerMessagesForTab(tabId);
   setApiMutationsAllowedForTab(tabId, false);
   if (currentTabId !== tabId) return;
   renderedTabId = tabId;
@@ -954,6 +1123,7 @@ async function scheduledJobAction(action, jobId) {
 }
 
 async function drainQueuedContextMenuPromptsAfterPendingTabSwitch() {
+  if (drainQueuedComposerMessageForCurrentTab()) return;
   if (pendingTabSwitch == null) {
     drainQueuedContextMenuPrompts();
     return;
@@ -966,6 +1136,7 @@ async function drainQueuedContextMenuPromptsAfterPendingTabSwitch() {
     // Still drain any queued prompt for the current tab; tab activation can fail
     // when the underlying browser tab disappears during run settlement.
   }
+  if (drainQueuedComposerMessageForCurrentTab()) return;
   drainQueuedContextMenuPrompts();
 }
 
@@ -1585,6 +1756,7 @@ async function switchToTab(newTabId) {
       addMessage('system', t('sp.help_message'));
     }
     restoreInputDraftForTab(newTabId);
+    renderQueuedComposerMessages(newTabId);
     scrollToBottom();
     refreshScheduledJobs({ tabId: newTabId });
     refreshRecommendedActions();
@@ -2168,8 +2340,12 @@ function syncSendButtonState() {
     sendBtn.disabled = false;
     return;
   }
-  const draft = normalizeScreenshotCommandText(inputEl?.value || '');
-  sendBtn.disabled = !isOutOfBandSlashDraft(draft);
+  const draft = normalizeScreenshotCommandText(inputEl?.value || '').trim();
+  if (!draft) {
+    sendBtn.disabled = true;
+    return;
+  }
+  sendBtn.disabled = draft.startsWith('/') && !isOutOfBandSlashDraft(draft);
 }
 
 function showBusySlashCommandNotice() {
@@ -2400,24 +2576,27 @@ async function sendMessage(extraChatParams) {
   const tabId = currentTabId;
   text = normalizeScreenshotCommandText(text);
   if (isProcessing) {
-    if (!isOutOfBandSlashDraft(text)) {
+    if (isOutOfBandSlashDraft(text)) {
+      saveInputDraftForTab(tabId, '');
+      hideSlashCommandAutocomplete();
+      inputEl.value = '';
+      autoResizeInput();
+      syncSendButtonState();
+      await parseSlashCommands(text, tabId);
+      if (currentTabId === tabId) {
+        if (!inputEl.value.trim() || inputEl.value.trim() === text) {
+          inputEl.value = '';
+          autoResizeInput();
+        }
+        syncSendButtonState();
+      }
+      return true;
+    }
+    if (text.startsWith('/')) {
       showBusySlashCommandNotice();
       return false;
     }
-    saveInputDraftForTab(tabId, '');
-    hideSlashCommandAutocomplete();
-    inputEl.value = '';
-    autoResizeInput();
-    syncSendButtonState();
-    await parseSlashCommands(text, tabId);
-    if (currentTabId === tabId) {
-      if (!inputEl.value.trim() || inputEl.value.trim() === text) {
-        inputEl.value = '';
-        autoResizeInput();
-      }
-      syncSendButtonState();
-    }
-    return true;
+    return enqueueQueuedComposerMessage(tabId, text);
   }
   const modeForSend = /^\/(?:ask|plan)\b/i.test(text) ? 'ask' : agentMode;
   const apiMutationsAllowedForSend = isApiMutationsAllowedForTab(tabId) || /^\/allow-api\b/i.test(text);
@@ -3679,8 +3858,24 @@ stopBtn.addEventListener('click', async () => {
 
 sendBtn.addEventListener('click', sendMessage);
 
+queuedMessagesEl?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-queue-action][data-queue-id]');
+  if (!btn) return;
+  const action = btn.dataset.queueAction;
+  const queueId = btn.dataset.queueId;
+  if (action === 'edit') {
+    editQueuedComposerMessage(currentTabId, queueId);
+  } else if (action === 'delete') {
+    deleteQueuedComposerMessage(currentTabId, queueId);
+  }
+});
+
 inputEl.addEventListener('keydown', (e) => {
   if (handleSlashCommandKeydown(e)) return;
+  if (e.key === 'ArrowUp' && editLastQueuedComposerMessageForCurrentTab()) {
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
@@ -3693,6 +3888,7 @@ inputEl.addEventListener('focus', updateSlashCommandAutocomplete);
 inputEl.addEventListener('blur', () => setTimeout(hideSlashCommandAutocomplete, 120));
 document.addEventListener('wb-locale-changed', () => {
   if (slashCommandMatches.length) renderSlashCommandAutocomplete();
+  renderQueuedComposerMessages();
 });
 
 clearBtn.addEventListener('click', async () => {
