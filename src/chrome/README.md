@@ -70,6 +70,7 @@ llama-server -m your-model.gguf --port 8080
 # Or using Ollama (OpenAI-compatible)
 ollama serve
 # Then set base URL to http://localhost:11434/v1 in settings
+# Or run: ollama launch webbrain --model <model>
 
 # Or using Jan, vLLM, or SGLang (OpenAI-compatible)
 # Jan: http://localhost:1337/v1

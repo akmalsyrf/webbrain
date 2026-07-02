@@ -231,6 +231,12 @@ const { inferContextWindow: inferContextWindowCh } = await import(
 const { inferContextWindow: inferContextWindowFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/context-windows.js').replace(/\\/g, '/')
 );
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/ollama-handoff.js').replace(/\\/g, '/')
+);
+const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/ollama-handoff.js').replace(/\\/g, '/')
+);
 const { OpenAICompatibleProvider: OpenAIProviderCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/openai.js').replace(/\\/g, '/')
 );
@@ -8695,6 +8701,68 @@ test('inferContextWindow: model-aware cloud/router defaults and local 16k fallba
     assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-max' }), 32768);
     assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-plus' }), 1000000);
     assert.equal(infer({ category: 'cloud', providerName: 'unknown', model: 'whatever' }), 128000);
+  }
+});
+
+test('Ollama launch handoff normalizes safe loopback /v1 provider config', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    const handoff = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://localhost:11434/v1/',
+      contextWindow: '131072',
+    });
+    assert.equal(handoff.providerId, 'ollama');
+    assert.equal(handoff.model, 'qwen3:8b');
+    assert.equal(handoff.baseUrl, 'http://localhost:11434/v1');
+    assert.equal(handoff.contextWindow, 131072);
+    assert.deepEqual(handoff.config, {
+      type: 'openai',
+      category: 'local',
+      label: 'Ollama (Local)',
+      providerName: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'qwen3:8b',
+      contextWindow: 131072,
+      apiKey: 'ollama',
+      supportsVision: true,
+      promptTier: 'mid',
+      enabled: true,
+    });
+  }
+});
+
+test('Ollama launch handoff rejects unsafe base URLs and clamps context', () => {
+  for (const normalize of [normalizeOllamaLaunchHandoffCh, normalizeOllamaLaunchHandoffFx]) {
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'https://evil.example/v1' }),
+      /loopback/
+    );
+    assert.throws(
+      () => normalize({ model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/api' }),
+      /\/v1/
+    );
+    assert.throws(
+      () => normalize({ model: 'bad\nmodel', baseUrl: 'http://127.0.0.1:11434/v1' }),
+      /model/
+    );
+    const clamped = normalize({
+      model: 'qwen3:8b',
+      baseUrl: 'http://127.0.0.1:11434',
+      contextWindow: '9999999',
+    });
+    assert.equal(clamped.baseUrl, 'http://127.0.0.1:11434/v1');
+    assert.equal(clamped.contextWindow, 1048576);
+  }
+});
+
+test('Ollama launch handoff content script is shipped in both manifests', () => {
+  for (const manifestPath of ['src/chrome/manifest.json', 'src/firefox/manifest.json']) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, manifestPath), 'utf8'));
+    const scripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
+    assert.ok(
+      scripts.includes('src/content/ollama-launch-handoff.js'),
+      `${manifestPath}: expected Ollama launch handoff content script`
+    );
   }
 });
 

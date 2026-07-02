@@ -60,7 +60,7 @@ Six local providers are enabled by default with no API key needed unless the
 local server was started with auth:
 
 - **llama.cpp**: `http://localhost:8080` — runs `llama-server -m model.gguf`
-- **Ollama**: `http://localhost:11434/v1` — `ollama serve`
+- **Ollama**: `http://localhost:11434/v1` — `ollama serve`, or `ollama launch webbrain --model <model>`
 - **LM Studio**: `http://localhost:1234/v1` — LM Studio's local inference server
 - **Jan**: `http://localhost:1337/v1` — Jan's local OpenAI-compatible API server
 - **vLLM**: `http://localhost:8000/v1` — vLLM's OpenAI-compatible server
