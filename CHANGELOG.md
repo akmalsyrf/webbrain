@@ -4,6 +4,16 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [20.1.0] - 2026-07-03
+
+### Changed
+- Raised the built-in WebBrain Cloud provider context window to 1,000,000 tokens in Chrome and Firefox, while migrating stored legacy 256k configs forward without dropping saved API keys.
+- Scaled the agent's soft context character and message budgets from the active provider token budget, so 1M-context providers no longer compact at the legacy 80k-character or 50-message limits.
+- Updated release metadata, Settings subtitle versions, Chrome / Firefox manifests, package versions, and browser architecture docs for 20.1.0.
+
+### Tests
+- Added Chrome and Firefox regression coverage for the WebBrain Cloud 1M default, legacy context-window migration, adaptive character/message context budgets, and large-window conversations avoiding premature compaction.
+
 ## [20.0.0] - 2026-07-03
 
 ### Added
