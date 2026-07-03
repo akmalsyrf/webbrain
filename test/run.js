@@ -696,6 +696,8 @@ test('matches wordpress wp-admin on any host', () => {
 test('matches mastodon profile and interaction URLs on any host', () => {
   const urls = [
     'https://mastoturk.org/@discon@types.pl',
+    'https://mastodon.social/@Gargron',
+    'https://mastodon.example/@alice',
     'https://mastodon.social/@Gargron/123456789012345678',
     'https://example.social/@alice@example.net',
     'https://example.social/@alice/123456789012345678',

@@ -58,15 +58,19 @@ function normalizedHostname(hostname) {
 // Bare /@user and /users/user routes are too common on non-Mastodon sites.
 // Future work: verify candidate hosts through page/source signals, or through
 // https://instances.social/api/doc/ via a skill or known-instances list.
-function isLikelyMastodonUsersPathHost(hostname) {
+function isLikelyMastodonHost(hostname) {
   const host = normalizedHostname(hostname);
   return host === 'mastodon.social' || host.startsWith('mastodon.');
+}
+
+function isMastodonLocalProfilePath(hostname, path) {
+  return isLikelyMastodonHost(hostname) && /^\/@[A-Za-z0-9_]+\/?$/.test(path);
 }
 
 function isMastodonUsersPath(hostname, path) {
   const match = /^\/users\/[A-Za-z0-9_]+(\/statuses\/[A-Za-z0-9._:-]+)?\/?$/.exec(path);
   if (!match) return false;
-  return Boolean(match[1]) || isLikelyMastodonUsersPathHost(hostname);
+  return Boolean(match[1]) || isLikelyMastodonHost(hostname);
 }
 
 function isMastodonRemoteUsersPath(path) {
@@ -96,7 +100,8 @@ function isMastodonUrl(url) {
   const u = new URL(url);
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
   const path = safeDecodePath(u.pathname);
-  return /^\/@[A-Za-z0-9_]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/\d+)?\/?$/.test(path)
+  return isMastodonLocalProfilePath(u.hostname, path)
+    || /^\/@[A-Za-z0-9_]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/\d+)?\/?$/.test(path)
     || /^\/@[A-Za-z0-9_]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?\/\d+\/?$/.test(path)
     || isMastodonUsersPath(u.hostname, path)
     || hasMastodonInteractionSignal(u, path);
