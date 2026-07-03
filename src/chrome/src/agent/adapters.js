@@ -72,7 +72,8 @@ function isMastodonRemoteUri(value) {
     const remote = new URL(raw);
     if (remote.protocol !== 'http:' && remote.protocol !== 'https:') return false;
     const path = safeDecodePath(remote.pathname);
-    return /^\/@[A-Za-z0-9_]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?(?:\/\d+)?\/?$/.test(path);
+    return /^\/@[A-Za-z0-9_]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?(?:\/\d+)?\/?$/.test(path)
+      || /^\/users\/[A-Za-z0-9_]+(?:\/statuses\/[A-Za-z0-9._:-]+)?\/?$/.test(path);
   } catch (e) {
     return false;
   }

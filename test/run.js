@@ -703,6 +703,8 @@ test('matches mastodon profile and interaction URLs on any host', () => {
     'https://example.social/@alice/123456789012345678',
     'https://example.social/interact?uri=https%3A%2F%2Ftypes.pl%2F%40discon',
     'https://example.social/authorize_interaction?uri=acct%3Aalice%40types.pl',
+    'https://example.social/authorize_interaction?uri=https%3A%2F%2Ftypes.pl%2Fusers%2Fdiscon',
+    'https://example.social/interact?uri=https%3A%2F%2Ftypes.pl%2Fusers%2Fdiscon%2Fstatuses%2F123456789',
   ];
   for (const url of urls) {
     assert.equal(getActiveAdapter(url)?.name, 'mastodon', `chrome did not match ${url}`);
