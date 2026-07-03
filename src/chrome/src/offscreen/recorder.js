@@ -215,7 +215,9 @@
     }
     const chunks = [];
     let bytes = 0;
+    let dataEventCount = 0;
     recorder.ondataavailable = (e) => {
+      dataEventCount += 1;
       if (e.data && e.data.size > 0) {
         chunks.push(e.data);
         bytes += e.data.size;
@@ -241,6 +243,7 @@
       stopPromise: null,
       stopEventObserved: false,
       get bytes() { return bytes; },
+      get dataEventCount() { return dataEventCount; },
     };
     const activeSession = session;
     recorder.addEventListener('stop', () => {
@@ -339,30 +342,59 @@
   function waitForRecorderStop(s) {
     if (!s?.recorder) return Promise.resolve();
     if (s.stopPromise) return s.stopPromise;
-    if (s.recorder.state === 'inactive' && s.stopEventObserved) return Promise.resolve();
     s.stopPromise = new Promise((resolve) => {
       let done = false;
       let timeout = null;
+      let stopped = s.recorder.state === 'inactive';
+      let finalDataSettled = false;
+      const initialBytes = Number(s.bytes || 0);
       const finish = () => {
         if (done) return;
         done = true;
         s.stopEventObserved = true;
         if (timeout) clearTimeout(timeout);
-        try { s.recorder.removeEventListener('stop', finish); } catch {}
+        try { s.recorder.removeEventListener('stop', onStop); } catch {}
+        try { s.recorder.removeEventListener('dataavailable', onFinalDataAvailable); } catch {}
         resolve();
       };
-      try { s.recorder.addEventListener('stop', finish); } catch {}
+      const maybeFinish = () => {
+        if (stopped && finalDataSettled) finish();
+      };
+      const onStop = () => {
+        stopped = true;
+        maybeFinish();
+      };
+      const onFinalDataAvailable = (e) => {
+        if (e?.data && e.data.size > 0) {
+          finalDataSettled = true;
+        } else if (initialBytes > 0 || Number(s.bytes || 0) > 0) {
+          // A final dataavailable event can be empty when prior timeslices
+          // already flushed usable bytes. Treat that as settled, but never
+          // accept a zero-byte recording until the timeout fallback fires.
+          finalDataSettled = true;
+        }
+        maybeFinish();
+      };
+      try { s.recorder.addEventListener('stop', onStop); } catch {}
+      try { s.recorder.addEventListener('dataavailable', onFinalDataAvailable); } catch {}
       try { s.recorder.requestData(); } catch {}
       timeout = setTimeout(() => {
-        log('timed out waiting for MediaRecorder stop event; finalizing with collected chunks');
+        log('timed out waiting for MediaRecorder final data; finalizing with collected chunks', {
+          bytes: s.bytes,
+          dataEvents: s.dataEventCount,
+          stopped,
+        });
+        stopped = true;
+        finalDataSettled = true;
         finish();
-      }, 5000);
+      }, 2000);
       try {
-        if (s.recorder.state === 'inactive') finish();
+        if (s.recorder.state === 'inactive') stopped = true;
         else s.recorder.stop();
       } catch {
-        finish();
+        stopped = true;
       }
+      maybeFinish();
     });
     return s.stopPromise;
   }
