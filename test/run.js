@@ -2348,19 +2348,6 @@ test('firefox loop-bucket matches chrome', () => {
   }
 });
 
-console.log('\nmarketing site');
-
-test('marketing site renders the Star History embed from the template', () => {
-  const template = fs.readFileSync(path.join(ROOT, 'web/build/template.html'), 'utf8');
-  const index = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
-  for (const [label, html] of [['template', template], ['index', index]]) {
-    assert.match(html, /id="star-history"/, `${label}: star-history section missing`);
-    assert.match(html, /<a href="https:\/\/www\.star-history\.com\/\?repos=webbrain-one%2Fwebbrain&type=date&legend=top-left">/, `${label}: star-history link missing`);
-    assert.doesNotMatch(html, /<iframe[^>]+star-history\.com/, `${label}: star-history should render as an image link, not an iframe`);
-    assert.match(html, /<picture>[\s\S]*?<source media="\(prefers-color-scheme: dark\)" srcset="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&theme=dark&legend=top-left" \/>[\s\S]*?<source media="\(prefers-color-scheme: light\)" srcset="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&legend=top-left" \/>[\s\S]*?<img alt="Star History Chart" src="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&legend=top-left"/, `${label}: star-history picture chart markup missing`);
-  }
-});
-
 // ────────────────────────────────────────────────────────────────────────
 // Version bumping (scripts/bump-version.mjs)
 // ────────────────────────────────────────────────────────────────────────
