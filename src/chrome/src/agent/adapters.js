@@ -58,11 +58,15 @@ const NON_MASTODON_AT_PROFILE_HOSTS = new Set([
   'substack.com',
   'threads.com',
   'threads.net',
+  'tiktok.com',
 ]);
 
 function isNonMastodonAtProfileHost(hostname) {
-  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
-  return NON_MASTODON_AT_PROFILE_HOSTS.has(host);
+  const host = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  for (const blockedHost of NON_MASTODON_AT_PROFILE_HOSTS) {
+    if (host === blockedHost || host.endsWith(`.${blockedHost}`)) return true;
+  }
+  return false;
 }
 
 function isMastodonRemoteUri(value) {
