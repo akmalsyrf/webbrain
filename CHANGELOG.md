@@ -4,6 +4,11 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [20.4.0] - 2026-07-03
+
+### Changed
+- mastodon hardening, and  broader agent hardening around progress-ledger safety and malformed tool-call arguments
+
 ## [20.3.0] - 2026-07-03
 
 ### Changed
