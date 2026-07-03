@@ -114,6 +114,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>เปิดการแก้ไขผ่าน API</strong> สำหรับการสนทนานี้แล้ว เอเจนต์สามารถใช้ POST/PUT/PATCH/DELETE ผ่าน fetch_url และ execute_js เมื่อพิจารณาว่า API น่าเชื่อถือกว่า UI สำหรับขั้นตอนหนึ่ง โดย UI ยังคงเป็นค่าเริ่มต้น แฟล็กนี้จะถูกล้างเมื่อคุณรีเซ็ตการสนทนา',
   'sp.api.badge_html': '<span>🔓 อนุญาตการแก้ไขผ่าน API</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'กำลังอ่านหน้า',
   'tool.get_interactive_elements': 'กำลังสแกนองค์ประกอบโต้ตอบได้',
@@ -309,7 +310,7 @@ export default {
   "sp.perm.verb.download": "ดาวน์โหลดไฟล์จาก",
   "sp.perm.verb.upload": "อัปโหลดไฟล์ไปยัง",
   "sp.perm.verb.record": "บันทึกแท็บ (และไมโครโฟน) บน",
-  "sp.help_html": "<strong>คำสั่งสแลช</strong><br><code>/help</code> — แสดงรายการนี้<br><code>/edit-scratchpad &lt;text&gt;</code> — เพิ่มข้อความไปยังกระดานร่างปัจจุบัน<br><code>/clear-scratchpad</code> — ล้างกระดานร่างปัจจุบัน<br><code>/allow-api</code> — อนุญาตการแก้ไขผ่าน API สำหรับการสนทนานี้<br><code>/compact</code> — บีบอัดบริบทของการสนทนานี้<br><code>/verbose</code> — สลับการแสดงเครื่องมือแบบละเอียด/กระชับ<br><code>/reset</code> — ล้างการสนทนา<br><code>/screenshot</code> — จับภาพแท็บปัจจุบัน<br><code>/export</code> — ดาวน์โหลดการสนทนาเป็น Markdown<br><code>/profile</code> — สลับการกรอกโปรไฟล์อัตโนมัติ<br><code>/vision</code> — สลับโหมดการมองเห็นบนผู้ให้บริการที่ใช้งานอยู่",
+  "sp.help_html": "<strong>คำสั่งสแลช</strong><br><code>/help</code> — แสดงรายการนี้<br><code>/edit-scratchpad &lt;text&gt;</code> — เพิ่มข้อความไปยังกระดานร่างปัจจุบัน<br><code>/clear-scratchpad</code> — ล้างกระดานร่างปัจจุบัน<br><code>/allow-api</code> — อนุญาตการแก้ไขผ่าน API สำหรับการสนทนานี้<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — บีบอัดบริบทของการสนทนานี้<br><code>/verbose</code> — สลับการแสดงเครื่องมือแบบละเอียด/กระชับ<br><code>/reset</code> — ล้างการสนทนา<br><code>/screenshot</code> — จับภาพแท็บปัจจุบัน<br><code>/export</code> — ดาวน์โหลดการสนทนาเป็น Markdown<br><code>/profile</code> — สลับการกรอกโปรไฟล์อัตโนมัติ<br><code>/vision</code> — สลับโหมดการมองเห็นบนผู้ให้บริการที่ใช้งานอยู่",
   "sp.compact.verbose_on": "โหมดละเอียด <strong>เปิด</strong> — แสดง JSON ของการเรียกใช้เครื่องมือเต็มรูปแบบ",
   "sp.compact.verbose_off": "โหมดละเอียด <strong>ปิด</strong> — แสดงเครื่องมือแบบกระชับ",
   "sp.screenshot.error": "จับภาพหน้าจอไม่สำเร็จ: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.list_schedules': 'แสดงงานที่กำหนดเวลา',
   'sp.slash.show_scratchpad': 'แสดงสมุดบันทึกปัจจุบัน',
   'sp.slash.allow_api': 'อนุญาตการเปลี่ยนแปลง API สำหรับการสนทนานี้',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'บีบอัดบริบทการสนทนานี้',
   'sp.slash.verbose': 'สลับการแสดงเครื่องมือระหว่างละเอียดและกระชับ',
   'sp.slash.reset': 'ล้างการสนทนานี้',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'แผนได้รับการอนุมัติ — กำลังดำเนินการ…',
   'sp.plan.cancelled': 'แผนถูกยกเลิก',
   'sp.plan.expired': 'แผนนี้ไม่ได้รอการตรวจสอบอีกต่อไป — การดำเนินการถูกยกเลิก',
-  'sp.slash.busy_only_oob': 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
+  'sp.slash.busy_only_oob': 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
   'tool.go_back': 'กำลังย้อนกลับ',
   'tool.go_forward': 'กำลังไปข้างหน้า',
   'st.display.search.placeholder': 'ค้นหาการตั้งค่าทั่วไป',

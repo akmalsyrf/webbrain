@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>Mutaciones de API habilitadas</strong> en esta conversación. El agente ahora puede usar POST/PUT/PATCH/DELETE mediante fetch_url y execute_js cuando considere que la API es más fiable que la interfaz para un paso. La interfaz sigue siendo la opción por defecto. Este indicador se desactiva al reiniciar la conversación.',
   'sp.api.badge_html': '<span>🔓 Mutaciones de API permitidas</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Leyendo página',
   'tool.get_interactive_elements': 'Escaneando elementos interactivos',
@@ -320,7 +321,7 @@ export default {
   "sp.perm.verb.download": "descargar archivos de",
   "sp.perm.verb.upload": "subir un archivo a",
   "sp.perm.verb.record": "grabar la pestaña (y el micrófono) en",
-  "sp.help_html": "<strong>Comandos de barra</strong><br><code>/help</code> — Muestra esta lista<br><code>/clear-scratchpad</code> — Borrar el bloc de notas actual<br><code>/allow-api</code> — Permite mutaciones de API en esta conversación<br><code>/compact</code> — Compactar el contexto de esta conversación<br><code>/verbose</code> — Alterna entre vista de herramientas detallada/compacta<br><code>/reset</code> — Borra la conversación<br><code>/screenshot</code> — Captura la pestaña actual<br><code>/export</code> — Descarga la conversación como Markdown<br><code>/profile</code> — Alterna el autocompletado del perfil<br><code>/vision</code> — Alterna el modo de visión en el proveedor activo",
+  "sp.help_html": "<strong>Comandos de barra</strong><br><code>/help</code> — Muestra esta lista<br><code>/clear-scratchpad</code> — Borrar el bloc de notas actual<br><code>/allow-api</code> — Permite mutaciones de API en esta conversación<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Compactar el contexto de esta conversación<br><code>/verbose</code> — Alterna entre vista de herramientas detallada/compacta<br><code>/reset</code> — Borra la conversación<br><code>/screenshot</code> — Captura la pestaña actual<br><code>/export</code> — Descarga la conversación como Markdown<br><code>/profile</code> — Alterna el autocompletado del perfil<br><code>/vision</code> — Alterna el modo de visión en el proveedor activo",
   "sp.compact.verbose_on": "Modo detallado <strong>activado</strong>: se muestra el JSON completo de las llamadas a herramientas.",
   "sp.compact.verbose_off": "Modo detallado <strong>desactivado</strong>: vista de herramientas compacta.",
   "sp.screenshot.error": "Falló la captura de pantalla: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': 'Mostrar el bloc de notas actual',
   'sp.slash.clear_scratchpad': 'Borrar el bloc de notas actual',
   'sp.slash.allow_api': 'Permitir mutaciones de API en esta conversación',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Compactar el contexto de esta conversación',
   'sp.slash.verbose': 'Alternar entre vista de herramientas detallada o compacta',
   'sp.slash.reset': 'Borrar esta conversación',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'Plan aprobado — ejecutando…',
   'sp.plan.cancelled': 'Plan cancelado.',
   'sp.plan.expired': 'Este plan ya no está en espera de revisión — la ejecución fue cancelada.',
-  'sp.slash.busy_only_oob': 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
+  'sp.slash.busy_only_oob': 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
   'tool.go_back': 'Volviendo atrás',
   'tool.go_forward': 'Avanzando',
   'st.display.search.placeholder': 'Buscar en ajustes generales',

@@ -176,7 +176,7 @@
       "name": "It's asking me too many questions. Can I disable that?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Those approval prompts are for your safety. Even on sites you trust, malicious actors can mimic LLM instructions or inject content that tries to make the agent do things on your behalf that you would not approve. That is why WebBrain asks before consequential actions. If you still do not want to go through those prompts, you can disable them: open the side plugin, click the wheel icon in the header, go to the Permissions tab in settings.html, and switch off Ask before consequential actions."
+        "text": "Those approval prompts are for your safety. Even on sites you trust, malicious actors can mimic LLM instructions or inject content that tries to make the agent do things on your behalf that you would not approve. That is why WebBrain asks before consequential actions. If you still do not want to go through those prompts, type /dangerously-skip-permissions in the side panel, or open the side plugin, click the wheel icon in the header, go to the Permissions tab in settings.html, and switch off Ask before consequential actions."
       }
     },
     {
@@ -1479,6 +1479,32 @@
     }
 
     /* ================================================================
+       STAR HISTORY
+       ================================================================ */
+    .star-history-wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      box-shadow: 0 16px 48px var(--shadow-card);
+    }
+    .star-history-wrap a {
+      display: block;
+      min-width: 600px;
+    }
+    .star-history-wrap picture,
+    .star-history-wrap img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .star-history-wrap img {
+      border: 0;
+    }
+
+    /* ================================================================
        FAQ
        ================================================================ */
     .faq-list {
@@ -2223,6 +2249,23 @@
   </p>
 </section>
 
+<!-- STAR HISTORY -->
+<section class="section" id="star-history">
+  <div class="section-label">GitHub Stars</div>
+  <h2 class="section-title">WebBrain star history</h2>
+  <p class="section-subtitle">Track the repository&#39;s growth over time.</p>
+
+  <div class="star-history-wrap">
+    <a href="https://www.star-history.com/?repos=webbrain-one%2Fwebbrain&type=date&legend=top-left">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&theme=dark&legend=top-left" />
+        <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&legend=top-left" />
+        <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&legend=top-left" loading="lazy" />
+      </picture>
+    </a>
+  </div>
+</section>
+
 <!-- FAQ -->
 <section class="section" id="faq">
   <div class="section-label">FAQ</div>
@@ -2291,7 +2334,7 @@
 
     <details class="faq-item">
       <summary>It&#39;s asking me too many questions. Can I disable that?</summary>
-      <p>Those approval prompts are for your safety. Even on sites you trust, malicious actors can mimic LLM instructions or inject content that tries to make the agent do things on your behalf that you would not approve. That is why WebBrain asks before consequential actions. If you still do not want to go through those prompts, you can disable them: open the side plugin, click the wheel icon in the header, go to the <strong>Permissions</strong> tab in <code>settings.html</code>, and switch off <strong>Ask before consequential actions</strong>.</p>
+      <p>Those approval prompts are for your safety. Even on sites you trust, malicious actors can mimic LLM instructions or inject content that tries to make the agent do things on your behalf that you would not approve. That is why WebBrain asks before consequential actions. If you still do not want to go through those prompts, type <code>/dangerously-skip-permissions</code> in the side panel, or open the side plugin, click the wheel icon in the header, go to the <strong>Permissions</strong> tab in <code>settings.html</code>, and switch off <strong>Ask before consequential actions</strong>.</p>
     </details>
 
     <details class="faq-item">

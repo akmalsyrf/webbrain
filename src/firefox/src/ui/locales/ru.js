@@ -114,6 +114,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>Изменения через API включены</strong> для этого диалога. Агент теперь может использовать POST/PUT/PATCH/DELETE через fetch_url и execute_js, если посчитает API надёжнее интерфейса. По умолчанию используется интерфейс. Этот флаг сбрасывается при очистке диалога.',
   'sp.api.badge_html': '<span>🔓 Изменения через API разрешены</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Чтение страницы',
   'tool.get_interactive_elements': 'Сканирование интерактивных элементов',
@@ -309,7 +310,7 @@ export default {
   "sp.perm.verb.download": "скачивать файлы с",
   "sp.perm.verb.upload": "загрузить файл на",
   "sp.perm.verb.record": "записывать вкладку (и микрофон) на",
-  "sp.help_html": "<strong>Слэш-команды</strong><br><code>/help</code> — Показать этот список<br><code>/edit-scratchpad &lt;text&gt;</code> — Добавить текст в текущий блокнот<br><code>/clear-scratchpad</code> — Очистить текущий блокнот<br><code>/allow-api</code> — Разрешить изменения через API для этого диалога<br><code>/compact</code> — Сжать контекст этого диалога<br><code>/verbose</code> — Переключить подробный/компактный вид инструментов<br><code>/reset</code> — Очистить диалог<br><code>/screenshot</code> — Снять текущую вкладку<br><code>/export</code> — Скачать диалог в формате Markdown<br><code>/profile</code> — Переключить автозаполнение профиля<br><code>/vision</code> — Переключить режим зрения у активного провайдера",
+  "sp.help_html": "<strong>Слэш-команды</strong><br><code>/help</code> — Показать этот список<br><code>/edit-scratchpad &lt;text&gt;</code> — Добавить текст в текущий блокнот<br><code>/clear-scratchpad</code> — Очистить текущий блокнот<br><code>/allow-api</code> — Разрешить изменения через API для этого диалога<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Сжать контекст этого диалога<br><code>/verbose</code> — Переключить подробный/компактный вид инструментов<br><code>/reset</code> — Очистить диалог<br><code>/screenshot</code> — Снять текущую вкладку<br><code>/export</code> — Скачать диалог в формате Markdown<br><code>/profile</code> — Переключить автозаполнение профиля<br><code>/vision</code> — Переключить режим зрения у активного провайдера",
   "sp.compact.verbose_on": "Подробный режим <strong>включён</strong> — виден полный JSON вызовов инструментов.",
   "sp.compact.verbose_off": "Подробный режим <strong>выключен</strong> — компактный вид инструментов.",
   "sp.screenshot.error": "Не удалось сделать скриншот: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.list_schedules': 'Показать запланированные задачи',
   'sp.slash.show_scratchpad': 'Показать текущий блокнот',
   'sp.slash.allow_api': 'Разрешить изменения API для этого разговора',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Сжать контекст этого разговора',
   'sp.slash.verbose': 'Переключить подробный или компактный вид инструментов',
   'sp.slash.reset': 'Очистить этот разговор',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'План утверждён — выполняется…',
   'sp.plan.cancelled': 'План отменён.',
   'sp.plan.expired': 'Этот план больше не ожидает рассмотрения — запуск отменён.',
-  'sp.slash.busy_only_oob': 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
+  'sp.slash.busy_only_oob': 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
   'tool.go_back': 'Назад',
   'tool.go_forward': 'Вперёд',
   'st.display.search.placeholder': 'Поиск в общих настройках',

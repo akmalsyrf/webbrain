@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>Perubahan melalui API diaktifkan</strong> untuk percakapan ini. Agen kini dapat menggunakan POST/PUT/PATCH/DELETE melalui fetch_url dan execute_js bila menilai API lebih andal daripada UI untuk suatu langkah. UI tetap menjadi pilihan utama secara bawaan. Flag ini akan terhapus saat Anda mereset percakapan.',
   'sp.api.badge_html': '<span>🔓 Perubahan API diizinkan</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Membaca halaman',
   'tool.get_interactive_elements': 'Memindai elemen interaktif',
@@ -320,7 +321,7 @@ export default {
   "sp.perm.verb.download": "mengunduh berkas dari",
   "sp.perm.verb.upload": "mengunggah berkas ke",
   "sp.perm.verb.record": "merekam tab (dan mikrofon) pada",
-  "sp.help_html": "<strong>Perintah Garis Miring</strong><br><code>/help</code> — Tampilkan daftar ini<br><code>/clear-scratchpad</code> — Kosongkan bak pasir saat ini<br><code>/allow-api</code> — Izinkan mutasi API untuk percakapan ini<br><code>/compact</code> — Kompres konteks percakapan ini<br><code>/verbose</code> — Alihkan tampilan alat terperinci/ringkas<br><code>/reset</code> — Hapus percakapan<br><code>/screenshot</code> — Tangkap tab saat ini<br><code>/export</code> — Unduh percakapan sebagai Markdown<br><code>/profile</code> — Alihkan isi otomatis profil<br><code>/vision</code> — Alihkan mode visi pada penyedia aktif",
+  "sp.help_html": "<strong>Perintah Garis Miring</strong><br><code>/help</code> — Tampilkan daftar ini<br><code>/clear-scratchpad</code> — Kosongkan bak pasir saat ini<br><code>/allow-api</code> — Izinkan mutasi API untuk percakapan ini<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Kompres konteks percakapan ini<br><code>/verbose</code> — Alihkan tampilan alat terperinci/ringkas<br><code>/reset</code> — Hapus percakapan<br><code>/screenshot</code> — Tangkap tab saat ini<br><code>/export</code> — Unduh percakapan sebagai Markdown<br><code>/profile</code> — Alihkan isi otomatis profil<br><code>/vision</code> — Alihkan mode visi pada penyedia aktif",
   "sp.compact.verbose_on": "Mode terperinci <strong>aktif</strong> — JSON pemanggilan alat lengkap terlihat.",
   "sp.compact.verbose_off": "Mode terperinci <strong>nonaktif</strong> — tampilan alat ringkas.",
   "sp.screenshot.error": "Tangkapan layar gagal: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': 'Tampilkan catatan saat ini',
   'sp.slash.clear_scratchpad': 'Kosongkan bak pasir saat ini',
   'sp.slash.allow_api': 'Izinkan mutasi API untuk percakapan ini',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Kompak konteks percakapan ini',
   'sp.slash.verbose': 'Beralih tampilan alat antara verbose dan kompak',
   'sp.slash.reset': 'Hapus percakapan ini',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'Rencana disetujui — menjalankan…',
   'sp.plan.cancelled': 'Rencana dibatalkan.',
   'sp.plan.expired': 'Rencana ini tidak lagi menunggu peninjauan — proses dibatalkan.',
-  'sp.slash.busy_only_oob': 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
+  'sp.slash.busy_only_oob': 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
   'tool.go_back': 'Kembali',
   'tool.go_forward': 'Maju',
   'st.display.search.placeholder': 'Cari pengaturan Umum',

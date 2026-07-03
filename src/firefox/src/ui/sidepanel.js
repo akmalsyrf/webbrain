@@ -329,6 +329,7 @@ const SLASH_COMMANDS = [
   { value: '/edit-scratchpad', descriptionKey: 'sp.slash.edit_scratchpad' },
   { value: '/clear-scratchpad', descriptionKey: 'sp.slash.clear_scratchpad' },
   { value: '/allow-api', descriptionKey: 'sp.slash.allow_api' },
+  { value: '/dangerously-skip-permissions', descriptionKey: 'sp.slash.dangerously_skip_permissions' },
   { value: '/compact', descriptionKey: 'sp.slash.compact' },
   { value: '/verbose', descriptionKey: 'sp.slash.verbose' },
   { value: '/reset', descriptionKey: 'sp.slash.reset' },
@@ -343,6 +344,7 @@ const OUT_OF_BAND_SLASH_COMMANDS = new Set([
   '/help',
   '/show-scratchpad',
   '/list-schedules',
+  '/dangerously-skip-permissions',
   '/screenshot',
   '/export',
   '/verbose',
@@ -516,14 +518,15 @@ function updatesContainSuccessfulDone(updates) {
 // With "Ask before consequential actions" ON (the default) the user is
 // prompted per consequential action, so the standing banner is redundant —
 // only surface it in Act mode when the gate is disabled.
+const PERMISSION_GATE_KEY = 'askBeforeConsequentialActions';
 let askBeforeConsequential = true; // gate ON by default
-browser.storage.local.get('askBeforeConsequentialActions').then((stored) => {
-  if (stored && stored.askBeforeConsequentialActions === false) askBeforeConsequential = false;
+browser.storage.local.get(PERMISSION_GATE_KEY).then((stored) => {
+  if (stored && stored[PERMISSION_GATE_KEY] === false) askBeforeConsequential = false;
   updateActWarning();
 }).catch(() => {});
 browser.storage.onChanged.addListener((changes) => {
-  if (changes.askBeforeConsequentialActions) {
-    askBeforeConsequential = changes.askBeforeConsequentialActions.newValue !== false;
+  if (changes[PERMISSION_GATE_KEY]) {
+    askBeforeConsequential = changes[PERMISSION_GATE_KEY].newValue !== false;
     updateActWarning();
   }
 });
@@ -2361,6 +2364,21 @@ function showBusySlashCommandNotice() {
   addMessage('system', t('sp.slash.busy_only_oob'));
 }
 
+function resolvePendingPermissionPromptsForTab(tabId) {
+  if (tabId == null) return 0;
+  const targetTabId = String(tabId);
+  let resolved = 0;
+  for (const card of document.querySelectorAll('.clarify-card[data-permission="1"]')) {
+    if (card.classList.contains('clarify-answered')) continue;
+    if (String(card.dataset.tabId || '') !== targetTabId) continue;
+    const clarifyId = String(card.dataset.clarifyId || '');
+    if (!clarifyId) continue;
+    submitClarify(card, tabId, clarifyId, 'once', 'slash-command');
+    resolved += 1;
+  }
+  return resolved;
+}
+
 async function parseSlashCommands(text, tabId = currentTabId) {
   // /help — list all available slash commands
   if (/^\/help\b\s*/i.test(text)) {
@@ -2413,6 +2431,17 @@ async function parseSlashCommands(text, tabId = currentTabId) {
       addMessage('system', systemHtml(t('sp.api.enabled_html')));
     }
     return text.slice(mApi[0].length).trim();
+  }
+
+  // /dangerously-skip-permissions — disable the master permission prompt gate
+  const mSkipPermissions = text.match(/^\/dangerously-skip-permissions\b\s*/i);
+  if (mSkipPermissions) {
+    await browser.storage.local.set({ [PERMISSION_GATE_KEY]: false }).catch(() => {});
+    askBeforeConsequential = false;
+    updateActWarning();
+    resolvePendingPermissionPromptsForTab(tabId);
+    addMessage('system', systemHtml(t('sp.permissions.disabled_html')));
+    return text.slice(mSkipPermissions[0].length).trim();
   }
 
   // /compact — force context compaction for this conversation

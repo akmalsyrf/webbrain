@@ -114,6 +114,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>Mutations d\'API activées</strong> pour cette conversation. L\'agent peut désormais utiliser POST/PUT/PATCH/DELETE via fetch_url et execute_js quand il juge l\'API plus fiable que l\'interface pour une étape. L\'interface reste privilégiée par défaut. Ce drapeau s\'efface quand vous réinitialisez la conversation.',
   'sp.api.badge_html': '<span>🔓 Mutations d\'API autorisées</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Lecture de la page',
   'tool.get_interactive_elements': 'Analyse des éléments interactifs',
@@ -309,7 +310,7 @@ export default {
   "sp.perm.verb.download": "télécharger des fichiers depuis",
   "sp.perm.verb.upload": "téléverser un fichier vers",
   "sp.perm.verb.record": "enregistrer l'onglet (et le microphone) sur",
-  "sp.help_html": "<strong>Commandes slash</strong><br><code>/help</code> — Afficher cette liste<br><code>/edit-scratchpad &lt;text&gt;</code> — Ajouter du texte au bloc-notes actuel<br><code>/clear-scratchpad</code> — Effacer le bloc-notes actuel<br><code>/allow-api</code> — Autoriser les mutations d'API pour cette conversation<br><code>/compact</code> — Compacter le contexte de cette conversation<br><code>/verbose</code> — Basculer l'affichage détaillé/compact des outils<br><code>/reset</code> — Effacer la conversation<br><code>/screenshot</code> — Capturer l'onglet actif<br><code>/export</code> — Télécharger la conversation en Markdown<br><code>/profile</code> — Basculer le remplissage automatique du profil<br><code>/vision</code> — Basculer le mode vision sur le fournisseur actif",
+  "sp.help_html": "<strong>Commandes slash</strong><br><code>/help</code> — Afficher cette liste<br><code>/edit-scratchpad &lt;text&gt;</code> — Ajouter du texte au bloc-notes actuel<br><code>/clear-scratchpad</code> — Effacer le bloc-notes actuel<br><code>/allow-api</code> — Autoriser les mutations d'API pour cette conversation<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Compacter le contexte de cette conversation<br><code>/verbose</code> — Basculer l'affichage détaillé/compact des outils<br><code>/reset</code> — Effacer la conversation<br><code>/screenshot</code> — Capturer l'onglet actif<br><code>/export</code> — Télécharger la conversation en Markdown<br><code>/profile</code> — Basculer le remplissage automatique du profil<br><code>/vision</code> — Basculer le mode vision sur le fournisseur actif",
   "sp.compact.verbose_on": "Mode détaillé <strong>activé</strong> — JSON complet des appels d'outils visible.",
   "sp.compact.verbose_off": "Mode détaillé <strong>désactivé</strong> — affichage compact des outils.",
   "sp.screenshot.error": "Échec de la capture d'écran : {msg}",
@@ -459,6 +460,7 @@ export default {
   'sp.slash.list_schedules': 'Afficher les tâches planifiées',
   'sp.slash.show_scratchpad': 'Afficher le bloc-notes actuel',
   'sp.slash.allow_api': 'Autoriser les mutations API pour cette conversation',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Compacter le contexte de cette conversation',
   'sp.slash.verbose': "Basculer l'affichage des outils entre détaillé et compact",
   'sp.slash.reset': 'Effacer cette conversation',
@@ -518,7 +520,7 @@ export default {
   'sp.plan.approved': 'Plan approuvé — exécution…',
   'sp.plan.cancelled': 'Plan annulé.',
   'sp.plan.expired': 'Ce plan n\'est plus en attente de révision — l\'exécution a été annulée.',
-  'sp.slash.busy_only_oob': 'Les messages sont mis en file d\'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent s\'exécuter immédiatement comme commandes slash.',
+  'sp.slash.busy_only_oob': 'Les messages sont mis en file d\'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export et /verbose peuvent s\'exécuter immédiatement comme commandes slash.',
   'tool.go_back': 'Revenir en arrière',
   'tool.go_forward': 'Aller en avant',
   'st.display.search.placeholder': 'Rechercher dans les paramètres généraux',

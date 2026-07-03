@@ -302,13 +302,15 @@ export class Agent {
   }
 
   /** Lazily load the "ask before consequential actions" master switch. */
-  async _ensureGateSetting() {
-    if (this._gateSettingLoaded) return;
+  async _ensureGateSetting(options = {}) {
+    const force = options?.force === true;
+    if (this._gateSettingLoaded && !force) return this._skipPermissionGate;
     this._gateSettingLoaded = true;
     try {
       const o = await browser.storage.local.get('askBeforeConsequentialActions');
       this._skipPermissionGate = o?.askBeforeConsequentialActions === false;
     } catch { /* default: gate on */ }
+    return this._skipPermissionGate;
   }
 
   _normalizeCostLimit(value) {
@@ -1448,7 +1450,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         let blocked = null;     // { capability, host }
         let aborted = false;
         let failClosed = false;
+        let gateDisabled = false;
         for (const capability of capabilities) {
+          if (this._skipPermissionGate) { gateDisabled = true; break; }
           // /allow-api waives ONLY write-method network egress.
           if (capability === Capability.NETWORK && isNetworkMutation(fnName, fnArgs) && this.apiAllowedTabs.has(tabId)) continue;
           // Every distinct host the call touches must be granted. Usually one,
@@ -1457,6 +1461,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           const hosts = requiredHosts(capability, gateArgs, curUrl, fnName);
           if (hosts.length === 0) { failClosed = true; break; }
           for (const host of hosts) {
+            if (this._skipPermissionGate) { gateDisabled = true; break; }
             const verdict = this.permissions.check(host, capability, tabId);
             if (verdict.allowed) continue;
             const choice = verdict.needsPrompt
@@ -1468,9 +1473,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
               blocked = { capability, host };
               break;
             }
+            if (await this._ensureGateSetting({ force: true })) {
+              gateDisabled = true;
+              break;
+            }
             await this.permissions.record(host, capability, 'allow', choice, tabId); // 'once' | 'always'
           }
-          if (aborted || blocked) break;
+          if (gateDisabled || aborted || blocked) break;
         }
         if (aborted) {
           const value = '[Stopped by user before executing requested tool calls.]';

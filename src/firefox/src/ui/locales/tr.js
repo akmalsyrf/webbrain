@@ -144,6 +144,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 Bu konuşma için <strong>API mutasyonları etkin</strong>. Aracı artık bir adım için API\'nin arayüzden daha güvenilir olduğuna karar verirse fetch_url ve execute_js üzerinden POST/PUT/PATCH/DELETE kullanabilir. Varsayılan yine arayüz öncelikli kalır. Bu bayrak konuşmayı sıfırladığında temizlenir.',
   'sp.api.badge_html': '<span>🔓 API mutasyonlarına izin verildi</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Sayfa okunuyor',
   'tool.get_interactive_elements': 'Etkileşimli öğeler taranıyor',
@@ -339,7 +340,7 @@ export default {
   "sp.perm.verb.download": "dosya indirmek",
   "sp.perm.verb.upload": "dosya yüklemek",
   "sp.perm.verb.record": "sekmeyi (ve mikrofonu) kaydetmek",
-  "sp.help_html": "<strong>Eğik Çizgi Komutları</strong><br><code>/help</code> — Bu listeyi göster<br><code>/edit-scratchpad &lt;text&gt;</code> — Geçerli not defterine metin ekle<br><code>/clear-scratchpad</code> — Geçerli not defterini temizle<br><code>/allow-api</code> — Bu konuşma için API mutasyonlarına izin ver<br><code>/compact</code> — Bu konuşmanın bağlamını sıkıştır<br><code>/verbose</code> — Ayrıntılı/kompakt araç görünümünü aç/kapat<br><code>/reset</code> — Konuşmayı temizle<br><code>/screenshot</code> — Geçerli sekmenin ekran görüntüsünü al<br><code>/export</code> — Konuşmayı Markdown olarak indir<br><code>/profile</code> — Profil otomatik doldurmayı aç/kapat<br><code>/vision</code> — Aktif sağlayıcıda görme kipini aç/kapat",
+  "sp.help_html": "<strong>Eğik Çizgi Komutları</strong><br><code>/help</code> — Bu listeyi göster<br><code>/edit-scratchpad &lt;text&gt;</code> — Geçerli not defterine metin ekle<br><code>/clear-scratchpad</code> — Geçerli not defterini temizle<br><code>/allow-api</code> — Bu konuşma için API mutasyonlarına izin ver<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Bu konuşmanın bağlamını sıkıştır<br><code>/verbose</code> — Ayrıntılı/kompakt araç görünümünü aç/kapat<br><code>/reset</code> — Konuşmayı temizle<br><code>/screenshot</code> — Geçerli sekmenin ekran görüntüsünü al<br><code>/export</code> — Konuşmayı Markdown olarak indir<br><code>/profile</code> — Profil otomatik doldurmayı aç/kapat<br><code>/vision</code> — Aktif sağlayıcıda görme kipini aç/kapat",
   "sp.compact.verbose_on": "Ayrıntılı mod <strong>açık</strong> — tam araç çağrısı JSON'u görünür.",
   "sp.compact.verbose_off": "Ayrıntılı mod <strong>kapalı</strong> — kompakt araç görünümü.",
   "sp.screenshot.error": "Ekran görüntüsü başarısız: {msg}",
@@ -487,6 +488,7 @@ export default {
   'sp.slash.list_schedules': 'Zamanlanmış görevleri göster',
   'sp.slash.show_scratchpad': 'Mevcut not defterini göster',
   'sp.slash.allow_api': 'Bu konuşma için API değişikliklerine izin ver',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Bu konuşmanın bağlamını sıkıştır',
   'sp.slash.verbose': 'Araç görünümünü ayrıntılı ve kompakt arasında geçiş yap',
   'sp.slash.reset': 'Bu konuşmayı temizle',
@@ -517,7 +519,7 @@ export default {
   'sp.plan.approved': 'Plan onaylandı — çalıştırılıyor…',
   'sp.plan.cancelled': 'Plan iptal edildi.',
   'sp.plan.expired': 'Bu plan artık inceleme beklenmiyor — çalıştırma iptal edildi.',
-  'sp.slash.busy_only_oob': 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
+  'sp.slash.busy_only_oob': 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
   'tool.go_back': 'Geri gidiliyor',
   'tool.go_forward': 'İleri gidiliyor',
   'st.display.search.placeholder': 'Genel ayarları ara',

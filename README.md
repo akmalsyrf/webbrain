@@ -259,6 +259,7 @@ WebBrain accepts slash commands as the first thing on a line in the input box. T
 | `/edit-scratchpad <text>` | Append text to the current scratchpad |
 | `/clear-scratchpad` | Clear the current scratchpad |
 | `/allow-api` | **Per-conversation API mutation override.** Lifts the UI-first restriction so the agent may use POST/PUT/PATCH/DELETE via `fetch_url` when UI is failing. Badge appears while active; clears on `/reset`. |
+| `/dangerously-skip-permissions` | **Global permission-prompt bypass.** Turns off `Ask before consequential actions` without opening Settings. WebBrain will act without per-site prompts until you re-enable the setting. |
 | `/compact` | Force context compaction for the current conversation |
 | `/verbose` | Toggle verbose/compact tool display (same as the toolbar button) |
 | `/reset` | Clear the conversation and all per-conversation flags |

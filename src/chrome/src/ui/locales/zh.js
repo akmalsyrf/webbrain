@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 本次会话已<strong>启用 API 变更</strong>。当代理判断 API 比界面更可靠时，可以通过 fetch_url 和 execute_js 使用 POST/PUT/PATCH/DELETE。默认仍优先使用界面。重置会话后此标志会清除。',
   'sp.api.badge_html': '<span>🔓 已允许 API 变更</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': '正在阅读页面',
   'tool.get_interactive_elements': '扫描可交互元素',
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': '显示当前草稿板',
   'sp.slash.clear_scratchpad': '清除当前草稿板',
   'sp.slash.allow_api': '允许此对话进行 API 修改',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': '压缩此对话上下文',
   'sp.slash.verbose': '切换工具显示的详细或紧凑模式',
   'sp.slash.reset': '清除此对话',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': '计划已批准 — 正在运行…',
   'sp.plan.cancelled': '计划已取消。',
   'sp.plan.expired': '该计划不再等待审查 — 运行已取消。',
-  'sp.slash.busy_only_oob': 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
+  'sp.slash.busy_only_oob': 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/dangerously-skip-permissions、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
   'tool.go_back': '返回',
   'tool.go_forward': '前进',
   'st.display.search.placeholder': '搜索通用设置',

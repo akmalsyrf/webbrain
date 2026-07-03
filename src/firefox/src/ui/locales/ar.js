@@ -114,6 +114,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>تفعيل تعديلات واجهة API</strong> لهذه المحادثة. يمكن للوكيل الآن استخدام POST/PUT/PATCH/DELETE عبر fetch_url و execute_js عندما يرى أن API أكثر موثوقية من الواجهة. يظل التفاعل عبر الواجهة هو الافتراضي. تُمسح هذه العلامة عند تصفير المحادثة.',
   'sp.api.badge_html': '<span>🔓 تعديلات API مسموح بها</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'قراءة الصفحة',
   'tool.get_interactive_elements': 'فحص العناصر التفاعلية',
@@ -309,7 +310,7 @@ export default {
   "sp.perm.verb.download": "يُنزّل ملفات من",
   "sp.perm.verb.upload": "يرفع ملفًا إلى",
   "sp.perm.verb.record": "يُسجّل علامة التبويب (والميكروفون) على",
-  "sp.help_html": "<strong>أوامر الشرطة المائلة</strong><br><code>/help</code> — إظهار هذه القائمة<br><code>/edit-scratchpad &lt;text&gt;</code> — إلحاق نص بمنطقة المسودة الحالية<br><code>/clear-scratchpad</code> — مسح منطقة المسودة الحالية<br><code>/allow-api</code> — السماح بتعديلات API لهذه المحادثة<br><code>/compact</code> — ضغط سياق هذه المحادثة<br><code>/verbose</code> — تبديل العرض المفصّل/المختصر للأدوات<br><code>/reset</code> — مسح المحادثة<br><code>/screenshot</code> — التقاط علامة التبويب الحالية<br><code>/export</code> — تنزيل المحادثة بصيغة Markdown<br><code>/profile</code> — تبديل تعبئة الملف الشخصي تلقائيًا<br><code>/vision</code> — تبديل وضع الرؤية على المزوّد النشط",
+  "sp.help_html": "<strong>أوامر الشرطة المائلة</strong><br><code>/help</code> — إظهار هذه القائمة<br><code>/edit-scratchpad &lt;text&gt;</code> — إلحاق نص بمنطقة المسودة الحالية<br><code>/clear-scratchpad</code> — مسح منطقة المسودة الحالية<br><code>/allow-api</code> — السماح بتعديلات API لهذه المحادثة<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — ضغط سياق هذه المحادثة<br><code>/verbose</code> — تبديل العرض المفصّل/المختصر للأدوات<br><code>/reset</code> — مسح المحادثة<br><code>/screenshot</code> — التقاط علامة التبويب الحالية<br><code>/export</code> — تنزيل المحادثة بصيغة Markdown<br><code>/profile</code> — تبديل تعبئة الملف الشخصي تلقائيًا<br><code>/vision</code> — تبديل وضع الرؤية على المزوّد النشط",
   "sp.compact.verbose_on": "الوضع المفصّل <strong>مُفعّل</strong> — يظهر كامل JSON لاستدعاءات الأدوات.",
   "sp.compact.verbose_off": "الوضع المفصّل <strong>مُعطّل</strong> — عرض مختصر للأدوات.",
   "sp.screenshot.error": "فشل التقاط لقطة الشاشة: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.list_schedules': 'عرض المهام المجدولة',
   'sp.slash.show_scratchpad': 'عرض لوحة المسودة الحالية',
   'sp.slash.allow_api': 'السماح بتعديلات API لهذه المحادثة',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'ضغط سياق هذه المحادثة',
   'sp.slash.verbose': 'تبديل عرض الأدوات بين مفصل ومضغوط',
   'sp.slash.reset': 'مسح هذه المحادثة',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'تمت الموافقة على الخطة — جارٍ التشغيل…',
   'sp.plan.cancelled': 'تم إلغاء الخطة.',
   'sp.plan.expired': 'لم تعد هذه الخطة قيد المراجعة — تم إلغاء التشغيل.',
-  'sp.slash.busy_only_oob': 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
+  'sp.slash.busy_only_oob': 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /dangerously-skip-permissions و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
   'tool.go_back': 'العودة للخلف',
   'tool.go_forward': 'التقدم للأمام',
   'st.display.search.placeholder': 'البحث في الإعدادات العامة',

@@ -2204,6 +2204,19 @@ test('firefox loop-bucket matches chrome', () => {
   }
 });
 
+console.log('\nmarketing site');
+
+test('marketing site renders the Star History embed from the template', () => {
+  const template = fs.readFileSync(path.join(ROOT, 'web/build/template.html'), 'utf8');
+  const index = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
+  for (const [label, html] of [['template', template], ['index', index]]) {
+    assert.match(html, /id="star-history"/, `${label}: star-history section missing`);
+    assert.match(html, /<a href="https:\/\/www\.star-history\.com\/\?repos=webbrain-one%2Fwebbrain&type=date&legend=top-left">/, `${label}: star-history link missing`);
+    assert.doesNotMatch(html, /<iframe[^>]+star-history\.com/, `${label}: star-history should render as an image link, not an iframe`);
+    assert.match(html, /<picture>[\s\S]*?<source media="\(prefers-color-scheme: dark\)" srcset="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&theme=dark&legend=top-left" \/>[\s\S]*?<source media="\(prefers-color-scheme: light\)" srcset="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&legend=top-left" \/>[\s\S]*?<img alt="Star History Chart" src="https:\/\/api\.star-history\.com\/chart\?repos=webbrain-one\/webbrain&type=date&legend=top-left"/, `${label}: star-history picture chart markup missing`);
+  }
+});
+
 // ────────────────────────────────────────────────────────────────────────
 // Version bumping (scripts/bump-version.mjs)
 // ────────────────────────────────────────────────────────────────────────
@@ -6377,6 +6390,37 @@ test('sidepanel scopes allow-api override to the tab conversation', () => {
   }
 });
 
+test('sidepanel exposes dangerously-skip-permissions in both builds', () => {
+  for (const [label, panelRel, localeRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/src/ui/locales/en.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, localeRel), 'utf8');
+    assert.match(panel, /const PERMISSION_GATE_KEY = 'askBeforeConsequentialActions';/, `${label}: permission gate storage key should be named once`);
+    assert.match(panel, /\{ value: '\/dangerously-skip-permissions', descriptionKey: 'sp\.slash\.dangerously_skip_permissions' \}/, `${label}: slash autocomplete should advertise /dangerously-skip-permissions`);
+    assert.match(panel, /const OUT_OF_BAND_SLASH_COMMANDS = new Set\(\[[\s\S]*?'\/dangerously-skip-permissions'[\s\S]*?\]\);/, `${label}: command should be runnable while a permission-gated run is busy`);
+    const commandIdx = panel.indexOf('// /dangerously-skip-permissions');
+    assert.notEqual(commandIdx, -1, `${label}: parser missing /dangerously-skip-permissions`);
+    const commandBody = panel.slice(commandIdx, panel.indexOf('// /compact', commandIdx));
+    assert.match(commandBody, /storage\.local\.set\(\{ \[PERMISSION_GATE_KEY\]: false \}\)/, `${label}: command should disable the same storage-backed gate as settings`);
+    assert.match(commandBody, /askBeforeConsequential = false;[\s\S]*?updateActWarning\(\);/, `${label}: command should update the local Act-mode warning immediately`);
+    assert.match(commandBody, /resolvePendingPermissionPromptsForTab\(tabId\);/, `${label}: command should unblock the active permission prompt after disabling prompts`);
+    assert.match(commandBody, /sp\.permissions\.disabled_html/, `${label}: command should warn visibly after disabling prompts`);
+    const resolverIdx = panel.indexOf('function resolvePendingPermissionPromptsForTab(tabId) {');
+    assert.notEqual(resolverIdx, -1, `${label}: pending permission resolver missing`);
+    const resolverBody = panel.slice(resolverIdx, commandIdx);
+    assert.ok(resolverBody.includes('querySelectorAll(\'.clarify-card[data-permission="1"]\')'), `${label}: resolver should only inspect permission cards`);
+    assert.match(resolverBody, /card\.classList\.contains\('clarify-answered'\)/, `${label}: resolver should skip prompts already answered by the user`);
+    assert.match(resolverBody, /String\(card\.dataset\.tabId \|\| ''\) !== targetTabId/, `${label}: resolver should answer only prompts for the initiating tab`);
+    assert.match(resolverBody, /submitClarify\(card, tabId, clarifyId, 'once', 'slash-command'\);/, `${label}: resolver should use a non-persistent once grant`);
+    assert.match(resolverBody, /return resolved;/, `${label}: resolver should report how many prompts it handled`);
+    assert.match(locale, /\/dangerously-skip-permissions/, `${label}: help should mention /dangerously-skip-permissions`);
+    assert.match(locale, /'sp\.slash\.dangerously_skip_permissions': 'Disable permission prompts globally'/, `${label}: autocomplete label should have an English fallback`);
+    assert.match(locale, /'sp\.permissions\.disabled_html': '⚠️ <strong>Permission prompts are OFF\.<\/strong>/, `${label}: warning message should have an English fallback`);
+  }
+});
+
 test('sidepanel scopes async tab commands to the original tab', () => {
   for (const [label, panelRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js'],
@@ -6607,7 +6651,7 @@ test('sidepanel allows safe slash commands and queues normal messages while busy
     );
     assert.match(
       locale,
-      /'sp\.slash\.busy_only_oob': 'Messages are queued while WebBrain is busy\. Only \/help, \/show-scratchpad, \/list-schedules, \/screenshot, \/export, and \/verbose can run immediately as slash commands\./,
+      /'sp\.slash\.busy_only_oob': 'Messages are queued while WebBrain is busy\. Only \/help, \/show-scratchpad, \/list-schedules, \/dangerously-skip-permissions, \/screenshot, \/export, and \/verbose can run immediately as slash commands\./,
       `${label}: busy slash notice should explain queued messages and safe slash commands`,
     );
   }
@@ -6664,21 +6708,21 @@ test('sidepanel queued composer messages expose edit and delete controls', () =>
 
 test('sidepanel busy slash notice is updated in every locale', () => {
   const expected = {
-    en: 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /screenshot, /export, and /verbose can run immediately as slash commands.',
-    es: 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
-    fr: "Les messages sont mis en file d'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /screenshot, /export et /verbose peuvent s'exécuter immédiatement comme commandes slash.",
-    tr: 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
-    zh: 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
-    ru: 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
-    uk: 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
-    ar: 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
-    ja: 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
-    ko: 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
-    id: 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
-    th: 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
-    ms: 'Mesej dimasukkan ke giliran semasa WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /screenshot, /export, dan /verbose boleh berjalan serta-merta sebagai arahan slash.',
-    tl: 'Nakapila ang mga mensahe habang abala ang WebBrain. Tanging /help, /show-scratchpad, /list-schedules, /screenshot, /export, at /verbose ang maaaring tumakbo agad bilang mga slash command.',
-    pl: 'Wiadomości są kolejkowane, gdy WebBrain jest zajęty. Tylko /help, /show-scratchpad, /list-schedules, /screenshot, /export i /verbose mogą uruchamiać się od razu jako polecenia slash.',
+    en: 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, and /verbose can run immediately as slash commands.',
+    es: 'Los mensajes se ponen en cola mientras WebBrain está ocupado. Solo /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export y /verbose pueden ejecutarse de inmediato como comandos slash.',
+    fr: "Les messages sont mis en file d'attente pendant que WebBrain est occupé. Seuls /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export et /verbose peuvent s'exécuter immédiatement comme commandes slash.",
+    tr: 'WebBrain meşgulken mesajlar kuyruğa alınır. Yalnızca /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export ve /verbose slash komutları olarak hemen çalışabilir.',
+    zh: 'WebBrain 忙碌时，消息会排队。只有 /help、/show-scratchpad、/list-schedules、/dangerously-skip-permissions、/screenshot、/export 和 /verbose 可以作为斜杠命令立即运行。',
+    ru: 'Пока WebBrain занят, сообщения ставятся в очередь. Только /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export и /verbose могут запускаться сразу как slash-команды.',
+    uk: 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
+    ar: 'تُضاف الرسائل إلى قائمة الانتظار بينما يكون WebBrain مشغولًا. يمكن فقط لـ /help و /show-scratchpad و /list-schedules و /dangerously-skip-permissions و /screenshot و /export و /verbose العمل فورًا كأوامر slash.',
+    ja: 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/dangerously-skip-permissions、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
+    ko: 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
+    id: 'Pesan dimasukkan ke antrean saat WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, dan /verbose yang dapat langsung berjalan sebagai perintah slash.',
+    th: 'ข้อความจะถูกเข้าคิวขณะที่ WebBrain ไม่ว่าง เฉพาะ /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export และ /verbose เท่านั้นที่เรียกใช้ได้ทันทีในฐานะคำสั่ง slash',
+    ms: 'Mesej dimasukkan ke giliran semasa WebBrain sibuk. Hanya /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, dan /verbose boleh berjalan serta-merta sebagai arahan slash.',
+    tl: 'Nakapila ang mga mensahe habang abala ang WebBrain. Tanging /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, at /verbose ang maaaring tumakbo agad bilang mga slash command.',
+    pl: 'Wiadomości są kolejkowane, gdy WebBrain jest zajęty. Tylko /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export i /verbose mogą uruchamiać się od razu jako polecenia slash.',
   };
 
   for (const [label, localeDir] of [
@@ -10424,6 +10468,109 @@ test('agent blocks mutating fetch_url until /allow-api even when permission prom
     const denied = JSON.parse(messages[0].content);
     assert.equal(denied.requiresApiAllow, true, `${AgentClass.name}: block did not identify /allow-api requirement`);
     assert.ok(updates.some(update => /allow-api/.test(update.data?.message || '')), `${AgentClass.name}: missing /allow-api warning`);
+  }
+});
+
+test('agent stops prompting current tool after permission gate is disabled mid-prompt', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getVisionProvider: async () => null });
+    let executed = null;
+    agent.executeTool = async (_tabId, name, args) => {
+      executed = { name, args };
+      return { success: true };
+    };
+    agent._currentUrl = async () => 'https://example.com/form';
+    agent._skipPermissionGate = false;
+    let forcedGateRefreshes = 0;
+    agent._ensureGateSetting = async (options = {}) => {
+      if (options?.force) {
+        forcedGateRefreshes += 1;
+        agent._skipPermissionGate = true;
+      }
+      return agent._skipPermissionGate;
+    };
+    const prompts = [];
+    agent._promptPermission = async (_tabId, capability, host) => {
+      prompts.push({ capability, host });
+      return 'once';
+    };
+    const messages = [];
+
+    await agent._executeToolBatch(
+      4896,
+      [{
+        id: 'tool_1',
+        function: {
+          name: 'set_field',
+          arguments: '{"selector":"input[name=email]","value":"a@example.com","submit":true}',
+        },
+      }],
+      messages,
+      () => {},
+      { supportsVision: false },
+      '',
+      new Set(['set_field']),
+      1,
+    );
+
+    assert.deepEqual(prompts, [{ capability: Capability.TYPE, host: 'example.com' }], `${AgentClass.name}: disabling prompts mid-card should skip the second set_field submit prompt`);
+    assert.equal(forcedGateRefreshes, 1, `${AgentClass.name}: prompt resolution should force-refresh the storage-backed gate`);
+    assert.equal(executed?.name, 'set_field', `${AgentClass.name}: tool did not execute after prompts were disabled`);
+    assert.equal(messages.length, 1, `${AgentClass.name}: expected executed tool result`);
+    assert.doesNotMatch(messages[0].content, /denied|permission/i, `${AgentClass.name}: tool result should not be a permission denial`);
+  }
+});
+
+test('agent honors permission deny and cancel before mid-prompt gate refresh', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    for (const [choice, expected] of [
+      ['deny', 'deny'],
+      [null, 'abort'],
+    ]) {
+      const agent = new AgentClass({ getVisionProvider: async () => null });
+      let executed = false;
+      agent.executeTool = async () => {
+        executed = true;
+        return { success: true };
+      };
+      agent._currentUrl = async () => 'https://example.com/form';
+      agent._skipPermissionGate = false;
+      let forcedGateRefreshes = 0;
+      agent._ensureGateSetting = async (options = {}) => {
+        if (options?.force) {
+          forcedGateRefreshes += 1;
+          agent._skipPermissionGate = true;
+        }
+        return agent._skipPermissionGate;
+      };
+      agent._promptPermission = async () => choice;
+      const messages = [];
+
+      const result = await agent._executeToolBatch(
+        choice === 'deny' ? 4897 : 4898,
+        [{
+          id: 'tool_1',
+          function: { name: 'click', arguments: '{"selector":"#submit"}' },
+        }],
+        messages,
+        () => {},
+        { supportsVision: false },
+        '',
+        new Set(['click']),
+        1,
+      );
+
+      assert.equal(forcedGateRefreshes, 0, `${AgentClass.name}: ${expected} should be handled before refreshing the disabled gate`);
+      assert.equal(executed, false, `${AgentClass.name}: ${expected} should not execute the tool`);
+      assert.equal(messages.length, 1, `${AgentClass.name}: ${expected} should emit one tool result`);
+      const payload = JSON.parse(messages[0].content);
+      if (expected === 'abort') {
+        assert.equal(result.action, 'abort', `${AgentClass.name}: cancelled prompt should abort the run`);
+        assert.equal(payload.cancelled, true, `${AgentClass.name}: cancelled prompt result missing cancelled flag`);
+      } else {
+        assert.equal(payload.denied, true, `${AgentClass.name}: denied prompt result missing denied flag`);
+      }
+    }
   }
 });
 

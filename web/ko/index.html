@@ -1479,6 +1479,32 @@
     }
 
     /* ================================================================
+       STAR HISTORY
+       ================================================================ */
+    .star-history-wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      box-shadow: 0 16px 48px var(--shadow-card);
+    }
+    .star-history-wrap a {
+      display: block;
+      min-width: 600px;
+    }
+    .star-history-wrap picture,
+    .star-history-wrap img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .star-history-wrap img {
+      border: 0;
+    }
+
+    /* ================================================================
        FAQ
        ================================================================ */
     .faq-list {
@@ -2221,6 +2247,23 @@
   <p style="text-align:center; color:var(--text-dim); font-size:13px; margin-top:24px; max-width:600px; margin-left:auto; margin-right:auto;">
     WebBrain은 브라우징을 하면서 AI 어시스턴트를 원하는 최종 사용자를 위한 브라우저 확장입니다. OpenClaw 같은 에이전트 프레임워크는 자동화 브라우저 파이프라인을 만드는 개발자 도구입니다. 일이 다르면 도구도 다릅니다 — 그리고 둘 다 함께 쓸 수 있습니다.
   </p>
+</section>
+
+<!-- STAR HISTORY -->
+<section class="section" id="star-history">
+  <div class="section-label">GitHub Stars</div>
+  <h2 class="section-title">WebBrain star history</h2>
+  <p class="section-subtitle">Track the repository&#39;s growth over time.</p>
+
+  <div class="star-history-wrap">
+    <a href="https://www.star-history.com/?repos=webbrain-one%2Fwebbrain&type=date&legend=top-left">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&theme=dark&legend=top-left" />
+        <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&legend=top-left" />
+        <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=webbrain-one/webbrain&type=date&legend=top-left" loading="lazy" />
+      </picture>
+    </a>
+  </div>
 </section>
 
 <!-- FAQ -->

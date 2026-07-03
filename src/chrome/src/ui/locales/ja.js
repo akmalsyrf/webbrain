@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 この会話で <strong>API による変更が有効</strong> になりました。エージェントは UI より API のほうが確実だと判断したとき、fetch_url と execute_js で POST/PUT/PATCH/DELETE を使えるようになります。UI 優先という基本方針は変わりません。このフラグは会話をリセットするとクリアされます。',
   'sp.api.badge_html': '<span>🔓 API による変更を許可</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'ページを読み取り中',
   'tool.get_interactive_elements': '操作可能な要素をスキャン中',
@@ -320,7 +321,7 @@ export default {
   "sp.perm.verb.download": "からのファイルのダウンロードを",
   "sp.perm.verb.upload": "へのファイルのアップロードを",
   "sp.perm.verb.record": "でのタブ（およびマイク）の録画を",
-  "sp.help_html": "<strong>スラッシュコマンド</strong><br><code>/help</code> — この一覧を表示<br><code>/clear-scratchpad</code> — 現在のスクラッチパッドをクリア<br><code>/allow-api</code> — この会話で API による変更を許可<br><code>/compact</code> — この会話のコンテキストを圧縮する<br><code>/verbose</code> — 詳細／コンパクトなツール表示を切り替え<br><code>/reset</code> — 会話をクリア<br><code>/screenshot</code> — 現在のタブを取得<br><code>/export</code> — 会話を Markdown でダウンロード<br><code>/profile</code> — プロフィール自動入力を切り替え<br><code>/vision</code> — アクティブなプロバイダーで画像認識モードを切り替え",
+  "sp.help_html": "<strong>スラッシュコマンド</strong><br><code>/help</code> — この一覧を表示<br><code>/clear-scratchpad</code> — 現在のスクラッチパッドをクリア<br><code>/allow-api</code> — この会話で API による変更を許可<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — この会話のコンテキストを圧縮する<br><code>/verbose</code> — 詳細／コンパクトなツール表示を切り替え<br><code>/reset</code> — 会話をクリア<br><code>/screenshot</code> — 現在のタブを取得<br><code>/export</code> — 会話を Markdown でダウンロード<br><code>/profile</code> — プロフィール自動入力を切り替え<br><code>/vision</code> — アクティブなプロバイダーで画像認識モードを切り替え",
   "sp.compact.verbose_on": "詳細モードが<strong>オン</strong>になりました — ツール呼び出しの完全な JSON が表示されます。",
   "sp.compact.verbose_off": "詳細モードが<strong>オフ</strong>になりました — コンパクトなツール表示です。",
   "sp.screenshot.error": "スクリーンショットに失敗しました: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': '現在のスクラッチパッドを表示',
   'sp.slash.clear_scratchpad': '現在のスクラッチパッドをクリア',
   'sp.slash.allow_api': 'この会話でAPIの変更を許可',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'この会話のコンテキストをコンパクト化',
   'sp.slash.verbose': 'ツール表示を詳細とコンパクトで切り替え',
   'sp.slash.reset': 'この会話をクリア',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': '計画承認済み — 実行中…',
   'sp.plan.cancelled': '計画がキャンセルされました。',
   'sp.plan.expired': 'この計画はレビュー待ちではなくなりました — 実行はキャンセルされました。',
-  'sp.slash.busy_only_oob': 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
+  'sp.slash.busy_only_oob': 'WebBrain がビジーの間、メッセージはキューに入ります。/help、/show-scratchpad、/list-schedules、/dangerously-skip-permissions、/screenshot、/export、/verbose だけがスラッシュコマンドとしてすぐに実行できます。',
   'tool.go_back': '戻る',
   'tool.go_forward': '進む',
   'st.display.search.placeholder': '一般設定を検索',

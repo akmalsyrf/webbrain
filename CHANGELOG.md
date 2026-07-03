@@ -4,6 +4,20 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [20.2.0] - 2026-07-03
+
+### Added
+- Added `/dangerously-skip-permissions` in Chrome and Firefox so users can disable permission prompts directly from the side panel without opening Settings.
+- Kept `/dangerously-skip-permissions` available during active runs and have it resolve any pending permission prompt for the initiating tab with a one-time allow so the blocked run can continue immediately.
+- Added the Star History embed to the website so visitors can inspect WebBrain repository star growth from the homepage.
+
+### Changed
+- Updated slash-command help, autocomplete, busy-run notices, and localized warning copy for the new permission-skipping command.
+- Updated release metadata, Settings subtitle versions, Chrome / Firefox manifests, package versions, and browser architecture docs for 20.2.0.
+
+### Tests
+- Added Chrome and Firefox regression coverage for the new slash command, out-of-band busy-run availability, storage-backed permission gate disabling, active permission prompt resolution, localized busy notices, and website Star History rendering.
+
 ## [20.1.0] - 2026-07-03
 
 ### Changed

@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 이 대화에서 <strong>API 변경이 허용</strong>되었습니다. 에이전트는 이제 UI보다 API가 더 안정적이라고 판단할 때 fetch_url과 execute_js를 통해 POST/PUT/PATCH/DELETE를 사용할 수 있습니다. 기본적으로는 UI 우선 방침을 유지합니다. 이 플래그는 대화를 초기화하면 해제됩니다.',
   'sp.api.badge_html': '<span>🔓 API 변경 허용됨</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': '페이지 읽는 중',
   'tool.get_interactive_elements': '인터랙티브 요소 스캔 중',
@@ -320,7 +321,7 @@ export default {
   "sp.perm.verb.download": "파일 다운로드",
   "sp.perm.verb.upload": "파일 업로드",
   "sp.perm.verb.record": "탭(및 마이크) 녹화",
-  "sp.help_html": "<strong>슬래시 명령어</strong><br><code>/help</code> — 이 목록 표시<br><code>/clear-scratchpad</code> — 현재 스크래치패드 지우기<br><code>/allow-api</code> — 이 대화에서 API 변경 허용<br><code>/compact</code> — 이 대화의 컨텍스트 압축<br><code>/verbose</code> — 상세/간결 도구 표시 전환<br><code>/reset</code> — 대화 지우기<br><code>/screenshot</code> — 현재 탭 캡처<br><code>/export</code> — 대화를 Markdown으로 다운로드<br><code>/profile</code> — 프로필 자동 입력 전환<br><code>/vision</code> — 활성 제공자의 비전 모드 전환",
+  "sp.help_html": "<strong>슬래시 명령어</strong><br><code>/help</code> — 이 목록 표시<br><code>/clear-scratchpad</code> — 현재 스크래치패드 지우기<br><code>/allow-api</code> — 이 대화에서 API 변경 허용<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — 이 대화의 컨텍스트 압축<br><code>/verbose</code> — 상세/간결 도구 표시 전환<br><code>/reset</code> — 대화 지우기<br><code>/screenshot</code> — 현재 탭 캡처<br><code>/export</code> — 대화를 Markdown으로 다운로드<br><code>/profile</code> — 프로필 자동 입력 전환<br><code>/vision</code> — 활성 제공자의 비전 모드 전환",
   "sp.compact.verbose_on": "상세 모드 <strong>켜짐</strong> — 전체 도구 호출 JSON이 표시됩니다.",
   "sp.compact.verbose_off": "상세 모드 <strong>꺼짐</strong> — 간결한 도구 표시.",
   "sp.screenshot.error": "스크린샷에 실패했습니다: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': '현재 스크래치패드 표시',
   'sp.slash.clear_scratchpad': '현재 스크래치패드 지우기',
   'sp.slash.allow_api': '이 대화에서 API 변경 허용',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': '이 대화 컨텍스트 압축',
   'sp.slash.verbose': '도구 표시를 상세 또는 압축으로 전환',
   'sp.slash.reset': '이 대화 지우기',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': '계획 승인됨 — 실행 중…',
   'sp.plan.cancelled': '계획이 취소되었습니다.',
   'sp.plan.expired': '이 계획은 더 이상 검토 대기 중이 아닙니다 — 실행이 취소되었습니다.',
-  'sp.slash.busy_only_oob': 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
+  'sp.slash.busy_only_oob': 'WebBrain이 사용 중일 때 메시지는 대기열에 추가됩니다. /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, /verbose만 슬래시 명령으로 즉시 실행할 수 있습니다.',
   'tool.go_back': '뒤로 가기',
   'tool.go_forward': '앞으로 가기',
   'st.display.search.placeholder': '일반 설정 검색',

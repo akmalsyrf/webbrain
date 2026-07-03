@@ -116,6 +116,7 @@ export default {
 
   'sp.api.enabled_html': '🔓 <strong>Зміни через API ввімкнено</strong> для цього діалогу. Агент тепер може використовувати POST/PUT/PATCH/DELETE через fetch_url та execute_js, якщо вважає API надійнішим за інтерфейс. За замовчуванням пріоритет — інтерфейс. Цей прапор скидається після очищення діалогу.',
   'sp.api.badge_html': '<span>🔓 Зміни через API дозволено</span>',
+  'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
   'tool.read_page': 'Читання сторінки',
   'tool.get_interactive_elements': 'Сканування інтерактивних елементів',
@@ -320,7 +321,7 @@ export default {
   "sp.perm.verb.download": "завантажити файли з",
   "sp.perm.verb.upload": "вивантажити файл на",
   "sp.perm.verb.record": "записати вкладку (і мікрофон) на",
-  "sp.help_html": "<strong>Слеш-команди</strong><br><code>/help</code> — Показати цей список<br><code>/clear-scratchpad</code> — Очистити поточний чернетник<br><code>/allow-api</code> — Дозволити зміни через API для цього діалогу<br><code>/compact</code> — Стиснути контекст цього діалогу<br><code>/verbose</code> — Перемкнути детальний/компактний показ інструментів<br><code>/reset</code> — Очистити діалог<br><code>/screenshot</code> — Зробити скриншот поточної вкладки<br><code>/export</code> — Завантажити діалог як Markdown<br><code>/profile</code> — Перемкнути автозаповнення профілю<br><code>/vision</code> — Перемкнути режим зору на активному провайдері",
+  "sp.help_html": "<strong>Слеш-команди</strong><br><code>/help</code> — Показати цей список<br><code>/clear-scratchpad</code> — Очистити поточний чернетник<br><code>/allow-api</code> — Дозволити зміни через API для цього діалогу<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Стиснути контекст цього діалогу<br><code>/verbose</code> — Перемкнути детальний/компактний показ інструментів<br><code>/reset</code> — Очистити діалог<br><code>/screenshot</code> — Зробити скриншот поточної вкладки<br><code>/export</code> — Завантажити діалог як Markdown<br><code>/profile</code> — Перемкнути автозаповнення профілю<br><code>/vision</code> — Перемкнути режим зору на активному провайдері",
   "sp.compact.verbose_on": "Детальний режим <strong>увімкнено</strong> — видно повний JSON викликів інструментів.",
   "sp.compact.verbose_off": "Детальний режим <strong>вимкнено</strong> — компактний показ інструментів.",
   "sp.screenshot.error": "Не вдалося зробити скриншот: {msg}",
@@ -457,6 +458,7 @@ export default {
   'sp.slash.show_scratchpad': 'Показати поточний блокнот',
   'sp.slash.clear_scratchpad': 'Очистити поточний чернетник',
   'sp.slash.allow_api': 'Дозволити зміни API для цієї розмови',
+  'sp.slash.dangerously_skip_permissions': 'Disable permission prompts globally',
   'sp.slash.compact': 'Стиснути контекст цієї розмови',
   'sp.slash.verbose': 'Перемкнути докладний або компактний вигляд інструментів',
   'sp.slash.reset': 'Очистити цю розмову',
@@ -516,7 +518,7 @@ export default {
   'sp.plan.approved': 'План схвалено — виконується…',
   'sp.plan.cancelled': 'План скасовано.',
   'sp.plan.expired': 'Цей план більше не очікує розгляду — запуск скасовано.',
-  'sp.slash.busy_only_oob': 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
+  'sp.slash.busy_only_oob': 'Поки WebBrain зайнятий, повідомлення ставляться в чергу. Лише /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export та /verbose можуть запускатися одразу як slash-команди.',
   'tool.go_back': 'Назад',
   'tool.go_forward': 'Вперед',
   'st.display.search.placeholder': 'Пошук у загальних налаштуваннях',
