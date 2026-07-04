@@ -4,6 +4,19 @@ All notable changes to WebBrain are documented in this file.
 
 This changelog was generated from the repository Git history and release tags. Versions without a Git tag are inferred from version-bump commits and the current `package.json` / browser manifest versions.
 
+## [20.5.0] - 2026-07-04
+
+### Added
+- Added `/check-progress` in Chrome and Firefox so users can show the current tab's progress ledger from the slash-command menu, including session details, row counts, and the ledger rows.
+
+### Changed
+- Raised JSON, TXT, and CSV text attachment uploads from 512 KB to 5 MB in Chrome and Firefox while keeping injected file text bounded to the active provider's remaining context.
+- Budgeted text attachments against the pruned prompt and reserved overhead, splitting available context across multiple attachments and marking truncated files as partial content when only the beginning can fit.
+- Updated release metadata, Settings subtitle versions, Chrome / Firefox manifests, package versions, and browser architecture docs for 20.5.0.
+
+### Tests
+- Updated Chrome and Firefox regression coverage for 5 MB text-attachment caps, provider-context truncation, late text uploads in long chats, and partial-content notices that omit over-budget tail text.
+
 ## [20.4.1] - 2026-07-04
 
 ### Changed

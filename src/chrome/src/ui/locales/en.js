@@ -63,6 +63,7 @@ export default {
   'sp.slash.help': 'Show available slash commands',
   'sp.slash.schedule': 'Create a scheduled task',
   'sp.slash.list_schedules': 'Show scheduled tasks',
+  'sp.slash.check_progress': 'Show the current progress ledger',
   'sp.slash.show_scratchpad': 'Show the current scratchpad',
   'sp.slash.edit_scratchpad': 'Append text to the current scratchpad',
   'sp.slash.clear_scratchpad': 'Clear the current scratchpad',
@@ -148,6 +149,9 @@ export default {
   'sp.scratchpad.cleared': 'Scratchpad cleared.',
   'sp.scratchpad.edit_empty': 'Add text after /edit-scratchpad to append it to the scratchpad.',
   'sp.scratchpad.error': 'Scratchpad unavailable: {msg}',
+  'sp.progress.title_html': '<strong>Current progress ledger</strong>',
+  'sp.progress.empty': 'No progress rows recorded for this conversation yet.',
+  'sp.progress.error': 'Progress ledger unavailable: {msg}',
 
   'sp.copy': 'Copy',
   'sp.copied': 'Copied!',
@@ -197,8 +201,8 @@ export default {
   'sp.api.badge_html': '<span>🔓 API mutations allowed</span>',
   'sp.permissions.disabled_html': '⚠️ <strong>Permission prompts are OFF.</strong> WebBrain will click, type, navigate, run JavaScript, upload, download, record, and schedule future work without asking first. Re-enable this from Settings → Permissions → Ask before consequential actions.',
 
-  'sp.help_html': '<strong>Slash Commands</strong><br><code>/help</code> — Show this list<br><code>/schedule</code> — Create a scheduled task<br><code>/list-schedules</code> — Show scheduled tasks<br><code>/show-scratchpad</code> — Show current scratchpad<br><code>/edit-scratchpad &lt;text&gt;</code> — Append text to the current scratchpad<br><code>/clear-scratchpad</code> — Clear the current scratchpad<br><code>/allow-api</code> — Allow API mutations for this conversation<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Toggle verbose/compact tool display<br><code>/reset</code> — Clear conversation<br><code>/screenshot</code> — Capture current tab<br><code>/full-page-screenshot</code> — Capture the full page (Chrome only)<br><code>/record</code> — Start recording the current tab<br><code>/record --transcribe</code> — Record and save a Whisper transcript after stop<br><code>/record-full-screen</code> — Record a screen or window (Chrome only)<br><code>/record-full-screen --transcribe</code> — Record screen/window and save a transcript<br><code>/export</code> — Download conversation as Markdown<br><code>/profile</code> — Toggle profile auto-fill<br><code>/vision</code> — Toggle vision mode on active provider<br><br><strong>Keyboard Shortcuts</strong><br><code>Ctrl/Cmd+/</code> — Focus the input<br><code>Ctrl/Cmd+Shift+A</code> — Switch to Ask mode<br><code>Ctrl/Cmd+Shift+X</code> — Switch to Act mode<br><code>Escape</code> — Stop the active run<br><code>Escape</code> twice — Stop an active recording',
-  'sp.slash.busy_only_oob': 'Messages are queued while WebBrain is busy. Only /help, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, and /verbose can run immediately as slash commands.',
+  'sp.help_html': '<strong>Slash Commands</strong><br><code>/help</code> — Show this list<br><code>/schedule</code> — Create a scheduled task<br><code>/list-schedules</code> — Show scheduled tasks<br><code>/check-progress</code> — Show current progress ledger<br><code>/show-scratchpad</code> — Show current scratchpad<br><code>/edit-scratchpad &lt;text&gt;</code> — Append text to the current scratchpad<br><code>/clear-scratchpad</code> — Clear the current scratchpad<br><code>/allow-api</code> — Allow API mutations for this conversation<br><code>/dangerously-skip-permissions</code> — Disable permission prompts globally<br><code>/compact</code> — Compact this conversation context<br><code>/verbose</code> — Toggle verbose/compact tool display<br><code>/reset</code> — Clear conversation<br><code>/screenshot</code> — Capture current tab<br><code>/full-page-screenshot</code> — Capture the full page (Chrome only)<br><code>/record</code> — Start recording the current tab<br><code>/record --transcribe</code> — Record and save a Whisper transcript after stop<br><code>/record-full-screen</code> — Record a screen or window (Chrome only)<br><code>/record-full-screen --transcribe</code> — Record screen/window and save a transcript<br><code>/export</code> — Download conversation as Markdown<br><code>/profile</code> — Toggle profile auto-fill<br><code>/vision</code> — Toggle vision mode on active provider<br><br><strong>Keyboard Shortcuts</strong><br><code>Ctrl/Cmd+/</code> — Focus the input<br><code>Ctrl/Cmd+Shift+A</code> — Switch to Ask mode<br><code>Ctrl/Cmd+Shift+X</code> — Switch to Act mode<br><code>Escape</code> — Stop the active run<br><code>Escape</code> twice — Stop an active recording',
+  'sp.slash.busy_only_oob': 'Messages are queued while WebBrain is busy. Only /help, /check-progress, /show-scratchpad, /list-schedules, /dangerously-skip-permissions, /screenshot, /export, and /verbose can run immediately as slash commands.',
   'sp.compact.nothing_to_compact': 'Nothing to compact yet — there is not enough older context.',
   'sp.compact.busy': 'Cannot compact while a run is in progress — wait for it to finish.',
   'sp.compact.failed': 'Context compaction failed: {error}',

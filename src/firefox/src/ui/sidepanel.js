@@ -325,6 +325,7 @@ const SLASH_COMMANDS = [
   { value: '/help', descriptionKey: 'sp.slash.help' },
   { value: '/schedule', descriptionKey: 'sp.slash.schedule' },
   { value: '/list-schedules', descriptionKey: 'sp.slash.list_schedules' },
+  { value: '/check-progress', descriptionKey: 'sp.slash.check_progress' },
   { value: '/show-scratchpad', descriptionKey: 'sp.slash.show_scratchpad' },
   { value: '/edit-scratchpad', descriptionKey: 'sp.slash.edit_scratchpad' },
   { value: '/clear-scratchpad', descriptionKey: 'sp.slash.clear_scratchpad' },
@@ -343,6 +344,7 @@ const SLASH_COMMANDS = [
 const OUT_OF_BAND_SLASH_COMMANDS = new Set([
   '/help',
   '/show-scratchpad',
+  '/check-progress',
   '/list-schedules',
   '/dangerously-skip-permissions',
   '/screenshot',
@@ -1585,6 +1587,38 @@ async function showScratchpad(tabId = currentTabId) {
   }
 }
 
+async function showProgress(tabId = currentTabId) {
+  try {
+    const res = await sendToBackground('get_progress', { tabId });
+    if (currentTabId !== tabId) return;
+    if (!res?.ok && !res?.success) {
+      addMessage('system', systemHtml(tSystemHtml('sp.progress.error', { msg: res?.error || 'unknown error' })));
+      return;
+    }
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    const counts = res.counts || {};
+    if (!rows.length) {
+      addMessage('system', t('sp.progress.empty'));
+      return;
+    }
+    const summary = [
+      `sessionId: ${res.sessionId || '(active session)'}`,
+      `total: ${counts.total ?? rows.length}`,
+      `pending: ${counts.pending ?? 0}`,
+      `acted: ${counts.acted ?? 0}`,
+      `processed: ${counts.processed ?? 0}`,
+      `skipped: ${counts.skipped ?? 0}`,
+      `failed: ${counts.failed ?? 0}`,
+      `unresolved: ${counts.unresolved ?? 0}`,
+    ].join('\n');
+    const body = JSON.stringify(rows, null, 2);
+    addMessage('system', systemHtml(`${t('sp.progress.title_html')}<pre class="scratchpad-dump">${escapeHtml(summary)}\n\n${escapeHtml(body)}</pre>`));
+  } catch (e) {
+    if (currentTabId !== tabId) return;
+    addMessage('system', systemHtml(tSystemHtml('sp.progress.error', { msg: e.message })));
+  }
+}
+
 async function editScratchpad(note, tabId = currentTabId) {
   const text = String(note || '').trim();
   if (!text) {
@@ -2401,6 +2435,12 @@ async function parseSlashCommands(text, tabId = currentTabId) {
     addMessage('system', visibleScheduledJobs(jobs).length
       ? t('sp.schedule_form.list_refreshed')
       : t('sp.schedule_form.none'));
+    return '';
+  }
+
+  // /check-progress — dump the current tab's progress_update ledger
+  if (/^\/check-progress\b\s*/i.test(text)) {
+    await showProgress(tabId);
     return '';
   }
 
@@ -4091,7 +4131,7 @@ const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024; // matches PDF_PASSTHROUGH_MAX_BY
 // Text files are injected VERBATIM into the prompt as a text block (no
 // server-side processing like PDFs), so the 16MB binary cap would blow any
 // context window — cap them far lower.
-const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
+const MAX_TEXT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 function normalizeAttachmentTabId(tabId = currentTabId) {
   if (tabId == null || tabId === '') return null;
@@ -4220,7 +4260,7 @@ async function handleAttachedFiles(fileList, tabId = currentTabId) {
       const maxBytes = isTextFile ? MAX_TEXT_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;
       if (file.size > maxBytes) {
         if (normalizeAttachmentTabId() === numericTabId) {
-          addMessage('system', systemHtml(tSystemHtml('sp.attach.too_large', { name: file.name, max: isTextFile ? '512KB' : '16MB' })));
+          addMessage('system', systemHtml(tSystemHtml('sp.attach.too_large', { name: file.name, max: isTextFile ? '5MB' : '16MB' })));
         }
         continue;
       }

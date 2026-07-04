@@ -16115,8 +16115,27 @@ test('attachments: uploaded text files are bounded to provider context', () => {
     assert.equal(result.ok, true, `${label} should accept oversized text attachments after truncating`);
     const textBlock = enriched.content.find(block => block?.text?.includes('[Attached file: large.csv'));
     assert.ok(textBlock, `${label} should inject the text attachment block`);
-    assert.match(textBlock.text, /truncated to 3200 of \d+ chars to fit context/, `${label} should describe context-based truncation`);
+    const expectedBudget = agent._textAttachmentContentBudget(provider, { enriched });
+    assert.ok(expectedBudget > 0, `${label} should reserve a nonzero text attachment budget`);
+    assert.match(textBlock.text, new RegExp(`PARTIAL CONTENT ONLY: included the first ${expectedBudget} of ${body.length} chars`), `${label} should describe context-based truncation`);
     assert.doesNotMatch(textBlock.text, /TAIL_MARKER_SHOULD_BE_OMITTED/, `${label} should not inject text past the context budget`);
+
+    const crowdedMessages = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'x'.repeat(20000) },
+    ];
+    const crowdedEnriched = { role: 'user', content: 'analyze this late upload' };
+    const crowdedBudget = agent._textAttachmentContentBudget(provider, { messages: crowdedMessages, enriched: crowdedEnriched });
+    assert.ok(crowdedBudget > 0, `${label} should keep a reserve when history fills the adaptive budget`);
+    const crowdedBody = `${'b'.repeat(crowdedBudget)}LATE_TAIL_SHOULD_BE_OMITTED`;
+    const crowdedResult = agent._applyAttachments(crowdedEnriched, [
+      { kind: 'text', name: 'late.csv', textContent: crowdedBody },
+    ], provider, { messages: crowdedMessages });
+    assert.equal(crowdedResult.ok, true, `${label} should accept late text attachments in long chats`);
+    const crowdedBlock = crowdedEnriched.content.find(block => block?.text?.includes('[Attached file: late.csv'));
+    assert.ok(crowdedBlock, `${label} should inject the late text attachment block`);
+    assert.match(crowdedBlock.text, new RegExp(`PARTIAL CONTENT ONLY: included the first ${crowdedBudget} of ${crowdedBody.length} chars`), `${label} should describe reserved-budget truncation`);
+    assert.doesNotMatch(crowdedBlock.text, /LATE_TAIL_SHOULD_BE_OMITTED/, `${label} should not inject text past the reserved budget`);
   }
 });
 
@@ -16206,7 +16225,7 @@ test('attachments: text attachment scratchpad path never writes raw textContent'
     );
     assert.match(
       source,
-      /const canUseScratchpadTool = mode !== 'ask';[\s\S]*?_applyAttachments\(enriched, attachments, provider, \{ canUseScratchpadTool \}\);[\s\S]*?_pinTextAttachmentMetadata\(tabId, attachments, \{ canUseScratchpadTool \}\);/,
+      /const canUseScratchpadTool = mode !== 'ask';[\s\S]*?_applyAttachments\(enriched, attachments, provider, \{[\s\S]*?canUseScratchpadTool,[\s\S]*?tabId,[\s\S]*?messages,[\s\S]*?\}\);[\s\S]*?_pinTextAttachmentMetadata\(tabId, attachments, \{ canUseScratchpadTool \}\);/,
       `${label} should gate attachment scratchpad guidance on ask vs act mode`,
     );
   }
@@ -16278,7 +16297,7 @@ test('sidepanel: pending attachments are tab-scoped and send-gated while loading
       !/does not support \(\?:image\|document\) attachments/.test(source),
       `${label} should not sniff the rejection out of the assistant's response text`,
     );
-    assert.ok(source.includes('const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024'), `${label} should cap verbatim text attachments far below the binary cap`);
+    assert.ok(source.includes('const MAX_TEXT_ATTACHMENT_BYTES = 5 * 1024 * 1024'), `${label} should accept text attachments up to the 5MB text cap`);
     assert.match(
       source,
       /const maxBytes = isTextFile \? MAX_TEXT_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;/,

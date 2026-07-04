@@ -4102,6 +4102,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     };
   }
 
+  async getProgress(tabId, args = {}) {
+    await this._hydrate(tabId);
+    return this._progressRead(tabId, args);
+  }
+
   _messageText(content) {
     return messageContentToText(content);
   }
@@ -5501,10 +5506,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     }
   }
 
-  _textAttachmentContentBudget(provider) {
+  _textAttachmentContentBudget(provider, options = {}) {
     const contextWindow = Number(provider?.contextWindow) || 128000;
-    const contextChars = Math.max(0, contextWindow * 4);
-    return Math.max(2000, Math.min(64 * 1024, Math.floor(contextChars * 0.2)));
+    const contextChars = Math.max(0, Math.floor(contextWindow * this._contextCompactRatioForWindow(contextWindow) * 4));
+    const baseBudget = Math.min(64 * 1024, Math.floor(contextChars * 0.2));
+    const minimumBudget = Math.min(baseBudget, 8 * 1024);
+    const messages = Array.isArray(options.messages) ? options.messages : null;
+    if (!messages) return Math.max(2000, baseBudget);
+
+    const nextMessages = options.enriched ? [...messages, options.enriched] : messages;
+    const budgetMessages = provider ? this._pruneOldImages(nextMessages, provider) : nextMessages;
+    const promptChars = this._estimateContextChars(budgetMessages);
+    const lastReported = options.tabId != null ? this._lastInputTokens.get(options.tabId) || 0 : 0;
+    const lastEstChars = options.tabId != null ? this._lastEstCharsAtReport.get(options.tabId) : null;
+    const fixedPromptOverheadChars = lastReported > 0 && lastEstChars != null
+      ? Math.max(0, (lastReported * 4) - lastEstChars)
+      : 0;
+    const remainingChars = Math.max(0, contextChars - promptChars - fixedPromptOverheadChars);
+    const adaptiveBudget = Math.max(0, Math.min(baseBudget, Math.floor(remainingChars * 0.5)));
+    return Math.max(minimumBudget, adaptiveBudget);
   }
 
   _formatTextAttachmentBlock(att, charBudget) {
@@ -5514,7 +5534,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (text.length <= budget) return `[Attached file: ${name}]\n${text}`;
     const shown = text.slice(0, budget);
     const omitted = text.length - shown.length;
-    return `[Attached file: ${name} - truncated to ${shown.length} of ${text.length} chars to fit context]\n${shown}\n[...${omitted} chars omitted from attached file; ask the user to split the file if more detail is needed.]`;
+    return `[Attached file: ${name} - PARTIAL CONTENT ONLY: included the first ${shown.length} of ${text.length} chars to fit this model's remaining context]\n${shown}\n[...${omitted} chars omitted from attached file; ask the user to split the file if the missing part is needed.]`;
   }
 
   /**
@@ -6996,7 +7016,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
   _applyAttachments(enriched, attachments, provider, options = {}) {
     const blocks = [];
     const textAttachmentCount = (attachments || []).filter(att => att?.kind === 'text').length;
-    let textBudgetRemaining = this._textAttachmentContentBudget(provider);
+    let textBudgetRemaining = this._textAttachmentContentBudget(provider, { ...options, enriched });
     let textAttachmentsRemaining = textAttachmentCount;
     for (const att of attachments) {
       if (att.kind === 'image') {
@@ -7067,7 +7087,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     // agent run, and the message must never be pushed to history this way.
     if (attachments && attachments.length) {
       const canUseScratchpadTool = mode !== 'ask';
-      const attachResult = this._applyAttachments(enriched, attachments, provider, { canUseScratchpadTool });
+      const attachResult = this._applyAttachments(enriched, attachments, provider, {
+        canUseScratchpadTool,
+        tabId,
+        messages,
+      });
       if (!attachResult.ok) {
         // Structured signal so the sidepanel can restore the rejected
         // attachments + prompt without sniffing the error copy out of the
