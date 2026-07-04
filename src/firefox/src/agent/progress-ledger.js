@@ -96,6 +96,13 @@ export function isTerminalLedgerStatus(status) {
   return TERMINAL_STATUSES.has(String(status || '').toLowerCase());
 }
 
+// Single source of truth for the reopen gate: a terminal row may only move
+// back to a non-terminal status via an explicit allowReopen (never for auto).
+export function isBlockedLedgerDowngrade(existingStatus, incomingStatus, opts = {}) {
+  if (!isTerminalLedgerStatus(existingStatus) || isTerminalLedgerStatus(incomingStatus)) return false;
+  return opts.source === 'auto' || opts.allowReopen !== true;
+}
+
 export function isValidLedgerStatus(status) {
   return VALID_STATUSES.has(normalizeLedgerStatus(status, ''));
 }
@@ -198,8 +205,7 @@ export function upsertLedgerItems(rows = [], items = [], opts = {}) {
 
     const existing = next[existingIdx] || {};
     const autoActed = source === 'auto' && incoming.status === 'acted';
-    const downgrade = isTerminalLedgerStatus(existing.status) && !isTerminalLedgerStatus(incoming.status);
-    const keepTerminal = downgrade && (source === 'auto' || opts.allowReopen !== true);
+    const keepTerminal = isBlockedLedgerDowngrade(existing.status, incoming.status, { source, allowReopen: opts.allowReopen });
     if (keepTerminal && !autoActed) {
       blockedDowngrades.push({ id: incoming.id, keptStatus: existing.status, requestedStatus: incoming.status });
     }

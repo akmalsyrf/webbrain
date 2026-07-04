@@ -14379,6 +14379,188 @@ test('progress_update adoption merges same-id legacy rows instead of duplicating
   }
 });
 
+test('taskKey hash anchors to the task, not continuation phrases', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 837 : 838;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    const keyBefore = agent._progressTaskKeyHash(tabId);
+    agent.conversations.get(tabId).push(
+      { role: 'assistant', content: 'Paused.' },
+      { role: 'user', content: 'continue' },
+    );
+    assert.equal(agent._progressTaskKeyHash(tabId), keyBefore, `${AgentClass.name}: a continuation turn must not re-key the task`);
+    agent.conversations.get(tabId).push(
+      { role: 'assistant', content: 'Paused.' },
+      { role: 'user', content: 'Check the deployment again in one minute.' },
+    );
+    assert.notEqual(agent._progressTaskKeyHash(tabId), keyBefore, `${AgentClass.name}: a genuinely new task must re-key`);
+  }
+});
+
+test('continuation turns exclude foreign-stamped unscoped rows from the resume guard', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 839 : 840;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+      { role: 'assistant', content: 'Paused.' },
+      { role: 'user', content: 'continue' },
+    ]);
+    const currentKey = agent._progressTaskKeyHash(tabId);
+    agent.progressLedgers.set(tabId, [
+      { id: 'current_stamped', label: 'current_stamped', action: 'follow', status: 'pending', taskKey: currentKey },
+      { id: 'foreign_stamped', label: 'foreign_stamped', action: 'follow', status: 'pending', taskKey: 'tk_00000000' },
+      { id: 'legacy_unstamped', label: 'legacy_unstamped', action: 'follow', status: 'pending' },
+    ]);
+
+    const guarded = agent._legacyUnscopedProgressRowsForResumeGuard(tabId, agent.progressLedgers.get(tabId));
+    assert.deepEqual(guarded.map(r => r.id).sort(), ['current_stamped', 'legacy_unstamped'], `${AgentClass.name}: continuation must keep current-task and unstamped rows but exclude foreign-stamped rows`);
+  }
+});
+
+test('continuation session derive after restart ignores a foreign task\'s scoped rows', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 841 : 842;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+      { role: 'assistant', content: 'Paused.' },
+      { role: 'user', content: 'continue' },
+    ]);
+    // Only a foreign task's scoped unresolved rows survive; no session cached.
+    agent.progressLedgers.set(tabId, [
+      { id: 'old_task_row', label: 'old_task_row', action: 'follow', status: 'pending', taskKey: 'tk_00000000', sessionId: 'progress_old_session' },
+    ]);
+
+    const session = agent._currentProgressSession(tabId);
+    assert.equal(session, null, `${AgentClass.name}: a continuation turn must not revive a foreign task's session from its rows`);
+    const guard = agent._progressRowsForResumeGuard(tabId);
+    assert.deepEqual(guard.rows, [], `${AgentClass.name}: the resume guard must not serve the foreign task's rows`);
+  }
+});
+
+test('currentTaskOnly progress_read does not mutate session state', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 843 : 844;
+    agent.conversationModes.set(tabId, 'act');
+    agent._persist = () => {};
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    allowProgress(agent, tabId, ['follow']);
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'next_real', label: 'next_real', action: 'follow', status: 'pending' }],
+    });
+    const sessionId = agent.progressSessions.get(tabId)?.sessionId;
+    agent.progressSessions.delete(tabId);
+
+    const read = agent._progressRead(tabId, { currentTaskOnly: true });
+    assert.equal(read.sessionId, sessionId, `${AgentClass.name}: post-restart currentTaskOnly read should still find the session's rows`);
+    assert.deepEqual(read.rows.map(r => r.id), ['next_real'], `${AgentClass.name}: post-restart currentTaskOnly read should return the task's rows`);
+    assert.equal(agent.progressSessions.get(tabId), undefined, `${AgentClass.name}: a read call must not write session state`);
+  }
+});
+
+test('resume guard rebuilds from pre-taskKey scoped rows while still on the original task', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 845 : 846;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    // Pre-taskKey persisted data: scoped rows, no taskKey, no cached session.
+    agent.progressLedgers.set(tabId, [
+      { id: 'legacy_scoped', label: 'legacy_scoped', action: 'follow', status: 'pending', sessionId: 'progress_pre_taskkey_session' },
+    ]);
+
+    const guard = agent._progressRowsForResumeGuard(tabId);
+    assert.equal(guard.sessionId, 'progress_pre_taskkey_session', `${AgentClass.name}: pre-taskKey scoped rows must still rebuild the session guard on the original task`);
+    assert.deepEqual(guard.rows.map(r => r.id), ['legacy_scoped'], `${AgentClass.name}: pre-taskKey scoped rows must stay guard-visible`);
+
+    // But a different task must NOT revive them.
+    agent.conversations.get(tabId).push(
+      { role: 'assistant', content: 'Paused.' },
+      { role: 'user', content: 'Check the deployment again in one minute.' },
+    );
+    const guard2 = agent._progressRowsForResumeGuard(tabId);
+    assert.deepEqual(guard2.rows, [], `${AgentClass.name}: an unrelated task must not revive pre-taskKey scoped rows`);
+  }
+});
+
+test('progress_update reports post-adoption statuses in updated', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 847 : 848;
+    agent.conversationModes.set(tabId, 'act');
+    agent._persist = () => {};
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    const taskKey = agent._progressTaskKeyHash(tabId);
+    agent.progressLedgers.set(tabId, [
+      { id: 'octocat', label: 'octocat', action: 'follow', status: 'processed', taskKey },
+    ]);
+    allowProgress(agent, tabId, ['follow']);
+
+    const blocked = agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'pending' }],
+    });
+    assert.ok(Array.isArray(blocked.warnings) && blocked.warnings.length === 1, `${AgentClass.name}: setup should produce a blocked downgrade`);
+    assert.equal(blocked.updated?.[0]?.status, 'processed', `${AgentClass.name}: updated must reflect the ledger's final status, not the rejected write`);
+  }
+});
+
+test('progress_update adopts guard-attributed unstamped legacy rows on scoped writes', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 835 : 836;
+    agent.conversationModes.set(tabId, 'act');
+    agent._persist = () => {};
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    agent.progressLedgers.set(tabId, [
+      { id: 'octocat', label: 'octocat', action: 'follow', status: 'pending' },
+      { id: 'legacy_b', label: 'legacy_b', action: 'follow', status: 'pending' },
+      { id: 'foreign_row', label: 'foreign_row', action: 'follow', status: 'pending', taskKey: 'tk_00000000' },
+    ]);
+    allowProgress(agent, tabId, ['follow']);
+    const sessionId = agent.progressSessions.get(tabId)?.sessionId;
+    assert.ok(sessionId, `${AgentClass.name}: setup did not create a progress session`);
+
+    agent._progressUpdate(tabId, {
+      items: [{ id: 'octocat', label: 'octocat', action: 'follow', status: 'processed' }],
+    });
+
+    const rows = agent.progressLedgers.get(tabId) || [];
+    const octoRows = rows.filter(r => String(r.id).toLowerCase() === 'octocat');
+    assert.equal(octoRows.length, 1, `${AgentClass.name}: processing a guard-visible unstamped legacy row must not leave a stale unscoped copy`);
+    assert.equal(octoRows[0].status, 'processed', `${AgentClass.name}: the surviving row should carry the scoped write's status`);
+    assert.equal(octoRows[0].sessionId, sessionId, `${AgentClass.name}: the surviving row should be scoped`);
+    assert.equal(rows.find(r => r.id === 'legacy_b')?.sessionId, sessionId, `${AgentClass.name}: other guard-attributed unstamped rows should be adopted too`);
+    assert.equal(rows.find(r => r.id === 'foreign_row')?.sessionId, undefined, `${AgentClass.name}: rows stamped for a different task must stay unscoped`);
+
+    const read = agent._progressRead(tabId, { currentTaskOnly: true });
+    assert.equal(read.counts.pending, 1, `${AgentClass.name}: currentTaskOnly must stop reporting the processed item as pending`);
+    assert.deepEqual(read.rows.filter(r => r.status === 'pending').map(r => r.id), ['legacy_b'], `${AgentClass.name}: only the genuinely unprocessed row should remain pending`);
+  }
+});
+
 test('progress_update adoption preserves terminal legacy status against non-terminal scoped writes', async () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
