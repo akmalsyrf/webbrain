@@ -6283,7 +6283,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!messages) return Math.max(2000, baseBudget);
 
     const nextMessages = options.enriched ? [...messages, options.enriched] : messages;
-    const promptChars = this._estimateContextChars(nextMessages);
+    const budgetMessages = provider ? this._pruneOldImages(nextMessages, provider) : nextMessages;
+    const promptChars = this._estimateContextChars(budgetMessages);
     const lastReported = options.tabId != null ? this._lastInputTokens.get(options.tabId) || 0 : 0;
     const lastEstChars = options.tabId != null ? this._lastEstCharsAtReport.get(options.tabId) : null;
     const fixedPromptOverheadChars = lastReported > 0 && lastEstChars != null
