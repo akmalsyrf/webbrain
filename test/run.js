@@ -13887,6 +13887,53 @@ test('schedule_resume falls back to all-sessions progress read for legacy unscop
   }
 });
 
+test('schedule_resume falls back to legacy rows when active session has no scoped rows', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });
+    const tabId = AgentClass === AgentCh ? 809 : 810;
+    agent.conversationModes.set(tabId, 'act');
+    agent.conversationIds.set(tabId, 'conv_empty_scoped_legacy_progress_guard');
+    agent.conversations.set(tabId, [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: "follow 100 accounts i don't follow yet here" },
+    ]);
+    allowProgress(agent, tabId, ['follow']);
+    const sessionId = agent.progressSessions.get(tabId)?.sessionId;
+    assert.ok(sessionId, `${AgentClass.name}: setup did not create an active progress session`);
+    agent.progressLedgers.set(tabId, [
+      { id: 'legacy_pending', label: 'legacy_pending', action: 'follow', status: 'pending' },
+    ]);
+
+    let scheduledPayload = null;
+    agent.setScheduler({
+      createResumeJob: async payload => {
+        scheduledPayload = payload;
+        return {
+          success: true,
+          scheduled: true,
+          jobId: 'resume_empty_scoped_legacy_guard_test',
+          scheduledAt: '2026-06-30T09:01:30.000Z',
+          summary: 'Resume scheduled.',
+          done: true,
+        };
+      },
+    });
+
+    const result = await agent.executeTool(tabId, 'schedule_resume', {
+      after_seconds: 60,
+      reason: '60-second pause between follows',
+      resume_instruction: 'Next account to follow is @eXeDK.',
+    });
+
+    assert.equal(result.success, true, `${AgentClass.name}: empty-scoped legacy schedule_resume should succeed`);
+    const instruction = scheduledPayload?.args?.resume_instruction || '';
+    assert.ok(instruction.includes('progress_read({allSessions: true, limit: 50})'), `${AgentClass.name}: empty scoped session should fall back to all-session progress_read`);
+    assert.doesNotMatch(instruction, /App-owned progress session id:/, `${AgentClass.name}: empty scoped session should not ask the model to read an empty session`);
+    assert.match(instruction, /1 row\(s\), 1 unresolved/, `${AgentClass.name}: empty scoped legacy guard should include safe counts`);
+    assert.ok(instruction.indexOf('source of truth') < instruction.indexOf('@eXeDK'), `${AgentClass.name}: empty scoped legacy guard must come before the stale next-user hint`);
+  }
+});
+
 test('schedule_resume does not attach stale legacy progress rows to unrelated tasks', async () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getActive: () => ({ contextWindow: 128000, supportsVision: false }) });

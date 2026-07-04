@@ -4628,20 +4628,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const sessionId = String(session?.sessionId || '').trim();
     const safeSessionId = /^[A-Za-z0-9_.:-]{1,128}$/.test(sessionId) ? sessionId : '';
     const allRows = this.progressLedgers.get(tabId) || [];
-    const rows = safeSessionId
-      ? this._rowsForProgressSession(tabId, safeSessionId, allRows)
-      : this._legacyUnscopedProgressRowsForResumeGuard(tabId, allRows);
+    let readSessionId = safeSessionId;
+    let rows = readSessionId
+      ? this._rowsForProgressSession(tabId, readSessionId, allRows)
+      : [];
+    if (!rows.length) {
+      rows = this._legacyUnscopedProgressRowsForResumeGuard(tabId, allRows);
+      if (rows.length) readSessionId = '';
+    }
     if (!rows.length) return rawInstruction;
 
     const counts = progressCounts(rows);
     if (!counts.unresolved) return rawInstruction;
 
-    const readCall = safeSessionId
-      ? `progress_read({sessionId: "${safeSessionId}", limit: 50})`
+    const readCall = readSessionId
+      ? `progress_read({sessionId: "${readSessionId}", limit: 50})`
       : 'progress_read({allSessions: true, limit: 50})';
     const guard = [
       'Continue the active Act-mode progress-ledger task after this scheduled pause.',
-      ...(safeSessionId ? [`App-owned progress session id: ${safeSessionId}.`] : []),
+      ...(readSessionId ? [`App-owned progress session id: ${readSessionId}.`] : []),
       `Before navigating to any account/item named below, call ${readCall} and use the returned pending/acted rows as the source of truth.`,
       'Do not redo processed, skipped, or failed rows.',
       'If a concrete next account/item in the model-supplied hint conflicts with the ledger, ignore the hint and follow the ledger.',
