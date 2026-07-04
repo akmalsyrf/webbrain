@@ -76,7 +76,6 @@ export default {
   'sp.inspection': 'WebBrain mula meneliti halaman ini',
 
   'sp.greeting.html': 'Hai! Saya <strong>WebBrain</strong>. Saya boleh membaca halaman ini, menjawab soalan, mengklik butang, mengisi borang, dan mengautomatikkan tugas berbilang langkah.',
-  'sp.greeting.hint': 'Cuba: "Rumuskan halaman ini" atau "Cari semua pautan tentang harga"',
   'sp.help_message': 'Bagaimana saya boleh membantu pada halaman ini?',
   'sp.cleared_message': 'Perbualan dikosongkan. Bagaimana saya boleh membantu?',
 

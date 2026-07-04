@@ -106,7 +106,6 @@ export default {
   'sp.inspection': 'WebBrain bu sayfayı incelemeye başladı',
 
   'sp.greeting.html': 'Merhaba! Ben <strong>WebBrain</strong>. Bu sayfayı okuyabilir, sorularını yanıtlayabilir, düğmelere tıklayabilir, formları doldurabilir ve çok adımlı görevleri otomatikleştirebilirim.',
-  'sp.greeting.hint': 'Dene: «Bu sayfayı özetle» veya «Fiyatlandırmayla ilgili tüm bağlantıları bul»',
   'sp.help_message': 'Bu sayfayla ilgili nasıl yardımcı olabilirim?',
   'sp.cleared_message': 'Konuşma silindi. Nasıl yardımcı olabilirim?',
 

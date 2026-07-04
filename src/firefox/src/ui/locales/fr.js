@@ -76,7 +76,6 @@ export default {
   'sp.inspection': 'WebBrain a commencé à inspecter cette page',
 
   'sp.greeting.html': 'Bonjour ! Je suis <strong>WebBrain</strong>. Je peux lire cette page, répondre à des questions, cliquer sur des boutons, remplir des formulaires et automatiser des tâches en plusieurs étapes.',
-  'sp.greeting.hint': 'Essayez : « Résume cette page » ou « Trouve tous les liens à propos des tarifs »',
   'sp.help_message': 'Comment puis-je vous aider avec cette page ?',
   'sp.cleared_message': 'Conversation effacée. Comment puis-je vous aider ?',
 

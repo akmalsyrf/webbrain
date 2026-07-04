@@ -33,7 +33,6 @@ export default {
   'sp.inspection': 'WebBrain started inspecting this page',
 
   'sp.greeting.html': 'Hi! I\'m <strong>WebBrain</strong>. I can read this page, answer questions, click buttons, fill forms, and automate multi-step tasks.',
-  'sp.greeting.hint': 'Try: "Summarize this page" or "Find all links about pricing"',
   'sp.help_message': 'How can I help with this page?',
   'sp.cleared_message': 'Conversation cleared. How can I help?',
 
