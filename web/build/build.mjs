@@ -87,6 +87,9 @@ const FAQ_KEYS = [
 ];
 
 const STRIPE_SUBSCRIBE_URL = 'https://buy.stripe.com/bJebJ13at2kc5XP7eY8g00a';
+const X_PROFILE_URL = 'https://x.com/webbrain_one';
+const MASTODON_PROFILE_URL = 'https://mastoturk.org/@webbrain';
+const BLUESKY_PROFILE_URL = 'https://bsky.app/profile/webbrain-one.bsky.social';
 
 function escHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
@@ -319,12 +322,18 @@ async function main() {
     // the recipient lands on a localized version when they open it.
     const homeUrl = homeUrlFor(locale);
     const shareText = dict['share.text'] || '';
+    const shareTextWithUrl = `${shareText} ${homeUrl}`.trim();
     dict = {
       ...dict,
       'featured_home_promo.url': `${SITE_ORIGIN}${FEATURED_HOME_PROMO.urlPath}`,
       'featured_home_promo.image': FEATURED_HOME_PROMO.imagePath,
       'share.x_intent_url': `https://x.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(homeUrl)}`,
       'share.linkedin_intent_url': `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(homeUrl)}`,
+      'share.mastodon_intent_url': `https://mastoturk.org/share?text=${encodeURIComponent(shareTextWithUrl)}`,
+      'share.bluesky_intent_url': `https://bsky.app/intent/compose?text=${encodeURIComponent(shareTextWithUrl)}`,
+      'social.x_url': X_PROFILE_URL,
+      'social.mastodon_url': MASTODON_PROFILE_URL,
+      'social.bluesky_url': BLUESKY_PROFILE_URL,
     };
 
     const { html, missing } = applyTemplate(template, dict, locale);
