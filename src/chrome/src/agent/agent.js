@@ -10662,10 +10662,6 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           tool_calls: result.toolCalls,
         });
 
-        if (result.content) {
-          onUpdate('text', { content: result.content });
-        }
-
         const batchResult = await this._executeToolBatch(
           tabId, result.toolCalls, messages, onUpdate, provider, result.content, allowedToolNames, steps
         );

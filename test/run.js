@@ -5815,6 +5815,13 @@ test('sidepanel suppresses streamed raw tool-call text before rendering tool ste
     const body = panel.slice(start, end);
     assert.match(body, /clearTransientAssistantTextForToolCall\(\);[\s\S]*?appendVerboseToolCall/, `${label}: verbose tool calls should clear raw streamed text first`);
     assert.match(body, /clearTransientAssistantTextForToolCall\(\);[\s\S]*?appendCompactStep/, `${label}: compact tool steps should clear raw streamed text first`);
+    const clearStart = panel.indexOf('function clearTransientAssistantTextForToolCall() {');
+    assert.notEqual(clearStart, -1, `${label}: clearTransientAssistantTextForToolCall missing`);
+    const clearEnd = panel.indexOf('function appendVerboseToolCall', clearStart);
+    assert.notEqual(clearEnd, -1, `${label}: clearTransientAssistantTextForToolCall boundary missing`);
+    const clearBody = panel.slice(clearStart, clearEnd);
+    assert.match(clearBody, /textEl\.textContent = '';/, `${label}: tool-call prose should be cleared when a tool call begins`);
+    assert.doesNotMatch(clearBody, /if \(!verboseMode \|\| looksLikeRawToolCallText\(text\)\)/, `${label}: verbose mode must not preserve pre-tool assistant prose`);
   }
 });
 
@@ -13601,6 +13608,71 @@ test('aborted content-plus-tool responses do not become successful finals', asyn
     assert.equal(ended?.status, 'cancelled', `${AgentClass.name}: trace was not marked cancelled`);
     assert.equal(ended?.finalContent, final, `${AgentClass.name}: trace final did not use interrupted message`);
     assert.doesNotMatch(final, /Updating ledger/, `${AgentClass.name}: model partial text leaked as final`);
+  }
+});
+
+test('content-plus-tool responses do not emit intermediate assistant text', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const responses = [
+      {
+        content: 'I will click the submit button now.',
+        toolCalls: [{
+          id: 'click_call',
+          function: {
+            name: 'click_ax',
+            arguments: JSON.stringify({ ref_id: 'ref_6' }),
+          },
+        }],
+      },
+      { content: 'Final answer after the tool result.', toolCalls: [] },
+    ];
+    const provider = {
+      supportsTools: true,
+      supportsVision: false,
+      promptTier: 'full',
+      contextWindow: 128000,
+      model: 'test-model',
+      name: 'test-provider',
+      chat: async () => {
+        const next = responses.shift();
+        assert.ok(next, `${AgentClass.name}: model was called too many times`);
+        return next;
+      },
+    };
+    const agent = new AgentClass({
+      getActive: () => provider,
+      getVisionProvider: async () => null,
+    });
+    const tabId = 798;
+    agent.planBeforeAct = false;
+    agent.maxSteps = 3;
+    agent._skipPermissionGate = true;
+    agent._manageContext = async () => {};
+    agent._enrichUserMessageWithCurrentPage = async (_tabId, _messages, content) => ({ role: 'user', content });
+    agent._maybeReinjectAdapter = async () => {};
+    agent._ensureProgressSessionForCurrentTask = async () => ({ mode: 'inactive' });
+    agent._persist = () => {};
+    agent.executeTool = async () => ({ success: true, method: 'click_ax' });
+
+    const updates = [];
+    const final = await agent.processMessage(tabId, 'continue', (type, data) => {
+      updates.push({ type, data });
+    }, 'act');
+
+    assert.equal(final, 'Final answer after the tool result.', `${AgentClass.name}: final answer mismatch`);
+    assert.equal(
+      updates.some(update => update.type === 'text' && /submit button now/.test(update.data?.content || '')),
+      false,
+      `${AgentClass.name}: intermediate content attached to a tool call was rendered`,
+    );
+    assert.ok(
+      updates.some(update => update.type === 'tool_call' && update.data?.name === 'click_ax'),
+      `${AgentClass.name}: tool call update missing`,
+    );
+    assert.ok(
+      updates.some(update => update.type === 'text' && update.data?.content === 'Final answer after the tool result.'),
+      `${AgentClass.name}: final text update missing`,
+    );
   }
 });
 

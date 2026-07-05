@@ -3776,9 +3776,7 @@ function clearTransientAssistantTextForToolCall() {
     delete textEl.dataset.suppressToolCallStream;
     return;
   }
-  if (!verboseMode || looksLikeRawToolCallText(text)) {
-    textEl.textContent = '';
-  }
+  textEl.textContent = '';
   delete textEl.dataset.suppressToolCallStream;
 }
 
