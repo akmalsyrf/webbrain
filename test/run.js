@@ -17927,8 +17927,16 @@ test('store-review-prompt: eligibility requires successful tasks and cooling per
     shouldShowStoreReviewCh(dismissed, { now: now + (STORE_REVIEW_DISMISS_DAYS - 1) * MS_DAY, onboardingComplete: true }),
     false,
   );
+  assert.equal(
+    shouldShowStoreReviewCh(dismissed, { now: now + (STORE_REVIEW_DISMISS_DAYS + 1) * MS_DAY, onboardingComplete: true }),
+    true,
+  );
   const shown = markStoreReviewShownCh(eligibleBase, { now });
   assert.equal(shouldShowStoreReviewCh(shown, { now, onboardingComplete: true }), false);
+  assert.equal(
+    shouldShowStoreReviewCh(shown, { now: now + (STORE_REVIEW_DISMISS_DAYS + 1) * MS_DAY, onboardingComplete: true }),
+    true,
+  );
 });
 
 test('store-review-prompt: positive ratings route to store URLs; feedback URL encodes rating', () => {

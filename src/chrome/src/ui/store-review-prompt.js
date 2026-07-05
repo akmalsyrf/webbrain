@@ -65,7 +65,7 @@ export function shouldShowPrompt(state, {
   if (!s.firstSuccessAt) return false;
   if (now - s.firstSuccessAt < MIN_DAYS_BEFORE_PROMPT * MS_PER_DAY) return false;
   if (s.dismissedAt && now - s.dismissedAt < DISMISS_COOLDOWN_DAYS * MS_PER_DAY) return false;
-  if (s.lastShownAt && !s.ratedAt) return false;
+  if (s.lastShownAt && !s.ratedAt && now - s.lastShownAt < DISMISS_COOLDOWN_DAYS * MS_PER_DAY) return false;
   return true;
 }
 
