@@ -35,6 +35,7 @@ export default {
   'sp.greeting.html': 'Hi! I\'m <strong>WebBrain</strong>. I can read this page, answer questions, click buttons, fill forms, and automate multi-step tasks.',
   'sp.help_message': 'How can I help with this page?',
   'sp.cleared_message': 'Conversation cleared. How can I help?',
+  'sp.clear.confirm': 'This conversation will be lost. Start a new conversation?',
 
   'sp.mode.ask': 'Ask',
   'sp.mode.ask.title': 'Ask questions about the page — no changes made',

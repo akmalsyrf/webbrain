@@ -78,6 +78,7 @@ export default {
   'sp.greeting.html': 'こんにちは！<strong>WebBrain</strong> です。このページを読み、質問に答え、ボタンを押し、フォームに入力し、複数ステップのタスクを自動化できます。',
   'sp.help_message': 'このページで何をお手伝いしましょうか？',
   'sp.cleared_message': '会話をクリアしました。何かお手伝いできますか？',
+  'sp.clear.confirm': 'この会話は失われます。新しい会話を開始しますか？',
 
   'sp.mode.ask': '質問',
   'sp.mode.ask.title': 'ページについて質問する — 変更は行いません',

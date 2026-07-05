@@ -78,6 +78,7 @@ export default {
   'sp.greeting.html': 'Halo! Saya <strong>WebBrain</strong>. Saya bisa membaca halaman ini, menjawab pertanyaan, mengeklik tombol, mengisi formulir, dan mengotomatiskan tugas multi-langkah.',
   'sp.help_message': 'Ada yang bisa saya bantu di halaman ini?',
   'sp.cleared_message': 'Percakapan dihapus. Ada yang bisa saya bantu?',
+  'sp.clear.confirm': 'Percakapan ini akan hilang. Mulai percakapan baru?',
 
   'sp.mode.ask': 'Tanya',
   'sp.mode.ask.title': 'Bertanya tentang halaman — tanpa perubahan',

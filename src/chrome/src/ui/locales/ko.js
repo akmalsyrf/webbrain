@@ -78,6 +78,7 @@ export default {
   'sp.greeting.html': '안녕하세요! 저는 <strong>WebBrain</strong>입니다. 이 페이지를 읽고, 질문에 답하고, 버튼을 누르고, 양식을 채우며, 여러 단계의 작업을 자동화할 수 있습니다.',
   'sp.help_message': '이 페이지에서 무엇을 도와드릴까요?',
   'sp.cleared_message': '대화가 지워졌습니다. 무엇을 도와드릴까요?',
+  'sp.clear.confirm': '이 대화는 사라집니다. 새 대화를 시작할까요?',
 
   'sp.mode.ask': '질문',
   'sp.mode.ask.title': '페이지에 대해 질문 — 변경은 하지 않습니다',

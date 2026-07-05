@@ -4967,6 +4967,18 @@ test('all locales translate the clear-scratchpad slash command', () => {
   }
 });
 
+test('all locales translate the new-conversation warning', () => {
+  for (const [label, localeDir] of [
+    ['chrome', 'src/chrome/src/ui/locales'],
+    ['firefox', 'src/firefox/src/ui/locales'],
+  ]) {
+    for (const filename of fs.readdirSync(path.join(ROOT, localeDir)).filter((name) => name.endsWith('.js'))) {
+      const locale = fs.readFileSync(path.join(ROOT, localeDir, filename), 'utf8');
+      assert.match(locale, /['"]sp\.clear\.confirm['"]:\s*['"][^'"]+['"]/, `${label}/${filename}: missing translated new-conversation warning`);
+    }
+  }
+});
+
 test('sidepanel awaits onboarding completion persistence before hiding', () => {
   for (const [label, panelRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js'],
@@ -6609,6 +6621,7 @@ test('sidepanel scopes async tab commands to the original tab', () => {
 
     const clearStart = panel.indexOf("clearBtn.addEventListener('click', async () => {");
     const clearBody = panel.slice(clearStart, panel.indexOf('\n});', clearStart) + 4);
+    assert.match(clearBody, /const tabId = currentTabId;[\s\S]*?if \(!window\.confirm\(t\('sp\.clear\.confirm'\)\)\) return;/, `${label}: clear button should confirm before clearing the conversation`);
     assert.match(clearBody, /const tabId = currentTabId;[\s\S]*?await sendToBackground\('clear_conversation', \{ tabId \}\);[\s\S]*?renderClearedConversationForTab\(tabId\);/, `${label}: clear button should clear the originally requested tab only`);
 
     const compactIdx = panel.indexOf('// /compact');

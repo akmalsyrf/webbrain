@@ -108,6 +108,7 @@ export default {
   'sp.greeting.html': 'Merhaba! Ben <strong>WebBrain</strong>. Bu sayfayı okuyabilir, sorularını yanıtlayabilir, düğmelere tıklayabilir, formları doldurabilir ve çok adımlı görevleri otomatikleştirebilirim.',
   'sp.help_message': 'Bu sayfayla ilgili nasıl yardımcı olabilirim?',
   'sp.cleared_message': 'Konuşma silindi. Nasıl yardımcı olabilirim?',
+  'sp.clear.confirm': 'Bu konuşma kaybolacak. Yeni bir konuşma başlatılsın mı?',
 
   'sp.mode.ask': 'Sor',
   'sp.mode.ask.title': 'Sayfa hakkında soru sor — hiçbir değişiklik yapılmaz',

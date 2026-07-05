@@ -78,6 +78,7 @@ export default {
   'sp.greeting.html': '¡Hola! Soy <strong>WebBrain</strong>. Puedo leer esta página, responder preguntas, hacer clic en botones, rellenar formularios y automatizar tareas de varios pasos.',
   'sp.help_message': '¿Cómo puedo ayudarte con esta página?',
   'sp.cleared_message': 'Conversación borrada. ¿En qué puedo ayudarte?',
+  'sp.clear.confirm': 'Esta conversación se perderá. ¿Iniciar una nueva conversación?',
 
   'sp.mode.ask': 'Preguntar',
   'sp.mode.ask.title': 'Haz preguntas sobre la página — sin hacer cambios',
