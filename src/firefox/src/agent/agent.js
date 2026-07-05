@@ -3631,7 +3631,42 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       if (el.isContentEditable) return true;
       return /^(INPUT|TEXTAREA|SELECT)$/i.test(el.tagName || '');
     };
-    const interactiveElements = () => Array.from(doc.querySelectorAll(
+    const hasVisibleBox = (el, minWidth = 1, minHeight = 1) => {
+      if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+      try {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < minWidth || rect.height < minHeight) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity || '1') === 0) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const findTopmostModal = () => {
+      const dialogs = doc.querySelectorAll('dialog[open]');
+      for (let i = dialogs.length - 1; i >= 0; i--) {
+        if (hasVisibleBox(dialogs[i])) return dialogs[i];
+      }
+      const modalDialogs = doc.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]');
+      for (let i = modalDialogs.length - 1; i >= 0; i--) {
+        if (hasVisibleBox(modalDialogs[i])) return modalDialogs[i];
+      }
+      const roleDialogs = doc.querySelectorAll('[role="dialog"], [role="alertdialog"]');
+      for (let i = roleDialogs.length - 1; i >= 0; i--) {
+        if (hasVisibleBox(roleDialogs[i])) return roleDialogs[i];
+      }
+      const overlays = doc.querySelectorAll(
+        '[data-overlay], [data-state="open"][role="dialog"], ' +
+        '.modal.show, .modal-overlay, .overlay, [class*="modal"][class*="open"], ' +
+        '[class*="overlay"][class*="active"], [class*="DialogOverlay"], [class*="ModalOverlay"]'
+      );
+      for (let i = overlays.length - 1; i >= 0; i--) {
+        if (hasVisibleBox(overlays[i], 100, 100)) return overlays[i];
+      }
+      return null;
+    };
+    const interactiveElements = () => Array.from((findTopmostModal() || doc).querySelectorAll(
       'a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], input:not([type="hidden"]), textarea, select, input[type="button"], input[type="submit"], summary, label, [onclick], [data-action]'
     )).filter(isVisible);
     const resolveClickTarget = () => {

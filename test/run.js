@@ -12438,6 +12438,8 @@ test('submit detector source covers submit controls, Enter, set_field, iframes, 
     assert.match(agent, /__wb_resolve_click_target_for_submit_probe/, `${label}: submit probe should reuse content click-index resolver when available`);
     assert.match(agent, /const deepQuerySelector = \(root, selector\)/, `${label}: selector submit probing should pierce open shadow roots`);
     assert.match(agent, /return deepQuerySelector\(doc, args\.selector\)/, `${label}: selector submit probing should use the deep selector resolver`);
+    assert.match(agent, /const findTopmostModal = \(\) => \{[\s\S]*dialog\[open\][\s\S]*\[role="dialog"\]\[aria-modal="true"\][\s\S]*\[class\*="DialogOverlay"\]/, `${label}: text submit probing should mirror modal scoping`);
+    assert.match(agent, /Array\.from\(\(findTopmostModal\(\) \|\| doc\)\.querySelectorAll/, `${label}: text submit probing should search inside the topmost modal when present`);
   }
 });
 
