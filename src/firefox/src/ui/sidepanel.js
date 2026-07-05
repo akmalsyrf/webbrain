@@ -423,6 +423,7 @@ let composerToastTimer = null;
 let retryPayloadSeq = 0;
 const activeChatPayloadsByTab = new Map();
 const retryAttachmentPayloads = new Map();
+const retryAttachmentIdsByTab = new Map();
 const {
   acceptContextMenuPrompt,
   drainQueuedContextMenuPrompts,
@@ -847,6 +848,51 @@ function sameTabId(a, b) {
   return a != null && b != null && String(a) === String(b);
 }
 
+function normalizeRetryAttachmentTabId(tabId = renderedTabId ?? currentTabId) {
+  const numericTabId = Number(tabId);
+  return Number.isFinite(numericTabId) ? numericTabId : null;
+}
+
+function trackRetryAttachmentId(tabId, retryId) {
+  if (!retryId) return;
+  const numericTabId = normalizeRetryAttachmentTabId(tabId);
+  if (numericTabId == null) return;
+  let ids = retryAttachmentIdsByTab.get(numericTabId);
+  if (!ids) {
+    ids = new Set();
+    retryAttachmentIdsByTab.set(numericTabId, ids);
+  }
+  ids.add(retryId);
+}
+
+function releaseRetryAttachmentPayload(retryId) {
+  if (!retryId) return;
+  retryAttachmentPayloads.delete(retryId);
+  for (const [tabId, ids] of retryAttachmentIdsByTab) {
+    ids.delete(retryId);
+    if (!ids.size) retryAttachmentIdsByTab.delete(tabId);
+  }
+}
+
+function releaseRetryAttachmentsInTree(root) {
+  if (!root) return;
+  if (root.matches?.('.error-retry-btn[data-retry-id]')) {
+    releaseRetryAttachmentPayload(root.dataset.retryId);
+  }
+  root.querySelectorAll?.('.error-retry-btn[data-retry-id]').forEach((btn) => {
+    releaseRetryAttachmentPayload(btn.dataset.retryId);
+  });
+}
+
+function clearRetryAttachmentsForTab(tabId) {
+  const numericTabId = normalizeRetryAttachmentTabId(tabId);
+  if (numericTabId == null) return;
+  const ids = retryAttachmentIdsByTab.get(numericTabId);
+  if (!ids) return;
+  ids.forEach((retryId) => retryAttachmentPayloads.delete(retryId));
+  retryAttachmentIdsByTab.delete(numericTabId);
+}
+
 function getQueuedComposerMessages(tabId) {
   const numericTabId = Number(tabId);
   if (!Number.isFinite(numericTabId)) return [];
@@ -1013,6 +1059,8 @@ function renderClearedConversationForTab(tabId) {
   saveInputDraftForTab(tabId, '');
   clearPendingAttachmentsForTab(tabId);
   clearQueuedComposerMessagesForTab(tabId);
+  if (sameTabId(currentTabId, tabId)) releaseRetryAttachmentsInTree(messagesEl);
+  clearRetryAttachmentsForTab(tabId);
   setApiMutationsAllowedForTab(tabId, false);
   if (currentTabId !== tabId) return;
   renderedTabId = tabId;
@@ -3901,7 +3949,10 @@ function addErrorRetryButton(msgEl, retryPayload) {
   if (!msgEl || !retryPayload?.text || msgEl.querySelector('.error-retry-btn')) return;
   const retryId = `retry-${Date.now()}-${++retryPayloadSeq}`;
   const attachments = Array.isArray(retryPayload.attachments) ? retryPayload.attachments.slice() : [];
-  if (attachments.length) retryAttachmentPayloads.set(retryId, attachments);
+  if (attachments.length) {
+    retryAttachmentPayloads.set(retryId, attachments);
+    trackRetryAttachmentId(renderedTabId ?? currentTabId, retryId);
+  }
   msgEl.classList.add('retryable');
   const btn = document.createElement('button');
   btn.type = 'button';

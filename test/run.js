@@ -7153,6 +7153,26 @@ test('sidepanel keeps retry metadata long enough for returned error updates', ()
     );
     assert.match(
       source,
+      /const retryAttachmentIdsByTab = new Map\(\);/,
+      `${label}: retry attachment payloads should be indexed by tab for cleanup`,
+    );
+    assert.match(
+      source,
+      /function clearRetryAttachmentsForTab\(tabId\) \{[\s\S]*?retryAttachmentPayloads\.delete\(retryId\)[\s\S]*?retryAttachmentIdsByTab\.delete\(numericTabId\);[\s\S]*?\}/,
+      `${label}: clearing a conversation should release retry attachment payloads for that tab`,
+    );
+    assert.match(
+      source,
+      /function renderClearedConversationForTab\(tabId\) \{[\s\S]*?releaseRetryAttachmentsInTree\(messagesEl\);[\s\S]*?clearRetryAttachmentsForTab\(tabId\);[\s\S]*?messagesEl\.innerHTML = '';/,
+      `${label}: reset should release retry attachment payloads before removing retry buttons from the DOM`,
+    );
+    assert.match(
+      source,
+      /retryAttachmentPayloads\.set\(retryId, attachments\);[\s\S]*?trackRetryAttachmentId\(renderedTabId \?\? currentTabId, retryId\);/,
+      `${label}: retry attachment payload IDs should be associated with the rendered tab`,
+    );
+    assert.match(
+      source,
       /if \(payload\.apiMutationsAllowed\) \{[\s\S]*?setApiMutationsAllowedForTab\(currentTabId, true\);[\s\S]*?\}[\s\S]*?await sendMessage\(\{/,
       `${label}: restored retries that replay API mutation permission should resync the visible per-tab API state`,
     );
