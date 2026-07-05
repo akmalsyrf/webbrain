@@ -3896,6 +3896,41 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return this._plannerMode() !== 'off';
   }
 
+  _messageHasPlannerFollowUpAttachmentBlocks(message) {
+    const content = message?.content ?? message;
+    if (!Array.isArray(content)) return false;
+    return content.some(block => {
+      if (!block || typeof block !== 'object') return false;
+      if (block.type !== 'text') return true;
+      const text = String(block.text || '');
+      return text.startsWith('[UNTRUSTED USER ATTACHMENTS') || text.startsWith('[UNTRUSTED DOCUMENT');
+    });
+  }
+
+  _plannerFollowUpText(message) {
+    return userMessageToText(message).replace(/\s+/g, ' ').trim();
+  }
+
+  _plannerFollowUpHasExplicitUrl(text) {
+    return /(?:https?:\/\/|www\.)\S+|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?:\/[^\s]*)?/i.test(String(text || ''));
+  }
+
+  _hasApprovedPlannerHandoff(messages) {
+    const idx = this._findScratchpadIndex(messages || []);
+    if (idx < 0) return false;
+    const body = this._extractScratchpadBody(messages[idx].content);
+    return /\[Approved plan\b[^\]]*pinned by planner\]/.test(body);
+  }
+
+  _shouldSkipPlannerForShortFollowUp(tabId, priorMessages, enriched, plannerMode) {
+    if (plannerMode !== 'try') return false;
+    if (!this._hasApprovedPlannerHandoff(priorMessages)) return false;
+    if (this._messageHasPlannerFollowUpAttachmentBlocks(enriched)) return false;
+    const text = this._plannerFollowUpText(enriched);
+    if (!text || text.length > 100) return false;
+    return !this._plannerFollowUpHasExplicitUrl(text);
+  }
+
   /**
    * Plan-before-Act gate: push user message, pin approved plan after it, or stop early.
    */
@@ -3911,6 +3946,9 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     messages.push(enriched);
     this._persist(tabId);
     if (!runPlanner) return { proceed: true };
+    if (this._shouldSkipPlannerForShortFollowUp(tabId, priorMessages, enriched, plannerMode)) {
+      return { proceed: true };
+    }
 
     const historyDigest = this._buildPlannerHistoryDigest(priorMessages);
     const gate = await this._runPlannerGate(tabId, enriched, onUpdate, costState, runId, historyDigest, tabInfo, plannerMode);
