@@ -407,6 +407,9 @@
       justify-content: space-between;
       gap: 12px;
     }
+    .setting-row.setting-row-muted {
+      opacity: 0.58;
+    }
     .setting-info {
       flex: 1;
       min-width: 0;
@@ -608,6 +611,25 @@
           <option value="off" data-i18n="st.display.plan_before_act.off"></option>
           <option value="strict" data-i18n="st.display.plan_before_act.strict"></option>
         </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-label" data-i18n="st.display.plan_review.label"></div>
+          <div class="setting-desc" data-i18n="st.display.plan_review.desc"></div>
+        </div>
+        <select id="select-plan-review-mode">
+          <option value="confidence" data-i18n="st.display.plan_review.confidence"></option>
+          <option value="always" data-i18n="st.display.plan_review.always"></option>
+          <option value="never" data-i18n="st.display.plan_review.never"></option>
+        </select>
+      </div>
+      <div class="setting-row" id="row-plan-review-confidence">
+        <div class="setting-info">
+          <div class="setting-label"><span data-i18n="st.display.plan_review_threshold.label"></span> <span id="plan-review-confidence-value" style="color:var(--accent);font-weight:700;margin-left:4px;">90%</span></div>
+          <div class="setting-desc" data-i18n="st.display.plan_review_threshold.desc"></div>
+        </div>
+        <input type="range" id="range-plan-review-confidence" min="50" max="99" value="90" step="1"
+               style="width:120px;accent-color:var(--accent);cursor:pointer;">
       </div>
       <div class="setting-row">
         <div class="setting-info">

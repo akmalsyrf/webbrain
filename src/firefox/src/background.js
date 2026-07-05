@@ -247,10 +247,44 @@ async function loadPlanBeforeAct() {
   const stored = await browser.storage.local.get(['planBeforeActMode', 'planBeforeAct']);
   applyPlanBeforeActMode(normalizePlanBeforeActMode(stored));
 }
+
+function normalizePlanReviewMode(stored = {}) {
+  return stored.planReviewMode === 'always' || stored.planReviewMode === 'never' || stored.planReviewMode === 'confidence'
+    ? stored.planReviewMode
+    : 'confidence';
+}
+
+function normalizePlanReviewConfidenceThreshold(stored = {}) {
+  let threshold = Number(stored.planReviewConfidenceThreshold);
+  if (!Number.isFinite(threshold)) threshold = 0.9;
+  if (threshold > 1 && threshold <= 100) threshold /= 100;
+  // Match the settings slider's [50%, 99%] range so an out-of-band stored
+  // value can't disable the review gate while the UI shows an in-range value.
+  return Math.max(0.5, Math.min(0.99, threshold));
+}
+
+function applyPlanReviewSettings(stored = {}) {
+  const settings = {
+    mode: normalizePlanReviewMode(stored),
+    confidenceThreshold: normalizePlanReviewConfidenceThreshold(stored),
+  };
+  if (typeof agent.setPlanReviewSettings === 'function') {
+    agent.setPlanReviewSettings(settings);
+    return;
+  }
+  agent.planReviewMode = settings.mode;
+  agent.planReviewConfidenceThreshold = settings.confidenceThreshold;
+}
+
+async function loadPlanReviewSettings() {
+  const stored = await browser.storage.local.get(['planReviewMode', 'planReviewConfidenceThreshold']);
+  applyPlanReviewSettings(stored);
+}
 // Hydrate once at SW boot. handleMessage awaits this promise so the first chat
 // can't race ahead of hydration, but it does NOT re-read storage per message —
 // the storage.onChanged listener below keeps the planner mode in sync. (#5)
 const planBeforeActReady = loadPlanBeforeAct();
+const planReviewReady = loadPlanReviewSettings();
 
 // Initialize on install
 browser.runtime.onInstalled.addListener(async () => {
@@ -307,6 +341,12 @@ browser.storage.onChanged.addListener((changes) => {
       planBeforeActMode: changes.planBeforeActMode?.newValue,
       planBeforeAct: changes.planBeforeAct?.newValue,
     }));
+  }
+  if (changes.planReviewMode || changes.planReviewConfidenceThreshold) {
+    applyPlanReviewSettings({
+      planReviewMode: changes.planReviewMode?.newValue ?? agent.planReviewMode,
+      planReviewConfidenceThreshold: changes.planReviewConfidenceThreshold?.newValue ?? agent.planReviewConfidenceThreshold,
+    });
   }
   if (refreshPrompts) agent._refreshSystemPrompts();
 });
@@ -771,7 +811,7 @@ async function handleMessage(msg, sender) {
   }
   // Hydrate agent toggles and prompt add-ons once at boot (not per message);
   // onChanged keeps them in sync afterward.
-  await Promise.all([planBeforeActReady, customSkillsReady]);
+  await Promise.all([planBeforeActReady, planReviewReady, customSkillsReady]);
 
   switch (msg.action) {
     case 'chat': {

@@ -19,7 +19,7 @@ import {
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '21.4.0';
+const EXT_VERSION = '21.4.1';
 
 const providersContainer = document.getElementById('providers');
 const displaySettings = document.getElementById('display-settings');
@@ -41,6 +41,10 @@ const siteAdaptersToggle = document.getElementById('toggle-site-adapters');
 const voiceInputToggle = document.getElementById('toggle-voice-input');
 const apiMutationObserverToggle = document.getElementById('toggle-api-mutation-observer');
 const planBeforeActModeSelect = document.getElementById('select-plan-before-act-mode');
+const planReviewModeSelect = document.getElementById('select-plan-review-mode');
+const planReviewConfidenceRange = document.getElementById('range-plan-review-confidence');
+const planReviewConfidenceValueLabel = document.getElementById('plan-review-confidence-value');
+const planReviewConfidenceRow = document.getElementById('row-plan-review-confidence');
 const notifySoundToggle = document.getElementById('toggle-notify-sound');
 const completionConfettiToggle = document.getElementById('toggle-completion-confetti');
 const tracingToggle = document.getElementById('toggle-tracing');
@@ -219,12 +223,35 @@ const DEFAULT_COST_ALLOWANCE_USD = 10;
 const MAX_AGENT_STEPS_DEFAULT = 130;
 const MAX_AGENT_STEPS_UNLIMITED_SENTINEL = 200;
 const PLAN_BEFORE_ACT_MODES = new Set(['try', 'strict', 'off']);
+const PLAN_REVIEW_MODES = new Set(['confidence', 'always', 'never']);
+const PLAN_REVIEW_CONFIDENCE_DEFAULT = 90;
 
 function normalizePlanBeforeActMode(stored = {}) {
   if (PLAN_BEFORE_ACT_MODES.has(stored.planBeforeActMode)) return stored.planBeforeActMode;
   if (stored.planBeforeAct === true) return 'strict';
   if (stored.planBeforeAct === false) return 'off';
   return 'try';
+}
+
+function normalizePlanReviewMode(stored = {}) {
+  return PLAN_REVIEW_MODES.has(stored.planReviewMode) ? stored.planReviewMode : 'confidence';
+}
+
+function normalizePlanReviewConfidenceThreshold(stored = {}) {
+  let threshold = Number(stored.planReviewConfidenceThreshold);
+  if (!Number.isFinite(threshold)) threshold = PLAN_REVIEW_CONFIDENCE_DEFAULT;
+  if (threshold > 0 && threshold <= 1) threshold *= 100;
+  return Math.max(50, Math.min(99, Math.round(threshold)));
+}
+
+function updatePlanReviewConfidenceUI() {
+  if (!planReviewConfidenceRange || !planReviewConfidenceValueLabel) return;
+  planReviewConfidenceValueLabel.textContent = `${planReviewConfidenceRange.value}%`;
+  const thresholdEnabled = !planReviewModeSelect || planReviewModeSelect.value === 'confidence';
+  planReviewConfidenceRange.disabled = !thresholdEnabled;
+  if (planReviewConfidenceRow) {
+    planReviewConfidenceRow.classList.toggle('setting-row-muted', !thresholdEnabled);
+  }
 }
 
 function normalizeCostAmount(value, fallback = DEFAULT_COST_ALLOWANCE_USD) {
@@ -287,7 +314,7 @@ async function init() {
   chrome.storage.local.remove(['authToken', 'authEmail', 'authDefaultModel']).catch(() => {});
 
   // Load display settings
-  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'voiceInputEnabled', 'apiMutationObserverEnabled', 'planBeforeActMode', 'planBeforeAct', 'notifySound', 'completionConfetti', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'scheduledTasksEnabled', 'scheduledRequireConsequentialConfirmation', 'providerFilter', 'requestTimeoutMs', 'costAllowanceSessionUsd', 'costAllowanceTotalUsd', 'cloudCostSpentUsd']);
+  const stored = await chrome.storage.local.get(['verboseMode', 'screenshotFallback', 'maxAgentSteps', 'autoScreenshot', 'useSiteAdapters', 'voiceInputEnabled', 'apiMutationObserverEnabled', 'planBeforeActMode', 'planBeforeAct', 'planReviewMode', 'planReviewConfidenceThreshold', 'notifySound', 'completionConfetti', 'tracingEnabled', 'strictSecretMode', 'agentAllowLocalNetwork', 'scheduledTasksEnabled', 'scheduledRequireConsequentialConfirmation', 'providerFilter', 'requestTimeoutMs', 'costAllowanceSessionUsd', 'costAllowanceTotalUsd', 'cloudCostSpentUsd']);
   if (typeof stored.providerFilter === 'string' && ['all','local','cloud','router'].includes(stored.providerFilter)) {
     providerFilter = stored.providerFilter;
   }
@@ -316,6 +343,13 @@ async function init() {
   apiMutationObserverToggle.checked = stored.apiMutationObserverEnabled === true;
   if (planBeforeActModeSelect) {
     planBeforeActModeSelect.value = normalizePlanBeforeActMode(stored);
+  }
+  if (planReviewModeSelect) {
+    planReviewModeSelect.value = normalizePlanReviewMode(stored);
+  }
+  if (planReviewConfidenceRange) {
+    planReviewConfidenceRange.value = normalizePlanReviewConfidenceThreshold(stored);
+    updatePlanReviewConfidenceUI();
   }
   notifySoundToggle.checked = stored.notifySound ?? true; // on by default
   completionConfettiToggle.checked = stored.completionConfetti ?? true; // on by default
@@ -740,6 +774,26 @@ if (planBeforeActModeSelect) {
       planBeforeActMode: mode,
       planBeforeAct: mode !== 'off',
     }).catch(() => {});
+  });
+}
+
+if (planReviewModeSelect) {
+  planReviewModeSelect.addEventListener('change', async () => {
+    const mode = PLAN_REVIEW_MODES.has(planReviewModeSelect.value) ? planReviewModeSelect.value : 'confidence';
+    updatePlanReviewConfidenceUI();
+    await chrome.storage.local.set({ planReviewMode: mode }).catch(() => {});
+  });
+}
+
+if (planReviewConfidenceRange) {
+  planReviewConfidenceRange.addEventListener('input', updatePlanReviewConfidenceUI);
+  planReviewConfidenceRange.addEventListener('change', async () => {
+    const threshold = normalizePlanReviewConfidenceThreshold({
+      planReviewConfidenceThreshold: planReviewConfidenceRange.value,
+    });
+    planReviewConfidenceRange.value = threshold;
+    updatePlanReviewConfidenceUI();
+    await chrome.storage.local.set({ planReviewConfidenceThreshold: threshold }).catch(() => {});
   });
 }
 

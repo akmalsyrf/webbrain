@@ -2217,6 +2217,7 @@ function bindPlanReviewCard(card) {
   const textarea = card.querySelector('.plan-review-edit');
   const originalMarkdown = String(textarea?.defaultValue || textarea?.value || '').trim();
   const markdownMode = String(card.dataset.planMarkdownMode || 'compact');
+  const changeBtn = card.querySelector('.plan-review-change');
 
   // A <textarea>'s live `.value` is NOT captured when the conversation is
   // persisted via innerHTML (only its defaultValue / child text is), so edits
@@ -2239,12 +2240,20 @@ function bindPlanReviewCard(card) {
     }
   }
 
+  if (card.dataset.editing === 'true') revealPlanReviewEditor(card, false);
+
+  if (changeBtn && !changeBtn.dataset.bound) {
+    changeBtn.dataset.bound = 'true';
+    changeBtn.addEventListener('click', () => revealPlanReviewEditor(card, true));
+  }
+
   const approveBtn = card.querySelector('.plan-review-approve');
   if (approveBtn && !approveBtn.dataset.bound) {
     approveBtn.dataset.bound = 'true';
     approveBtn.addEventListener('click', () => {
       const current = String(textarea?.value || '').trim();
-      const editedText = current && (current !== originalMarkdown || markdownMode === 'verbose') ? current : '';
+      const isEditing = card.dataset.editing === 'true';
+      const editedText = isEditing && current && (current !== originalMarkdown || markdownMode === 'verbose') ? current : '';
       submitPlanReview(card, tabId, planId, 'approve', editedText);
     });
   }
@@ -2278,6 +2287,74 @@ function clearPlanReviewActiveRun(assistantEl) {
   hideActivity();
   drainQueuedContextMenuPromptsAfterPendingTabSwitch();
   refreshRecommendedActions();
+}
+
+function planReviewConfidenceText(plan) {
+  const confidence = Number(plan?.confidence);
+  if (!Number.isFinite(confidence)) return '';
+  return `${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
+}
+
+function renderPlanReviewView(plan, fallbackMarkdown = '') {
+  const view = document.createElement('div');
+  view.className = 'plan-review-view';
+  // plan is always normalizePlan output (steps arrive trimmed, non-empty),
+  // so the steps can be rendered as-is.
+  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+  const summary = String(plan?.summary || '').trim();
+
+  if (!steps.length) {
+    const fallback = document.createElement('div');
+    fallback.className = 'plan-review-step-fallback';
+    fallback.textContent = (summary || String(fallbackMarkdown || '')).replace(/^#+\s*/gm, '').trim();
+    view.appendChild(fallback);
+    return view;
+  }
+
+  if (summary) {
+    const summaryEl = document.createElement('div');
+    summaryEl.className = 'plan-review-summary';
+    summaryEl.textContent = summary;
+    view.appendChild(summaryEl);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'plan-review-steps';
+  list.setAttribute('role', 'list');
+  for (const [index, step] of steps.entries()) {
+    const item = document.createElement('div');
+    item.className = 'plan-review-step';
+    item.setAttribute('role', 'listitem');
+
+    const number = document.createElement('span');
+    number.className = 'plan-review-step-number';
+    number.textContent = String(step.id).replace(/\.$/, '') || String(index + 1);
+
+    const action = document.createElement('span');
+    action.className = 'plan-review-step-action';
+    action.textContent = step.action;
+
+    item.appendChild(number);
+    item.appendChild(action);
+    list.appendChild(item);
+  }
+  view.appendChild(list);
+  return view;
+}
+
+function revealPlanReviewEditor(card, focus = false) {
+  const textarea = card?.querySelector?.('.plan-review-edit');
+  if (!textarea) return;
+  // The data-editing attribute is the single source of truth; sidepanel.css
+  // shows/hides the read-only view, hint, Change button, and textarea from it.
+  card.dataset.editing = 'true';
+  if (focus) {
+    try {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    } catch {}
+  }
+  schedulePersist();
 }
 
 function rebindPlanReviewCards() {
@@ -3356,6 +3433,10 @@ function handleAgentUpdateMessage(msg) {
     case 'plan_review':
       renderPlanReviewCard(data);
       break;
+
+    case 'plan_auto_approved':
+      addPlanAutoApprovedNote(data);
+      break;
   }
 }
 
@@ -3564,11 +3645,24 @@ function renderPlanReviewCard(data) {
   card.className = 'plan-review-card';
   card.dataset.planId = planId;
   card.dataset.tabId = String(tabId);
+  card.dataset.editing = 'false';
 
+  const header = document.createElement('div');
+  header.className = 'plan-review-header';
   const titleEl = document.createElement('div');
   titleEl.className = 'plan-review-title';
   titleEl.textContent = typeof t === 'function' ? t('sp.plan.title') : 'Review plan';
-  card.appendChild(titleEl);
+  header.appendChild(titleEl);
+  const confidenceText = planReviewConfidenceText(data.plan);
+  if (confidenceText) {
+    const confidenceEl = document.createElement('div');
+    confidenceEl.className = 'plan-review-confidence';
+    confidenceEl.textContent = typeof t === 'function'
+      ? t('sp.plan.confidence', { confidence: confidenceText })
+      : `Confidence ${confidenceText}`;
+    header.appendChild(confidenceEl);
+  }
+  card.appendChild(header);
 
   // Match the agent-side scratchpad cap (formatPlanScratchpad keeps up to 8000
   // chars). A lower display cap would silently drop the plan's tail the moment
@@ -3579,6 +3673,8 @@ function renderPlanReviewCard(data) {
   const useVerbosePlan = verboseMode && !!data.verboseMarkdown;
   const originalMarkdown = useVerbosePlan ? verboseMarkdown : compactMarkdown;
   card.dataset.planMarkdownMode = useVerbosePlan ? 'verbose' : 'compact';
+
+  card.appendChild(renderPlanReviewView(data.plan, compactMarkdown));
 
   const editHint = document.createElement('div');
   editHint.className = 'plan-review-hint';
@@ -3600,12 +3696,18 @@ function renderPlanReviewCard(data) {
   approveBtn.className = 'plan-review-approve';
   approveBtn.textContent = typeof t === 'function' ? t('sp.plan.approve') : 'Approve & run';
 
+  const changeBtn = document.createElement('button');
+  changeBtn.type = 'button';
+  changeBtn.className = 'plan-review-change';
+  changeBtn.textContent = typeof t === 'function' ? t('sp.plan.change') : 'Change';
+
   const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'plan-review-cancel';
   cancelBtn.textContent = typeof t === 'function' ? t('sp.plan.cancel') : 'Cancel';
 
   actions.appendChild(approveBtn);
+  actions.appendChild(changeBtn);
   actions.appendChild(cancelBtn);
   card.appendChild(actions);
   bindPlanReviewCard(card);
@@ -4055,6 +4157,22 @@ function addMessage(role, content, options = {}) {
   scrollToBottom();
 
   return msgEl;
+}
+
+function addPlanAutoApprovedNote(data) {
+  const note = document.createElement('div');
+  note.className = 'plan-auto-approved-note';
+  const confidence = planReviewConfidenceText(data) || '—';
+  note.textContent = typeof t === 'function'
+    ? t('sp.plan.auto_approved', { confidence })
+    : `Plan auto-approved (confidence ${confidence}) — running…`;
+  const stepsContainer = getOrCreateStepsContainer();
+  if (stepsContainer) {
+    stepsContainer.appendChild(note);
+  } else {
+    messagesEl.appendChild(note);
+  }
+  scrollToBottom();
 }
 
 /**
