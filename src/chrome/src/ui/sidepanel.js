@@ -2336,6 +2336,40 @@ function rebindRetryButtons() {
   document.querySelectorAll('.error-retry-btn').forEach(bindErrorRetryButton);
 }
 
+function createActiveChatPayloadState(retryPayload) {
+  return { retryPayload, renderedErrorMessages: new Set() };
+}
+
+function errorMessageKey(message) {
+  return String(message || '').trim() || 'unknown error';
+}
+
+function takeActiveRetryPayloadForError(tabId, message) {
+  const state = activeChatPayloadsByTab.get(tabId);
+  if (!state?.retryPayload) return { retryPayload: null, duplicate: false };
+  const key = errorMessageKey(message);
+  if (state.renderedErrorMessages?.has(key)) {
+    return { retryPayload: state.retryPayload, duplicate: true };
+  }
+  state.renderedErrorMessages?.add(key);
+  return { retryPayload: state.retryPayload, duplicate: false };
+}
+
+function scheduleActiveChatPayloadCleanup(tabId, state) {
+  setTimeout(() => {
+    if (activeChatPayloadsByTab.get(tabId) === state) {
+      activeChatPayloadsByTab.delete(tabId);
+    }
+  }, 30000);
+}
+
+function renderAgentErrorUpdate(data, tabId = currentTabId) {
+  const message = data?.message || data?.error || 'unknown error';
+  const active = abortRequested ? { retryPayload: null, duplicate: false } : takeActiveRetryPayloadForError(tabId, message);
+  if (active.duplicate) return;
+  addMessage('error', t('sp.error_prefix', { msg: message }), { retryPayload: active.retryPayload });
+}
+
 function rebindRestoredMessageControls() {
   rebindCopyButtons();
   rebindRetryButtons();
@@ -3151,7 +3185,8 @@ async function sendMessage(extraChatParams = {}) {
     assistantEl = addMessage('assistant', '');
     currentAssistantEl = assistantEl;
   }
-  activeChatPayloadsByTab.set(tabId, retryPayload);
+  const activePayloadState = createActiveChatPayloadState(retryPayload);
+  activeChatPayloadsByTab.set(tabId, activePayloadState);
 
   let accepted = false;
   let completedSuccessfully = false;
@@ -3168,6 +3203,12 @@ async function sendMessage(extraChatParams = {}) {
     accepted = true;
     completedSuccessfully = updatesContainSuccessfulDone(res?.updates);
     promptEligibleCompletion = completedSuccessfully || isSuccessfulAskCompletion(modeForSend, res);
+    const returnedErrorUpdate = Array.isArray(res?.updates)
+      ? res.updates.find(u => u?.type === 'error')
+      : null;
+    if (returnedErrorUpdate && renderToCurrentTab && currentTabId === tabId && !abortRequested) {
+      renderAgentErrorUpdate(returnedErrorUpdate.data, tabId);
+    }
 
     // An unsupported-attachment rejection never records the turn in history;
     // the agent signals it via a structured 'attachment_rejected' update (not
@@ -3211,11 +3252,12 @@ async function sendMessage(extraChatParams = {}) {
     }
   } catch (e) {
     if (renderToCurrentTab && currentTabId === tabId && !abortRequested) {
+      takeActiveRetryPayloadForError(tabId, e.message);
       addMessage('error', t('sp.error_prefix', { msg: e.message }), { retryPayload });
     }
   } finally {
-    if (activeChatPayloadsByTab.get(tabId) === retryPayload) {
-      activeChatPayloadsByTab.delete(tabId);
+    if (activeChatPayloadsByTab.get(tabId) === activePayloadState) {
+      scheduleActiveChatPayloadCleanup(tabId, activePayloadState);
     }
     if (renderToCurrentTab && currentTabId === tabId) finalizeSteps(assistantEl);
     clearAssistantTextStreamState(assistantEl);
@@ -3542,9 +3584,7 @@ function handleAgentUpdateMessage(msg) {
     case 'error':
       hideActivity();
       if (currentAssistantEl) markLastStepFailed();
-      addMessage('error', t('sp.error_prefix', { msg: data.message }), {
-        retryPayload: abortRequested ? null : activeChatPayloadsByTab.get(currentTabId),
-      });
+      renderAgentErrorUpdate(data, currentTabId);
       break;
 
     case 'max_steps_reached':

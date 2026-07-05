@@ -7140,6 +7140,40 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
   }
 });
 
+test('sidepanel keeps retry metadata long enough for returned error updates', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const source = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    assert.match(
+      source,
+      /function createActiveChatPayloadState\(retryPayload\) \{[\s\S]*?renderedErrorMessages: new Set\(\)[\s\S]*?\}/,
+      `${label}: active retry metadata should track rendered error messages`,
+    );
+    assert.match(
+      source,
+      /const activePayloadState = createActiveChatPayloadState\(retryPayload\);[\s\S]*?activeChatPayloadsByTab\.set\(tabId, activePayloadState\);/,
+      `${label}: sendMessage should store retry metadata as an active run state`,
+    );
+    assert.match(
+      source,
+      /const returnedErrorUpdate = Array\.isArray\(res\?\.updates\)[\s\S]*?res\.updates\.find\(u => u\?\.type === 'error'\)[\s\S]*?renderAgentErrorUpdate\(returnedErrorUpdate\.data, tabId\);/,
+      `${label}: returned agent error updates should render with retry metadata even if the broadcast is late`,
+    );
+    assert.match(
+      source,
+      /case 'error':[\s\S]*?renderAgentErrorUpdate\(data, currentTabId\);[\s\S]*?break;/,
+      `${label}: broadcast agent errors should share the retry-aware renderer`,
+    );
+    assert.match(
+      source,
+      /function scheduleActiveChatPayloadCleanup\(tabId, state\) \{[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?activeChatPayloadsByTab\.delete\(tabId\);[\s\S]*?\}, 30000\);/,
+      `${label}: active retry metadata should be cleaned up after late broadcasts have had a chance to drain`,
+    );
+  }
+});
+
 test('sidepanel allows safe slash commands and queues normal messages while busy', () => {
   for (const [label, panelRel, localeRel] of [
     ['chrome', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/src/ui/locales/en.js'],
