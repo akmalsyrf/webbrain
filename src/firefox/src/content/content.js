@@ -1475,14 +1475,26 @@
     const key = params?.key;
     const repeatRaw = Number(params?.repeat ?? 1);
     const repeat = Math.max(1, Math.min(3, Number.isFinite(repeatRaw) ? Math.floor(repeatRaw) : 1));
-    if (!['Escape', 'Tab', 'Enter'].includes(key)) {
-      return { success: false, error: `Unsupported key "${key}". V1 supports Escape, Tab, and Enter.` };
+    const SUPPORTED_KEYS = ['Escape', 'Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!SUPPORTED_KEYS.includes(key)) {
+      return { success: false, error: `Unsupported key "${key}". Supported keys: ${SUPPORTED_KEYS.join(', ')}.` };
     }
 
+    // NOTE: Firefox has no `debugger`/CDP permission (see ARCHITECTURE.md's
+    // "No trusted keyboard events" row), so this is the only press_keys
+    // implementation on this platform and it always dispatches untrusted
+    // (isTrusted: false) KeyboardEvents. That's sufficient for JS keydown
+    // listeners (most custom widgets) but arrow keys may not step native
+    // controls (e.g. <input type="range">) on sites that only respond to
+    // trusted input, same caveat that already applies to Escape/Tab/Enter.
     const keyMeta = {
       Escape: { code: 'Escape', keyCode: 27 },
       Tab: { code: 'Tab', keyCode: 9 },
       Enter: { code: 'Enter', keyCode: 13 },
+      ArrowLeft: { code: 'ArrowLeft', keyCode: 37 },
+      ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+      ArrowRight: { code: 'ArrowRight', keyCode: 39 },
+      ArrowDown: { code: 'ArrowDown', keyCode: 40 },
     }[key];
     const target = (document.activeElement && document.activeElement !== document.body)
       ? document.activeElement

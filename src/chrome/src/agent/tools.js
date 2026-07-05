@@ -252,11 +252,11 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'press_keys',
-      description: 'Press keyboard keys. V1 supports Escape, Tab, and Enter. Useful for dismissing modals/dropdowns (Escape), moving focus (Tab), and confirming dialogs/forms (Enter).',
+      description: 'Press keyboard keys. Supports Escape, Tab, Enter, ArrowUp, ArrowDown, ArrowLeft, and ArrowRight. Useful for dismissing modals/dropdowns (Escape), moving focus (Tab), confirming dialogs/forms (Enter), and nudging range sliders or custom widgets that respond to arrow keys (ArrowUp/ArrowDown/ArrowLeft/ArrowRight).',
       parameters: {
         type: 'object',
         properties: {
-          key: { type: 'string', enum: ['Escape', 'Tab', 'Enter'], description: 'Key to press.' },
+          key: { type: 'string', enum: ['Escape', 'Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], description: 'Key to press.' },
           repeat: { type: 'number', description: 'How many times to press the key (default: 1, max: 3).' },
         },
         required: ['key'],
@@ -1375,7 +1375,7 @@ TOOLS — use ONLY these:
 - set_field({ref_id, text}): Focus + clear + type in one call. PREFERRED for forms.
 - click({text}): Click by visible text. Fallback when no ref_id.
 - type_text({text}): Type into the focused element. Click the field first.
-- press_keys({key}): Press Escape, Tab, or Enter.
+- press_keys({key}): Press Escape, Tab, Enter, ArrowUp, ArrowDown, ArrowLeft, or ArrowRight.
 - navigate({url}): Go to a URL.
 - new_tab({url}): Open a URL in a new tab.
 - wait_for_element({selector}): Wait for an element to appear.

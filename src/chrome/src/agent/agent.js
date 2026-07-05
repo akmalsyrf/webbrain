@@ -9675,16 +9675,25 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const key = args.key;
       const repeatRaw = Number(args.repeat ?? 1);
       const repeat = Math.max(1, Math.min(3, Number.isFinite(repeatRaw) ? Math.floor(repeatRaw) : 1));
-      if (!['Escape', 'Tab', 'Enter'].includes(key)) {
-        return { success: false, error: `Unsupported key "${key}". V1 supports Escape, Tab, and Enter.` };
+      const SUPPORTED_KEYS = ['Escape', 'Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (!SUPPORTED_KEYS.includes(key)) {
+        return { success: false, error: `Unsupported key "${key}". Supported keys: ${SUPPORTED_KEYS.join(', ')}.` };
       }
 
       try {
         await cdpClient.attach(tabId);
+        // windowsVirtualKeyCode values below match the same ArrowUp/ArrowDown
+        // dispatch already used by the <select> fast-path above — trusted
+        // CDP key events are what let native controls (range sliders, native
+        // <select>) respond exactly as they would to a real key press.
         const keyMeta = {
           Escape: { code: 'Escape', windowsVirtualKeyCode: 27 },
           Tab: { code: 'Tab', windowsVirtualKeyCode: 9 },
           Enter: { code: 'Enter', windowsVirtualKeyCode: 13 },
+          ArrowLeft: { code: 'ArrowLeft', windowsVirtualKeyCode: 37 },
+          ArrowUp: { code: 'ArrowUp', windowsVirtualKeyCode: 38 },
+          ArrowRight: { code: 'ArrowRight', windowsVirtualKeyCode: 39 },
+          ArrowDown: { code: 'ArrowDown', windowsVirtualKeyCode: 40 },
         }[key];
 
         for (let i = 0; i < repeat; i++) {

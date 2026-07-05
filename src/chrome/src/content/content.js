@@ -1078,14 +1078,25 @@
     const key = params?.key;
     const repeatRaw = Number(params?.repeat ?? 1);
     const repeat = Math.max(1, Math.min(3, Number.isFinite(repeatRaw) ? Math.floor(repeatRaw) : 1));
-    if (!['Escape', 'Tab', 'Enter'].includes(key)) {
-      return { success: false, error: `Unsupported key "${key}". V1 supports Escape, Tab, and Enter.` };
+    const SUPPORTED_KEYS = ['Escape', 'Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!SUPPORTED_KEYS.includes(key)) {
+      return { success: false, error: `Unsupported key "${key}". Supported keys: ${SUPPORTED_KEYS.join(', ')}.` };
     }
 
+    // NOTE: this path dispatches untrusted (isTrusted: false) KeyboardEvents,
+    // used only when CDP is unavailable (agent.js prefers the trusted CDP
+    // dispatch — see agent.js's press_keys handler). Native browser default
+    // actions (e.g. a range input actually moving) are only guaranteed for
+    // trusted events, so arrow keys here reliably reach JS keydown listeners
+    // but may not step native controls the way the CDP path does.
     const keyMeta = {
       Escape: { code: 'Escape', keyCode: 27 },
       Tab: { code: 'Tab', keyCode: 9 },
       Enter: { code: 'Enter', keyCode: 13 },
+      ArrowLeft: { code: 'ArrowLeft', keyCode: 37 },
+      ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+      ArrowRight: { code: 'ArrowRight', keyCode: 39 },
+      ArrowDown: { code: 'ArrowDown', keyCode: 40 },
     }[key];
     const target = (document.activeElement && document.activeElement !== document.body)
       ? document.activeElement
