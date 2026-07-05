@@ -17967,12 +17967,21 @@ test('planner gate: short-follow-up skip keeps planner for stale, first, long, U
           mode: 'strict',
           message: { role: 'user', content: 'do it' },
         },
+        {
+          name: 'always-review short planned follow-up',
+          seedApprovedPlan: true,
+          seedFollowUpSkip: true,
+          mode: 'try',
+          reviewMode: 'always',
+          message: { role: 'user', content: 'do it' },
+        },
       ];
 
       for (const [index, scenario] of scenarios.entries()) {
         const tabId = (label === 'chrome' ? 9230 : 9240) + index;
         const agent = new AgentClass({ getActive: () => ({}) });
         agent.setPlanBeforeActMode(scenario.mode);
+        if (scenario.reviewMode) agent.setPlanReviewSettings({ mode: scenario.reviewMode });
         const baseMessages = [
           { role: 'system', content: 'system' },
           { role: 'user', content: 'original task' },

@@ -3927,6 +3927,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   _shouldSkipPlannerForShortFollowUp(tabId, priorMessages, enriched, plannerMode) {
     if (plannerMode !== 'try') return false;
+    if (this._normalizePlanReviewMode(this.planReviewMode) === 'always') return false;
     if (!this.plannerFollowUpSkipTabs.has(tabId)) return false;
     if (!this._hasApprovedPlannerHandoff(priorMessages)) return false;
     if (this._messageHasPlannerFollowUpAttachmentBlocks(enriched)) return false;
