@@ -59,10 +59,13 @@ This doc covers the shared architecture and calls out where the builds diverge.
 
 ### Side Panel (`src/ui/sidepanel.js`)
 
-The chat UI. Communicates with the background script via `chrome.runtime.sendMessage` (`browser.runtime.sendMessage` on Firefox). Supports two modes:
+The chat UI. Communicates with the background script via `chrome.runtime.sendMessage` (`browser.runtime.sendMessage` on Firefox). Supports three conversation modes:
 
-- **Ask mode** — read-only tools only (`ASK_ONLY_TOOLS` in `tools.js`). The agent can read, analyze, and summarize but never click, type, or navigate.
-- **Act mode** — full tool set. The agent can take real actions in the browser.
+- **Ask mode** — semantic/read-only tools only (`ASK_ONLY_TOOLS` in `tools.js`). The agent can read, analyze, and summarize but never click, type, or navigate. Ask intentionally excludes developer/debugging read tools like `read_page_source`, `inspect_element_styles`, and the `clarify` tool; ordinary clarification is just normal chat.
+- **Act mode** — the selected provider tier's normal browser-agent tools. The agent can take real actions in the browser.
+- **Dev mode** — an action mode for page debugging and HTML/CSS inspection. Dev requires a Mid or Full provider tier, uses the selected Act prompt tier, then appends the Dev prompt appendix and exposes Dev add-ons such as source/style tools. Compact-tier providers cannot enter Dev mode.
+
+Model tiering is separate from mode: `compact | mid | full` controls how many normal tools the model sees, while `ask | act | dev` controls what kind of task the user is allowing.
 
 The user types a message, the panel sends `{action: 'chat', text, mode, tabId}` to the background, then listens for `agent_update` events streamed back during the run. The panel renders tool calls, results, plan-review cards, clarification prompts, and the final answer incrementally.
 
@@ -124,7 +127,7 @@ _enrichUserMessageWithCurrentPage(tabId, messages, userMessage)
 
 ### Step 4: Plan-before-Act Gate
 
-When `planBeforeAct` is enabled and the run is in Act mode, the agent calls the active provider once before the tool loop with `planner.js`'s structured JSON prompt. Unset storage defaults to try mode; explicit off remains off. The planner sees the user task, sanitized URL/title, and a short recent-history digest; page context is wrapped as untrusted data and image blocks are dropped.
+When `planBeforeAct` is enabled and the run is in an action mode (Act or Dev), the agent calls the active provider once before the tool loop with `planner.js`'s structured JSON prompt. Unset storage defaults to try mode; explicit off remains off. The planner sees the user task, sanitized URL/title, and a short recent-history digest; page context is wrapped as untrusted data and image blocks are dropped.
 
 If the planner returns valid JSON, the side panel receives `agent_update: plan_review` and renders an editable review card. Approval pins the approved plan into the scratchpad so it survives context compaction. Rejection, timeout, invalid JSON after retry, or user abort stops the run before any browser tools execute. Scheduled runs can set `autoApprovePlanReview` and pin the plan without showing the card.
 
@@ -132,9 +135,10 @@ If the planner returns valid JSON, the side panel receives `agent_update: plan_r
 ```
 while (steps < maxSteps) {
   // 5a. Call LLM
+  const tier = provider.promptTier;
   const result = await provider.chat(messages, {
-    tools: getToolsForMode(mode),
-    temperature: 0.3,
+    tools: getToolsForMode(mode, { tier }),
+    temperature: mode === 'ask' ? 0.3 : 0.15,
     maxTokens: 4096,
   })
 
@@ -178,6 +182,8 @@ while (steps < maxSteps) {
 | `solve_captcha` | captcha-solver.js | Service worker + CapSolver API |
 | `read_pdf` | pdf-tools.js | Service worker |
 | `scratchpad_write` | agent.js — in-memory pinned note | Service worker |
+| `read_page_source`, `inspect_element_styles` | agent/content helpers | Dev-only source/style inspection |
+| `get_shadow_dom`, `shadow_dom_query`, `get_frames` | content/CDP helpers | Full Act advanced fallbacks; also added to Mid in Dev mode |
 
 ### Step 6a: Skills and Dynamic Tool Exposure
 
@@ -193,7 +199,10 @@ re-added.
 - Prompt instructions: `buildCustomSkillsPrompt()` strips fenced
   `webbrain-tools` blocks before appending the skill text to the system prompt.
 - Tool exposure: `buildSkillToolDefinitions()` reads the manifest and appends
-  declared tool schemas to `getToolsForMode(...)` at LLM-call time.
+  declared tool schemas to `getToolsForMode(...)` at LLM-call time, respecting
+  the active conversation mode and provider tier. Download-job skill tools are
+  hidden in Ask and available in action modes (Act and Dev) when their declared
+  tier allows them.
 
 The manifest format is a fenced JSON block inside the skill markdown:
 
@@ -229,7 +238,7 @@ poll a same-origin status URL, save the produced file through browser Downloads,
 and call cleanup afterward. Requests use `credentials: "omit"` and optional
 manifest allowlists can restrict URL-like inputs. This is intentionally a
 trust-at-import model for the declared endpoint; download-job tools still run in
-Act mode and use the normal Downloads permission gate before saving files.
+action modes and use the normal Downloads permission gate before saving files.
 Results that carry third-party content should set `resultPolicy: "untrusted"` so
 `_wrapUntrusted()` and `_digestToolResult()` treat them as data rather than
 instructions.
@@ -253,7 +262,7 @@ Background relays these via `chrome.runtime.sendMessage` to the side panel, whic
 
 ### Plan before Act (`planner.js`)
 
-The optional Act-mode planning gate runs before the first browser tool call when enabled; unset storage defaults to try mode while explicit off remains off. The planner prompt requires a single JSON object with summary, concrete steps, memory strategy, scheduling hint, risks, and `mode: "act"`. `normalizePlan()` bounds and sanitizes each field; `formatPlanMarkdown()` renders the side-panel review card; `formatPlanScratchpad()` pins the approved or edited plan as an `[Approved plan]` scratchpad entry.
+The optional action-mode planning gate runs before the first browser tool call when enabled; unset storage defaults to try mode while explicit off remains off. The planner prompt requires a single JSON object with summary, concrete steps, memory strategy, scheduling hint, risks, and an action mode. `normalizePlan()` bounds and sanitizes each field; `formatPlanMarkdown()` renders the side-panel review card; `formatPlanScratchpad()` pins the approved or edited plan as an `[Approved plan]` scratchpad entry.
 
 Planner calls are traced with `phase: "planner"` when trace recording is enabled. They also use the cost allowance guard, abort checks, a JSON-repair retry, and Qwen/DeepSeek no-think handling before the run is allowed to continue.
 
@@ -336,13 +345,15 @@ Without CDP (Firefox), all events are synthetic (`el.click()`, `new KeyboardEven
 Abstracts LLM backends behind a common interface (`BaseLLMProvider`):
 
 ```
-chat(messages, options)      → { content, toolCalls, usage }
+chat(messages, options)       → { content, toolCalls, usage }
 chatStream(messages, options) → async generator
 supportsTools                 → boolean
 supportsVision                → boolean
-useCompactPrompt              → boolean
+promptTier                    → 'compact' | 'mid' | 'full'
 testConnection()              → { ok, error, model }
 ```
+
+`promptTier` drives both the action prompt and the normal tool subset. Local providers default to Mid, cloud providers are forced Full, and the legacy `useCompactPrompt` flag maps to Compact for existing configs. Dev mode is a separate conversation mode: Mid/Full Dev uses the selected Act tier plus `SYSTEM_PROMPT_DEV_APPENDIX`; Compact Dev is blocked before an LLM request is sent.
 
 See `docs/providers-and-models.md`.
 
@@ -393,8 +404,8 @@ MV3 service workers can die between turns. Conversations are persisted to `chrom
 | Offscreen document | Yes (fetch proxy + recorder) | Not available |
 | Trace recorder | IndexedDB (opt-in) | IndexedDB (opt-in) — same `trace/recorder.js` |
 | Duplicate-submit guard | Yes | Not available |
-| `execute_js` | Blocked by CSP | Available |
-| Shadow DOM piercing | CDP for closed roots | Open roots only |
+| `execute_js` | Not model-callable in Chrome | Firefox Dev mode only |
+| Shadow DOM piercing | CDP for closed roots; `shadow_dom_query` is Chrome-only | Open roots only |
 | Localhost CORS | Offscreen proxy fallback | Server must set CORS headers |
 | API shortcut observer | `chrome.webRequest` URL/method buffer | `browser.webRequest` URL/method buffer |
 | Slash-driven tab/screen recording | `chrome.tabCapture` / `getDisplayMedia()` + offscreen | Not available |
@@ -440,7 +451,8 @@ See `docs/security-model.md` and `src/chrome/ARCHITECTURE.md` for details.
 Key points:
 - Extension runs with `<all_urls>` + `debugger` permissions — full browser access
 - No additional auth: the agent IS the user's browser session
-- Plan before Act can require human approval before any Act-mode tool call
+- Ask is read-only; Act and Dev are action modes. Dev adds source/style/page-debugging tools and is blocked for Compact-tier providers.
+- Plan before Act can require human approval before any action-mode tool call
 - `/allow-api` flag gates destructive HTTP methods via `fetch_url`
 - Tool results capped at 8 KB to limit prompt-injection surface
 - `strictSecretMode` prevents the model from quoting credentials in summaries

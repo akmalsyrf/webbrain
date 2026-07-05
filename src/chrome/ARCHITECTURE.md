@@ -1,10 +1,10 @@
 # WebBrain Chrome/Edge Extension — Architecture
 
-> Version 20.7.0 · Manifest V3 · Service Worker background
+> Version 21.0.0 · Manifest V3 · Service Worker background
 
 ## High-Level Overview
 
-WebBrain is a browser extension that gives an LLM full control over the browser tab the user is looking at. The user types a natural-language instruction in a side panel, and an autonomous agent loop calls the LLM, executes tool calls (click, type, navigate, screenshot, etc.), feeds the results back to the LLM, and repeats until the task is done or a loop detector halts it.
+WebBrain is a browser extension that gives an LLM controlled access to the browser tab the user is looking at. The user types a natural-language instruction in a side panel, chooses Ask, Act, or Dev mode, and an autonomous agent loop calls the LLM, executes allowed tool calls (click, type, navigate, inspect, etc.), feeds the results back to the LLM, and repeats until the task is done or a loop detector halts it.
 
 ```
 ┌─────────────┐     messages      ┌─────────────┐    HTTP/JSON     ┌──────────────┐
@@ -105,7 +105,7 @@ src/chrome/
 
 ## Plan-before-Act Gate (v18.0.0)
 
-When `planBeforeAct` is enabled, Act-mode runs call `agent/planner.js`
+When `planBeforeAct` is enabled, action-mode runs (Act or Dev) call `agent/planner.js`
 before the first tool loop. The planner returns a bounded JSON plan with steps,
 memory strategy, scheduling hints, and risks. The side panel renders that plan
 as an editable approval card; approving it pins the plan to the scratchpad so it
@@ -147,8 +147,8 @@ and optional response limits.
 
 Importing/enabling a skill is the trust boundary. After import, the declared
 tool can contact its declared endpoint without a per-call permission prompt.
-Download-job tools still run in Act mode and use the normal Downloads permission
-gate before saving files. Third-party results should use
+Download-job tools still run in action modes and use the normal Downloads
+permission gate before saving files. Third-party results should use
 `resultPolicy: "untrusted"` so the agent wraps and digests them like page
 content instead of trusted instructions.
 
@@ -405,21 +405,33 @@ When `click({text})` or `click({selector})` finds multiple matches, the error pa
 
 ## Tools (full list)
 
-### AX / page reading
-`get_accessibility_tree`, `read_page` (legacy prose), `screenshot`, `get_interactive_elements` (legacy indexed list), `get_selection`, `extract_data`, `get_shadow_dom`, `get_frames`
+The model-facing tool surface is selected by conversation mode plus provider
+tier:
+
+- **Ask**: semantic/read-only page tools only. Ask intentionally excludes
+  `clarify`, `read_page_source`, `inspect_element_styles`, and action tools.
+- **Act**: the selected provider tier's normal browser-agent tools.
+- **Dev**: Mid/Full only. Uses the selected Act tier, then adds source/style
+  tools and Dev-extended shadow/frame inspection. Compact Dev is blocked.
+
+### Core page reading
+`get_accessibility_tree`, `read_page`, `read_pdf`, `get_window_info`, `get_interactive_elements`, `get_selection`, `extract_data`, `wait_for_stable`
 
 ### Interaction
-`click_ax`, `type_ax`, `set_field`, `hover` (CDP-trusted, for reveal-on-hover menus), `drag_drop` (CDP-trusted pointer sequence, for Trello/Linear-style reordering), `click` (by text/selector/index/coords — legacy), `type_text`, `press_keys`, `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `wait_for_stable` (DOM mutations + network idle), `iframe_read`, `iframe_click`, `iframe_type`, `upload_file`
+`click_ax`, `type_ax`, `set_field`, `click` (by text/selector/index/coords), `type_text`, `press_keys`, `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `iframe_read`, `iframe_click`, `iframe_type`, `upload_file`
 
-> **Note:** `execute_js` was removed from the Chrome/Edge MV3 tool schema — `new Function()` is blocked by the extension_pages CSP and always throws EvalError. The agent uses `read_page`, `click`, `type_text`, `scroll`, and other fine-grained tools instead. `execute_js` is still available on Firefox MV2.
+Full Act also adds advanced UI/DOM fallbacks: `resize_window`, `hover` (CDP-trusted, for reveal-on-hover menus), `drag_drop` (CDP-trusted pointer sequence, for Trello/Linear-style reordering), `get_shadow_dom`, `shadow_dom_query`, and `get_frames`. Mid Dev gets the shadow/frame inspection tools as Dev-extended debugging tools, but not hover/drag-drop.
+
+> **Note:** `execute_js` was removed from the Chrome/Edge MV3 tool schema — `new Function()` is blocked by the extension_pages CSP and always throws EvalError. The agent uses `read_page`, `click`, `type_text`, `scroll`, and other fine-grained tools instead. `execute_js` is available only as a Firefox Dev add-on.
 
 ### Network / files
-`fetch_url`, `research_url`, `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files`
+`fetch_url`, `research_url`, `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files`, `download_social_media`
 
 ### Safety / control
-`verify_form`, `done`
+`verify_form`, `clarify`, `done`, `schedule_resume`, `schedule_task`, `scratchpad_write`, `progress_update`, `progress_read`, `solve_captcha`
 
-Mode gating (Ask vs Act) continues as before — Ask mode is read-only.
+### Dev add-ons
+`read_page_source` and `inspect_element_styles` are Dev-only: they do not appear in Ask or normal Act. Future HTML/CSS editing/debugging tools should attach to Dev mode unless they are normal browser-operation tools.
 
 ---
 
@@ -589,7 +601,8 @@ Finance adapters carry a `[FINANCE / HIGH-STAKES]` banner and extra confirmation
 
 ### Modes
 - **Ask** — read-only tools, analysis / Q&A.
-- **Act** — full tool set, autonomous actions.
+- **Act** — selected provider tier's normal browser-action tools.
+- **Dev** — Mid/Full action mode for source/style/page-debugging work; adds Dev tools and is blocked for Compact-tier providers.
 
 ### Verbose mode
 - **Normal** — compact step labels.
@@ -609,7 +622,7 @@ Finance adapters carry a `[FINANCE / HIGH-STAKES]` banner and extra confirmation
 
 4. _enrichFirstUserMessage: attach URL/title + site adapter + viewport screenshot
 
-5. provider.chat(messages, {tools, temp:0.3, maxTokens:4096})
+5. provider.chat(messages, {tools, temp:0.15, maxTokens:4096})
    → trace recorder logs llm_request
 
 6. LLM returns tool_calls: [{name:'get_accessibility_tree', args:{filter:'visible'}}]
@@ -638,7 +651,7 @@ Finance adapters carry a `[FINANCE / HIGH-STAKES]` banner and extra confirmation
 - `<all_urls>` host permission → content-script injection anywhere.
 - `debugger` → trusted events on any tab.
 - Cross-origin iframes reachable via content-script injection (extension privilege).
-- Plan before Act can require user approval before any Act-mode tool executes.
+- Plan before Act can require user approval before any action-mode tool executes.
 - `/allow-api` flag required for API mutations (POST/PUT/PATCH/DELETE via `fetch_url`).
 - Finance adapters layer extra confirmation guidance.
 - Tool results capped at 8 KB to limit prompt-injection surface.

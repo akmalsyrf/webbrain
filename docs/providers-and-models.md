@@ -12,7 +12,7 @@ class BaseLLMProvider {
   async *chatStream(messages, options)  // → async generator yielding { type, content }
   get supportsTools()                   // → boolean
   get supportsVision()                  // → boolean
-  get useCompactPrompt()                // → boolean (small models get shorter system prompt)
+  get promptTier()                      // → 'compact' | 'mid' | 'full'
   async testConnection()                // → { ok, error?, model? }
 }
 ```
@@ -68,11 +68,24 @@ local server was started with auth:
 
 All six default `supportsVision: true` since most models loaded locally in 2026 are multimodal.
 
-**Context window.** Load local models with **at least a 16k-token context window** for reliable agent runs — that's the usable minimum. 8k can work with Compact mode enabled; 4k is too small to hold the system prompt + tool schemas. The agent reads the window from `provider.contextWindow` (`providers/base.js`) to drive auto-compaction; when a provider config doesn't set `contextWindow`, local providers default to a conservative **16k** (cloud/router default to 128k). Set `config.contextWindow` explicitly to match a larger local window, and make sure the model server is actually started with that much context (e.g. `llama-server -c 16384`).
+**Context window.** Load local models with **at least a 16k-token context window** for reliable agent runs — that's the usable minimum. 8k can work with the Compact tier selected; 4k is too small to hold the system prompt + tool schemas. The agent reads the window from `provider.contextWindow` (`providers/base.js`) to drive auto-compaction; when a provider config doesn't set `contextWindow`, local providers default to a conservative **16k** (cloud/router default to 128k). Set `config.contextWindow` explicitly to match a larger local window, and make sure the model server is actually started with that much context (e.g. `llama-server -c 16384`).
 
-Compact prompts are opt-in per provider in both Chrome and Firefox. When
-`useCompactPrompt` is enabled, Act mode uses `SYSTEM_PROMPT_ACT_COMPACT` and
-filters the exposed tools through `COMPACT_TOOL_NAMES`; Ask mode is unchanged.
+### Prompt/tool tiers and modes
+
+Provider tier and conversation mode are separate knobs:
+
+- **Tier** (`compact | mid | full`) is a provider setting. It controls which Act-system prompt and normal browser-agent tool subset the model receives.
+- **Mode** (`ask | act | dev`) is selected by the user per conversation/message. It controls whether the request is read-only, normal browser action, or developer/page-inspection work.
+
+`provider.promptTier` resolves the active tier. Cloud providers are forced to Full. Local providers default to Mid. OpenRouter/router providers default to Full unless explicitly changed. Existing configs that still set the legacy `useCompactPrompt` boolean map to Compact.
+
+| Tier | Intended model class | Normal tool surface |
+|---|---|---|
+| `compact` | very small/local models | Shortest prompt and a small normal Act tool set. No scheduling, iframe, download-resource, or advanced DOM/UI fallback tools. |
+| `mid` | capable local models | Balanced prompt and common task tools: downloads, scheduling, iframe tools, form verification, and `download_resource_from_page`, while excluding Full-only advanced UI/DOM fallbacks. |
+| `full` | frontier/cloud or large local models | Full normal Act prompt and advanced fallbacks such as hover, drag-drop, frames, and shadow DOM. |
+
+Ask mode ignores provider tier and stays read-only. Act mode uses the selected tier's normal tools. Dev mode requires Mid or Full, uses the selected Act prompt, appends `SYSTEM_PROMPT_DEV_APPENDIX`, and adds Dev-only source/style tools plus Dev-extended shadow/frame inspection for Mid-tier debugging. Compact Dev is blocked before an LLM request is sent.
 
 ### Vision Detection
 

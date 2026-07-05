@@ -137,7 +137,7 @@ Security model:
 - Importing/enabling the skill is the trust boundary for the declared HTTPS
   endpoint. After import, declared skill tools can send their declared inputs to
   that endpoint without per-call confirmation.
-- Download-job skill tools are still Act-only and run through the normal
+- Download-job skill tools are still action-mode-only (Act or Dev) and run through the normal
   Downloads permission gate before a file is saved.
 - Mark any third-party/page/document response as `resultPolicy: "untrusted"` so
   the result is wrapped in `<untrusted_page_content>` and cannot become trusted
@@ -192,11 +192,16 @@ Open `src/chrome/src/agent/tools.js` and add an entry to the `AGENT_TOOLS` array
 
 ### Tool classification
 
-- **Read-only tools** (safe in Ask mode): add to `ASK_ONLY_TOOLS` array in `tools.js`
+- **Ask tools** (semantic/read-only and safe for every model): add to `ASK_ONLY_TOOLS` in `tools.js`. Do not put developer/debugging reads here unless they truly belong in ordinary Ask.
+- **Normal action tools**: add the schema to `AGENT_TOOLS`, then decide which provider tiers should see it through `COMPACT_TOOL_NAMES`, `MID_TOOL_NAMES`, or the Full Act default.
+- **Dev-only tools**: add source/style/debug tools that should not appear in normal Act to `DEV_ONLY_TOOL_NAMES`.
+- **Dev-extended tools**: add tools that should stay Full Act but also become available to Mid-tier Dev in `DEV_EXTENDED_TOOL_NAMES`. Shadow/frame tools use this pattern.
 - **Navigation tools**: add to `Agent.NAV_TOOLS` (auto-screenshot on navigation)
 - **State-change tools**: add to `Agent.STATE_CHANGE_TOOLS` (auto-screenshot on state change)
 - **Navigation-prone tools**: add to `Agent.NAV_PRONE_TOOLS` when a successful call should be checked for URL/history changes (`navigate`, `go_back`, `go_forward`, click-like tools)
 - **URL-family tools**: if the tool takes a URL argument that should be bucket-identity-hashed for loop detection, update `loop-bucket.js`'s `URL_FAMILY_TOOLS`
+
+Keep mode and tier separate: mode is `ask | act | dev`; tier is `compact | mid | full`. `getToolsForMode('dev', { tier: 'mid' })` returns Mid Act tools plus Dev add-ons. `getToolsForMode('dev', { tier: 'compact' })` is intentionally empty because Compact Dev is blocked before an LLM request.
 
 ---
 
@@ -340,7 +345,7 @@ Every new tool should be classified for security:
 1. **Can it read or exfiltrate data from the page?** → Add credential-field sensitivity checks if it reads input values.
 2. **Can it perform destructive mutations?** → Consider whether it should be gated behind `/allow-api`.
 3. **Can it be prompt-injected?** → If the tool accepts user-provided strings that end up in tool-call arguments, document the injection surface in the tool description.
-4. **Should it work in Ask mode?** → If yes, add to `ASK_ONLY_TOOLS`.
+4. **Which mode/tier should expose it?** → Ask-only semantic read goes in `ASK_ONLY_TOOLS`; common action tools should join the smallest normal tier that can reliably use them; developer-only source/style/debug tools go in Dev-only; Full fallbacks that Mid should get only during debugging go in Dev-extended.
 5. **Can it shortcut repeated UI actions to network calls?** → Keep the UI-first policy intact. The background API observer may surface exact XHR/fetch URL+method hints during click loops, plus an opaque `replayRequestId` when same-origin body/header replay material is available. Mutating `fetch_url` calls still need the conversation's `/allow-api` state, and hidden form tokens must stay behind the replay id rather than being exposed to the model. GET requests and non-network capabilities still use the normal permission gate.
 
 See `docs/security-model.md` for the full threat model.
@@ -352,7 +357,7 @@ See `docs/security-model.md` for the full threat model.
 1. Verify the tool appears in the LLM's available tools (check `getToolsForMode()` in verbose debug log)
 2. Test the handler runs and returns the correct result shape
 3. Test error handling (invalid args, missing page, network failure)
-4. Test in both Ask and Act modes (if applicable)
+4. Test in Ask, Act, and Dev modes as applicable, including Compact/Mid/Full tier boundaries
 5. Test on both Chrome and Firefox builds
 6. Verify the result is properly displayed in the side panel
 
@@ -364,7 +369,8 @@ See `docs/security-model.md` for the full threat model.
 - [ ] Schema mirrored to `src/firefox/src/agent/tools.js`
 - [ ] Handler added to `executeTool()` in both `agent.js` files
 - [ ] Content-script handler added (if applicable) in both `content.js` files
-- [ ] Added to `ASK_ONLY_TOOLS` (if read-only)
+- [ ] Added to the correct Ask/Act/Dev exposure constants (`ASK_ONLY_TOOLS`, tier sets, `DEV_ONLY_TOOL_NAMES`, or `DEV_EXTENDED_TOOL_NAMES`)
+- [ ] Compact, Mid, Full, and Dev Compact-block behavior covered when the tool surface changes
 - [ ] Added to `Agent.NAV_TOOLS` / `Agent.STATE_CHANGE_TOOLS` / `Agent.NAV_PRONE_TOOLS` (if it navigates, changes page state, or should be checked for navigation)
 - [ ] Security classification documented
 - [ ] README / architecture docs updated when the public tool surface or execution flow changes

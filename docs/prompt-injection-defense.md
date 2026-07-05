@@ -27,9 +27,9 @@ them in sync — the test suite asserts the pure modules are byte-identical.
 2. **System-prompt contract (Layer 2).** The prompts tell the model that
    anything in those markers is data, never instructions, and that only the
    system prompt and the user's own chat/`clarify` messages are authoritative.
-   - Code: `tools.js` -> `SYSTEM_PROMPT_ASK` (5-bullet block), `SYSTEM_PROMPT_ACT`
-     (7-bullet block), `SYSTEM_PROMPT_ACT_COMPACT` (condensed opt-in compact
-     prompt in both browser builds), plus `planner.js` -> `PLANNER_SYSTEM_PROMPT`
+   - Code: `tools.js` -> `SYSTEM_PROMPT_ASK`, `SYSTEM_PROMPT_ACT`,
+     `SYSTEM_PROMPT_ACT_MID`, `SYSTEM_PROMPT_ACT_COMPACT`, and
+     `SYSTEM_PROMPT_DEV_APPENDIX`, plus `planner.js` -> `PLANNER_SYSTEM_PROMPT`
      for the Plan-before-Act pre-loop call.
 3. **Capability × origin permission gate (Layer 3).** Before a consequential
    tool runs, the agent checks a `(capability, host)` grant and prompts the user
@@ -63,7 +63,9 @@ Treat **all** of the following as attacker-controllable:
   this reason.
 
 Model-authored text (a tool's own status string, the agent's `summary`) and the
-**user's** messages (including `clarify` answers) are trusted.
+**user's** messages are trusted. `clarify` answers are also trusted when the
+tool is available in action modes; Ask mode handles clarification as ordinary
+conversation and does not expose a `clarify` tool.
 
 ---
 
@@ -127,8 +129,9 @@ protect the user on the trusted sites where injected content actually lives
 ## Tests
 
 - `node test/run.js` — pure-logic unit tests, including:
-  - the **exhaustiveness guard**: every `getToolsForMode('act')` tool must be
-    gated (`capabilityFor`), untrusted-read (`UNTRUSTED_CONTENT_TOOLS`), or on the
+  - the **exhaustiveness guard**: every model-exposed action tool from
+    `getToolsForMode('act')` and `getToolsForMode('dev')` must be gated
+    (`capabilityFor`), untrusted-read (`UNTRUSTED_CONTENT_TOOLS`), or on the
     `KNOWN_SAFE_TOOLS` allowlist (defined in `test/run.js`) — else CI fails.
   - capability mapping, host resolution, `requiredHosts`, `frameHostMatches`,
     grant storage / `hydrateFrom`, content-wrap breakout-stripping.
@@ -176,8 +179,8 @@ These are conscious trade-offs, not oversights.
   prompt to a precursor the user wants when blocked by a CAPTCHA. Revisit if
   quota abuse becomes a real concern.
 
-- **`hover` is ungated** — synthetic hover reveals menus/tooltips and commits
-  nothing.
+- **`hover` is ungated** — hover reveals menus/tooltips and commits nothing.
+  It is Full Act only; Mid-tier Dev does not add it.
 
 - **An LLM is *not* used anywhere in the gate.** Intent is never inferred from
   page or prompt text (that approach was tried and removed — it was English-only

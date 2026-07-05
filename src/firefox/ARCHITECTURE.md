@@ -1,6 +1,6 @@
 # WebBrain Firefox Extension — Architecture
 
-> Version 20.7.0 · Manifest V2 · Background Page
+> Version 21.0.0 · Manifest V2 · Background Page
 
 ## How Firefox Differs from Chrome
 
@@ -11,9 +11,9 @@ Firefox uses Manifest V2 (background page, not service worker) and has **no acce
 - **No shadow DOM piercing** — content script can read open shadow roots via `element.shadowRoot`, but cannot pierce closed roots.
 - **No offscreen document** — no HTTP fetch proxy for localhost LLM servers with Private Network Access / CORS issues. User must ensure their local LLM server sends permissive CORS headers.
 - **No duplicate-submit guard** — the per-tab submit-throttle (Chrome v3.6.5+) is still Chrome-only. Firefox's agent loop does not block rapid duplicate Create/Submit clicks. `blockedDone` and the ambiguous-click candidate payload were ported to Firefox in v4.0.1 (see "Overlay defenses" below).
-- **Some Chrome-only tools/features remain absent** — no CDP full-page screenshot, CDP upload automation, tab recording, offscreen fetch proxy, or closed-shadow-root traversal.
+- **Some Chrome-only tools/features remain absent** — no CDP full-page screenshot, CDP upload automation, tab recording, offscreen fetch proxy, Chrome-only `shadow_dom_query`, or closed-shadow-root traversal.
 
-Everything else — the agent loop, LLM providers, site adapters, Plan before Act, loop detection, API shortcut observer, trace recorder, scheduler, context management — is architecturally identical to Chrome unless noted below.
+Everything else — the agent loop, LLM providers, site adapters, Ask/Act/Dev mode routing, Plan before Act, loop detection, API shortcut observer, trace recorder, scheduler, context management — is architecturally identical to Chrome unless noted below.
 
 ---
 
@@ -209,8 +209,8 @@ and optional response limits.
 
 Importing/enabling a skill is the trust boundary. After import, the declared
 tool can contact its declared endpoint without a per-call permission prompt.
-Download-job tools still run in Act mode and use the normal Downloads permission
-gate before saving files. Third-party results should use
+Download-job tools still run in action modes and use the normal Downloads
+permission gate before saving files. Third-party results should use
 `resultPolicy: "untrusted"` so the agent wraps and digests them like page
 content instead of trusted instructions.
 
@@ -218,7 +218,8 @@ content instead of trusted instructions.
 
 ## Agent Loop
 
-The agent loop is structurally identical to Chrome. The same `processMessage()` / `processMessageStream()` flow runs:
+The agent loop is structurally identical to Chrome. The same Ask/Act/Dev
+`processMessage()` / `processMessageStream()` flow runs:
 
 ```
 User message
@@ -229,7 +230,7 @@ _enrichFirstUserMessage()     ← same as Chrome (URL/title + screenshot + adapt
     ▼
 Main Loop (max 120 steps)
     │
-    ├─ provider.chat(messages, {tools, temp:0.3, maxTokens:4096})
+    ├─ provider.chat(messages, {tools, temp, maxTokens:4096})
     ├─ If tool_calls → _executeToolBatch() → push results → continue
     ├─ If text only → return as final answer
     └─ If done() → return summary
@@ -250,7 +251,17 @@ this.conversations = new Map();  // + _persist() + _hydrate() → storage.sessio
 
 ### Complete tool list
 
-AX tier (preferred in 3.6.x):
+The model-facing tool surface is selected by conversation mode plus provider
+tier:
+
+- **Ask**: semantic/read-only page tools only. Ask intentionally excludes
+  `clarify`, `read_page_source`, `inspect_element_styles`, `execute_js`, and
+  action tools.
+- **Act**: the selected provider tier's normal browser-agent tools.
+- **Dev**: Mid/Full only. Uses the selected Act tier, then adds source/style
+  tools and Dev-extended shadow/frame inspection. Compact Dev is blocked.
+
+AX tools (preferred in 3.6.x):
 
 | Tool | Description |
 |---|---|
@@ -258,8 +269,8 @@ AX tier (preferred in 3.6.x):
 | `click_ax` | Click by ref_id |
 | `type_ax` | Type into field by ref_id |
 | `set_field` | Type + combobox-aware commit (ArrowDown+Enter) or form submit |
-| `hover` | Synthetic hover (mouseenter/mouseover/pointerover events). `isTrusted: false` — sites that gate hover-reveal on event trust will not respond. Works on most React/Vue handlers that listen to the standard events. |
-| `drag_drop` | Synthetic drag: pointerdown/move/up + HTML5 dragstart/dragover/drop with constructed DataTransfer. Less reliable than Chrome's CDP-trusted path; verify by re-reading the tree. |
+| `hover` | Full Act only. Synthetic hover (mouseenter/mouseover/pointerover events). `isTrusted: false` — sites that gate hover-reveal on event trust will not respond. Works on most React/Vue handlers that listen to the standard events. |
+| `drag_drop` | Full Act only. Synthetic drag: pointerdown/move/up + HTML5 dragstart/dragover/drop with constructed DataTransfer. Less reliable than Chrome's CDP-trusted path; verify by re-reading the tree. |
 
 Legacy tier (kept for compatibility with older prompts and for non-AX flows):
 
@@ -268,12 +279,14 @@ Legacy tier (kept for compatibility with older prompts and for non-AX flows):
 | `read_page`, `screenshot`, `get_interactive_elements` | Page content / image / indexed elements |
 | `click`, `type_text`, `press_keys` | Text/selector/index-based interaction |
 | `scroll`, `navigate`, `go_back`, `go_forward`, `new_tab`, `wait_for_element`, `wait_for_stable` | Page control. `wait_for_stable` polls MutationObserver + in-flight fetch/XHR — works identically to Chrome. |
-| `extract_data`, `get_selection`, `execute_js` | Data extraction / arbitrary JS |
-| `get_shadow_dom`, `get_frames`, `iframe_read`, `iframe_click`, `iframe_type` | Frame / shadow DOM |
+| `extract_data`, `get_selection` | Data extraction / selected text |
+| `get_shadow_dom`, `get_frames`, `iframe_read`, `iframe_click`, `iframe_type` | Frame / shadow DOM. `get_shadow_dom` and `get_frames` are Full Act and Dev-extended for Mid Dev. |
 | `fetch_url`, `research_url` | HTTP / open-and-read |
 | `list_downloads`, `read_downloaded_file`, `download_resource_from_page`, `download_files` | Download helpers via `browser.downloads` where available |
 | `verify_form` | Reads form field values + viewport screenshot before submit |
 | `done` | Signal completion |
+
+Dev-only Firefox add-ons: `read_page_source`, `inspect_element_styles`, and `execute_js`. `execute_js` is intentionally absent from normal Act and is only exposed when the user selects Dev mode on a Mid/Full provider.
 
 Chrome-only (absent in Firefox): `full_page_screenshot`, `shadow_dom_query` (CDP shadow-pierce variant), `upload_file` (CDP-driven file input), and slash-driven tab/screen recording.
 
@@ -359,7 +372,7 @@ type_ax                 →  resolveRef(id) → native setter + input/change
 set_field               →  type + combobox detect → ArrowDown/Enter or submit
 ```
 
-Plus the legacy handlers: `read_page`, `screenshot`, `click`, `type_text`, `press_keys`, `scroll`, `extract_data`, `get_selection`, `get_shadow_dom`, `get_frames`, `iframe_*`.
+Plus the legacy handlers: `read_page`, `click`, `type_text`, `press_keys`, `scroll`, `extract_data`, `get_selection`, `get_shadow_dom`, `get_frames`, `iframe_*`, and Dev-only read/debug handlers.
 
 ### Manifest wiring
 
@@ -476,7 +489,7 @@ when the tab conversation already has `/allow-api`.
 | No offscreen document | Localhost LLM fetches fail on CORS | Configure server CORS headers |
 | No trusted keyboard events | `press_keys` may not land on all sites | Dispatched to both activeElement and document |
 | No full-page screenshot | Only visible viewport | Scroll + multiple captures |
-| No shadow-root piercing (closed) | Can't read closed shadow roots | `execute_js` with manual traversal |
+| No shadow-root piercing (closed) | Can't read closed shadow roots | Dev-mode `execute_js` with manual traversal |
 | No file upload | Can't automate file input dialogs | User uploads manually |
 | No duplicate-submit guard | Agent may submit twice if LLM loops | Rely on site-level idempotence / user watches |
 | No ambiguous-click CDP enrichment | Overlapping hit-target ambiguity resolved by ref_id only | Prompting / adapter guidance |
@@ -491,7 +504,8 @@ Same as Chrome, minus CDP:
 - Extension runs with user's full browser permissions
 - `<all_urls>` host permission allows content-script injection anywhere
 - Cross-origin iframes accessible via extension privilege
-- Plan before Act can require user approval before any Act-mode tool executes
+- Ask is read-only; Act and Dev are action modes. Dev adds source/style/page-inspection tools and is blocked for Compact-tier providers.
+- Plan before Act can require user approval before any action-mode tool executes
 - API shortcut observer is off by default; when enabled, it records bounded same-tab XHR/fetch replay metadata in memory only
 - `/allow-api` flag required for API mutations (POST/PUT/PATCH/DELETE via `fetch_url`)
 - Finance adapters get extra safety warnings

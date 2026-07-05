@@ -144,7 +144,7 @@ Adapters are ordered by category/site in the `ADAPTERS` array. **Finance adapter
    import { getActiveAdapter, listAdapters } from './agent/adapters.js';
    console.log(getActiveAdapter('https://example.com/some-page'));
    ```
-3. **Verify the notes appear**: in Act mode, type a simple instruction (e.g., "what's on this page?"). Open the side panel's verbose mode and confirm the first user message contains `[Site guidance for <name>]` with your notes.
+3. **Verify the notes appear**: in Ask, Act, or Dev mode, type a simple instruction (e.g., "what's on this page?"). Open the side panel's verbose mode and confirm the first user message contains `[Site guidance for <name>]` with your notes.
 4. **Verify only ONE adapter fires**: navigate to a URL that could match multiple matchers. Check that the first match wins and no others leak through.
 5. **Test navigation re-injection**: start a conversation on a non-adapted site, then navigate to your adapted site. Confirm a `[Site context changed]` message appears.
 

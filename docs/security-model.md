@@ -31,7 +31,7 @@ Differences below.)
 
 | Permission | Risk | Mitigation |
 |---|---|---|
-| `<all_urls>` | Content script injection anywhere — the agent can read and interact with any page the user visits | The user must explicitly switch to Act mode; Ask mode is read-only. The agent never auto-activates on new tabs. |
+| `<all_urls>` | Content script injection anywhere — the agent can read and interact with any page the user visits | The user must explicitly switch to an action mode (Act or Dev) before clicks/types/navigation. Ask mode is read-only. The agent never auto-activates on new tabs. |
 | `debugger` | CDP access provides trusted events and full DOM/network control on any tab | The debugger is only attached during active agent runs and detached on completion/abort. |
 | `webRequest` | Can observe XHR/fetch metadata for requests made by the active page | API mutation observer is off by default; when enabled, it keeps only a bounded in-memory per-tab buffer for repeated-click shortcut hints and opaque same-origin replay. |
 | `downloads` | Can save files to the user's Downloads folder without prompting | Only the agent's explicit download-capable tool calls (`download_files`, `download_file`, `download_resource_from_page`, `download_social_media`, download-job skill tools) use this, and each is gated by the capability × origin permission prompt. |
@@ -96,9 +96,10 @@ The primary threat: a malicious page crafts content that, when read by the agent
 | **Untrusted-content wrapping** | Page-derived tool results are wrapped in `<untrusted_page_content>` markers (`_wrapUntrusted` + `UNTRUSTED_CONTENT_TOOLS`) so the model treats them as data, not instructions. See [prompt-injection-defense.md](prompt-injection-defense.md). |
 | **Capability × origin gate** | Before a consequential tool runs (click/type/navigate/execute_js/network/download/…), the agent requires a `(capability, host)` grant — Allow once / Always / Deny. Language-agnostic, deterministic, human-in-the-loop (`permission-gate.js`). |
 | **Tool result cap** | Individual tool results truncated at 8,000 chars (`_limitToolResult`). Injected text beyond that is silently dropped. |
-| **Ask/Act mode** | In Ask mode, only read-only tools are available. The user must explicitly switch to Act for the agent to click/type/navigate. |
-| **Plan before Act** | When enabled, Act-mode runs first produce a structured plan and wait for side-panel approval before any browser tool executes. Scheduled runs can auto-approve the plan only through scheduler policy. |
-| **Skill import boundary** | Skills can expose read-only HTTP tools and download-job tools through a `webbrain-tools` manifest. Importing or keeping the skill enabled is the trust decision for the declared HTTPS endpoint; declared skill tools use `credentials: "omit"` and should mark third-party results `resultPolicy: "untrusted"`. Download-job skill tools still require Act mode and the normal Downloads permission gate before saving files. |
+| **Ask/Act/Dev mode** | Ask mode exposes only semantic read-only tools. The user must explicitly switch to an action mode for clicks/types/navigation. Act exposes the selected provider tier's normal tools. Dev requires Mid/Full tier and adds source/style/page-inspection tools for developer debugging. |
+| **Tiered tool exposure** | Provider tiers (`compact | mid | full`) limit the normal browser-agent surface for smaller models. Compact gets the smallest action surface; Mid adds common task tools; Full adds advanced UI/DOM fallbacks. Compact Dev is blocked. |
+| **Plan before Act** | When enabled, action-mode runs first produce a structured plan and wait for side-panel approval before any browser tool executes. Scheduled runs can auto-approve the plan only through scheduler policy. |
+| **Skill import boundary** | Skills can expose read-only HTTP tools and download-job tools through a `webbrain-tools` manifest. Importing or keeping the skill enabled is the trust decision for the declared HTTPS endpoint; declared skill tools use `credentials: "omit"` and should mark third-party results `resultPolicy: "untrusted"`. Download-job skill tools still require an action mode and the normal Downloads permission gate before saving files. |
 | **`/allow-api`** | A per-conversation `/allow-api` flag that *waives* the permission prompt for write-method network egress (`fetch_url`/`research_url` with POST/PUT/PATCH/DELETE). It does NOT waive GET egress or any other capability. Clears on conversation reset. |
 | **`done()` blocking** | Before accepting completion, the agent probes for open dialogs/forms. If the summary claims "created"/"saved" but a modal is still open, the agent is forced to continue. |
 | **Duplicate-submit guard** | Clicks on submit-like text (create/save/submit/add/post/publish/send/confirm/sign up/log in/pay/checkout/order, etc.) are blocked within a 45-second window per tab+URL (Chrome). |
@@ -162,6 +163,7 @@ Firefox has no CDP (`debugger` permission), so:
 - No trusted events (synthetic `el.click()` only)
 - No full-page screenshots
 - No shadow DOM piercing for closed roots
+- `execute_js` is Firefox-only and exposed as a Dev add-on, not in normal Act
 - No offscreen document (CORS must be handled by LLM servers)
 - No slash-driven tab/screen recording (Chrome's capture APIs and `recorder/` are absent)
 - No duplicate-submit guard (the timestamp Map is declared but unwired)

@@ -18,7 +18,7 @@ The user's message, the current page content (AX tree, screenshot, or extracted 
 | User credentials (passwords, API keys) | Yes | If the user types them in chat or the agent fills them and they appear in tool results |
 | Provider API key | Yes | Sent as an HTTP header (Bearer token) to the provider's API endpoint |
 
-When **Plan before Act** is enabled, Act-mode turns make an additional planner
+When **Plan before Act** is enabled, action-mode turns (Act or Dev) make an additional planner
 call to the same configured provider before any browser tools run. That call
 contains the user's task, sanitized page URL/title, a short recent-conversation
 digest, and the planner system prompt. Image blocks are dropped before the
@@ -101,7 +101,7 @@ service operated by the extension's developer, separate from the user's
 configured LLM provider. The transcript tool is limited to YouTube/youtu.be
 URLs, while the media tools are limited to public media hosts declared in the
 skill manifest. The read-only transcript and resolver tools do not require
-`/allow-api`; `download_public_media` is available only in Act mode and
+`/allow-api`; `download_public_media` is available only in action modes and
 requires download permission because it creates a short-lived provider job,
 saves the completed file through the browser Downloads API, and then asks the
 provider to delete the job. These calls do not send page content, chat history,
@@ -187,6 +187,8 @@ CDP capture → JPEG/PNG data URL
 | Setting | Effect |
 |---|---|
 | Provider selection | Choose which LLM receives the data, or run locally |
+| Provider prompt/tool tier | Choose Compact, Mid, or Full tool exposure for non-cloud providers |
+| Ask / Act / Dev mode | Choose read-only, normal action, or developer/page-inspection mode |
 | Tracing toggle | Prevents any trace data from being stored |
 | Screenshot fallback | Controls whether page images are sent to the LLM |
 | Auto-screenshot mode | Controls how frequently viewport captures are sent |
