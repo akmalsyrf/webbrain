@@ -4270,8 +4270,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         attrs[String(rawAttrs[i] || '').toLowerCase()] = String(rawAttrs[i + 1] || '');
       }
       const type = String(attrs.type || '').toLowerCase();
-      const isSubmit = (tag === 'input' && (type === 'submit' || type === 'image'))
-        || (tag === 'button' && (!type || type === 'submit'));
+      const isSubmit = (tag === 'input' && (type === 'submit' || type === 'image' || type === 'button'))
+        || (tag === 'button' && (!type || type === 'submit' || type === 'button'));
       if (!isSubmit) return null;
       return this._fallbackSubmitConfirmationInfo(
         host,

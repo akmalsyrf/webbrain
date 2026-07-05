@@ -12459,6 +12459,7 @@ test('chrome submit detector fail-closes CDP-only submit selector targets', () =
   assert.match(agent, /_detectCdpSubmitSelector/, 'chrome: CDP selector fallback missing');
   assert.match(agent, /cdpClient\.resolveSelector\(tabId, String\(selector\)/, 'chrome: CDP selector fallback should use the same deep resolver as click({selector})');
   assert.match(agent, /selector resolves to a submit control in shadow DOM/, 'chrome: CDP selector fallback should force submit confirmation for CDP-only submit controls');
+  assert.match(agent, /_detectCdpSubmitSelector[\s\S]*type === 'image' \|\| type === 'button'[\s\S]*!type \|\| type === 'submit' \|\| type === 'button'/, 'chrome: CDP selector fallback should fail closed for JS-driven type=button form controls');
 });
 
 test('firefox submit detector serializes static probe as a function expression', () => {
