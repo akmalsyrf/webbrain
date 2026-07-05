@@ -4098,8 +4098,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   _executeJsLooksLikeFormSubmit(code) {
     const text = String(code || '');
-    return /\b(?:requestSubmit|submit)\s*(?:\?\.)?\s*\(/i.test(text)
-      || /(?:\.|\b)click\s*(?:\?\.)?\s*\(/i.test(text);
+    return /\b(?:requestSubmit|submit|click)\b/i.test(text);
   }
 
   _fallbackSubmitConfirmationInfo(host, tool, reason, summary = '') {
@@ -4140,8 +4139,8 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       return this._fallbackSubmitConfirmationInfo(
         await fallbackHostForPrompt(),
         name,
-        'execute_js calls form submit/requestSubmit or programmatic click',
-        'JavaScript code appears to call form submit(), requestSubmit(), or click() a page element.'
+        'execute_js references submit/requestSubmit/click',
+        'JavaScript code appears to reference submit(), requestSubmit(), or click() methods that can submit a form.'
       );
     }
 
