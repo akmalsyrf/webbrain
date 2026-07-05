@@ -11106,6 +11106,64 @@ test('approved submit confirmation is one-time and skips generic click always gr
   }
 });
 
+test('approved iframe submit keeps host gate fail-closed without urlFilter', async () => {
+  for (const AgentClass of [AgentCh, AgentFx]) {
+    const agent = new AgentClass({ getVisionProvider: async () => null });
+    const tabId = 5115;
+    let executed = false;
+    let submitPrompts = 0;
+    const messages = [];
+
+    agent._ensureGateSetting = async () => false;
+    agent._skipPermissionGate = false;
+    agent._currentUrl = async () => 'https://merchant.com/checkout';
+    agent._recordProgressObservation = async () => null;
+    agent._autoRecordProgressAction = () => null;
+    agent._progressWarningForAction = () => '';
+    agent._persist = () => {};
+    agent._detectLikelySubmitAction = async () => ({
+      isSubmit: true,
+      host: 'stripe.example',
+      tool: 'iframe_click',
+      reason: 'submit button/control activation',
+      summary: 'Changed/filled fields: Card: **** 4242.',
+      changedFields: [{ label: 'Card', value: '**** 4242', changed: true }],
+    });
+    agent._promptSubmitConfirmation = async () => {
+      submitPrompts += 1;
+      return 'once';
+    };
+    agent._promptPermission = async () => {
+      throw new Error('iframe_click without urlFilter should fail closed before prompting');
+    };
+    agent.executeTool = async () => {
+      executed = true;
+      return { success: true, submitted: true };
+    };
+
+    await agent._executeToolBatch(
+      tabId,
+      [{
+        id: 'tool_iframe_submit_once',
+        function: { name: 'iframe_click', arguments: '{"selector":"button[type=submit]"}' },
+      }],
+      messages,
+      () => {},
+      { supportsVision: false },
+      '',
+      new Set(['iframe_click']),
+      1,
+    );
+
+    assert.equal(submitPrompts, 1, `${AgentClass.name}: expected submit confirmation before iframe host gate`);
+    assert.equal(executed, false, `${AgentClass.name}: iframe submit ran without a target host gate`);
+    assert.equal(messages.length, 1, `${AgentClass.name}: expected fail-closed tool result`);
+    const denied = JSON.parse(messages[0].content);
+    assert.equal(denied.denied, true, `${AgentClass.name}: fail-closed result should be denied`);
+    assert.match(denied.error, /urlFilter/, `${AgentClass.name}: error should tell the model to provide urlFilter`);
+  }
+});
+
 test('submit confirmation card has no always-allow path', async () => {
   for (const AgentClass of [AgentCh, AgentFx]) {
     const agent = new AgentClass({ getVisionProvider: async () => null });
@@ -12303,6 +12361,19 @@ test('submit detector source covers submit controls, Enter, set_field, iframes, 
     assert.match(agent, /name === 'iframe_click' \|\| name === 'press_keys'/, `${label}: iframe/all-frame probing missing`);
     assert.match(agent, /allFrames/, `${label}: iframe equivalent submit checks should use allFrames`);
     assert.match(agent, /requestSubmit\|submit/, `${label}: execute_js submit/requestSubmit detection missing`);
+    assert.match(agent, /__wb_resolve_click_target_for_submit_probe/, `${label}: submit probe should reuse content click-index resolver when available`);
+  }
+});
+
+test('submit probe index resolver stays aligned with content click ordering', () => {
+  const cases = [
+    ['chrome', 'src/chrome/src/content/content.js', /return queryInteractive\(\)\[index\] \|\| null/],
+    ['firefox', 'src/firefox/src/content/content.js', /return queryInteractiveForToolIndex\(\)\[index\] \|\| null/],
+  ];
+  for (const [label, rel, expectedResolver] of cases) {
+    const content = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.match(content, /window\.__wb_resolve_click_target_for_submit_probe/, `${label}: content submit-probe resolver missing`);
+    assert.match(content, expectedResolver, `${label}: submit-probe resolver should use the same indexed click ordering as content click`);
   }
 });
 

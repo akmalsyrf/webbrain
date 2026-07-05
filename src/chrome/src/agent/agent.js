@@ -1942,9 +1942,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         }
         // The submit-specific card is fresher and more precise than the
         // generic click/submit capability prompt. Keep any other required
-        // capabilities (e.g. TYPE for set_field) but avoid a duplicate click
-        // card for the same form submission.
-        capabilities = capabilities.filter(capability => capability !== Capability.CLICK);
+        // capabilities (e.g. TYPE for set_field), but avoid a duplicate click
+        // card for same-frame submissions. iframe_click is different: the
+        // generic gate is what identifies and fail-closes the target frame host
+        // when urlFilter is missing, so keep CLICK for that tool.
+        if (fnName !== 'iframe_click') {
+          capabilities = capabilities.filter(capability => capability !== Capability.CLICK);
+        }
       }
       const scheduledPolicy = this.scheduledRunPolicies.get(tabId);
       const scheduledBypassesGate = scheduledPolicy?.requireConsequentialConfirmation === false;
@@ -4361,6 +4365,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         try { return doc.querySelector(args.selector); } catch { return null; }
       }
       if (args.index != null) {
+        try {
+          if (typeof window.__wb_resolve_click_target_for_submit_probe === 'function') {
+            return window.__wb_resolve_click_target_for_submit_probe(args);
+          }
+        } catch {}
         const index = Number(args.index);
         const all = interactiveElements();
         return Number.isFinite(index) ? all[index] || null : null;
