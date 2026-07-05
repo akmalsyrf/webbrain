@@ -2928,6 +2928,26 @@ test('scheduled runs hide suggested actions immediately', () => {
   }
 });
 
+test('scheduled clarify resumes hide suggested actions immediately', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const submitIdx = panel.indexOf('function submitClarify(');
+    const scheduledIdx = panel.indexOf('if (isScheduledClarify) {', submitIdx);
+    const isProcessingIdx = panel.indexOf('isProcessing = true;', scheduledIdx);
+    const hideIdx = panel.indexOf('hideRecommendedActions();', scheduledIdx);
+    const activityIdx = panel.indexOf("showActivity(t('sp.activity.thinking'));", scheduledIdx);
+    assert.notEqual(submitIdx, -1, `${label}: submitClarify missing`);
+    assert.notEqual(scheduledIdx, -1, `${label}: scheduled clarify branch missing`);
+    assert.notEqual(isProcessingIdx, -1, `${label}: scheduled clarify should mark processing`);
+    assert.notEqual(hideIdx, -1, `${label}: scheduled clarify should hide suggested actions`);
+    assert.notEqual(activityIdx, -1, `${label}: scheduled clarify should show resumed activity`);
+    assert.equal(isProcessingIdx < hideIdx && hideIdx < activityIdx, true, `${label}: suggestions should hide before scheduled clarify activity resumes`);
+  }
+});
+
 // ────────────────────────────────────────────────────────────────────────
 // Credential-field detection
 // ────────────────────────────────────────────────────────────────────────

@@ -4135,6 +4135,7 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
     }
     isProcessing = true;
     syncSendButtonState();
+    hideRecommendedActions();
     showActivity(t('sp.activity.thinking'));
   }
   sendToBackground('clarify_response', { tabId, clarifyId, answer, source })
