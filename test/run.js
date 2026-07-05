@@ -7153,6 +7153,11 @@ test('sidepanel keeps retry metadata long enough for returned error updates', ()
     );
     assert.match(
       source,
+      /if \(payload\.apiMutationsAllowed\) \{[\s\S]*?setApiMutationsAllowedForTab\(currentTabId, true\);[\s\S]*?\}[\s\S]*?await sendMessage\(\{/,
+      `${label}: restored retries that replay API mutation permission should resync the visible per-tab API state`,
+    );
+    assert.match(
+      source,
       /const activePayloadState = createActiveChatPayloadState\(retryPayload\);[\s\S]*?activeChatPayloadsByTab\.set\(tabId, activePayloadState\);/,
       `${label}: sendMessage should store retry metadata as an active run state`,
     );
@@ -7170,6 +7175,31 @@ test('sidepanel keeps retry metadata long enough for returned error updates', ()
       source,
       /function scheduleActiveChatPayloadCleanup\(tabId, state\) \{[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?activeChatPayloadsByTab\.delete\(tabId\);[\s\S]*?\}, 30000\);/,
       `${label}: active retry metadata should be cleaned up after late broadcasts have had a chance to drain`,
+    );
+    assert.match(
+      source,
+      /function clearActiveChatPayloadForTab\(tabId\) \{[\s\S]*?activeChatPayloadsByTab\.delete\(tabId\);[\s\S]*?\}/,
+      `${label}: non-chat runs should be able to clear stale chat retry metadata`,
+    );
+    assert.match(
+      source,
+      /else if \(event === 'running'\) \{[\s\S]*?clearActiveChatPayloadForTab\(tabId \?\? currentTabId\);[\s\S]*?isProcessing = true;/,
+      `${label}: scheduled runs should clear stale chat retry metadata before starting`,
+    );
+    assert.match(
+      source,
+      /function reattachPlanReviewActiveRun\(card\) \{[\s\S]*?clearActiveChatPayloadForTab\(currentTabId\);[\s\S]*?isProcessing = true;/,
+      `${label}: plan review resumes should clear stale chat retry metadata before starting`,
+    );
+    assert.match(
+      source,
+      /const isScheduledClarify = !!card\.dataset\.scheduledJobId;[\s\S]*?if \(isScheduledClarify\) \{[\s\S]*?clearActiveChatPayloadForTab\(tabId\);[\s\S]*?isProcessing = true;/,
+      `${label}: scheduled clarify resumes should clear stale chat retry metadata before starting`,
+    );
+    assert.match(
+      source,
+      /async function continueAgent\(\) \{[\s\S]*?const tabId = currentTabId;[\s\S]*?clearActiveChatPayloadForTab\(tabId\);[\s\S]*?isProcessing = true;/,
+      `${label}: Continue runs should clear stale chat retry metadata before starting`,
     );
   }
 });

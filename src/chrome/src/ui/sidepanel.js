@@ -1412,6 +1412,7 @@ async function handleScheduledJobEvent(data, tabId) {
   if (event === 'created') {
     addMessage('system', systemHtml(tSystemHtml('sp.scheduled.created', { title, time: formatScheduledTime(job.nextRunAt || job.scheduledAt) })));
   } else if (event === 'running') {
+    clearActiveChatPayloadForTab(tabId ?? currentTabId);
     isProcessing = true;
     abortRequested = false;
     syncSendButtonState();
@@ -1429,6 +1430,7 @@ async function handleScheduledJobEvent(data, tabId) {
     hideActivity();
     abortRequested = false;
     if (currentAssistantEl) {
+      clearActiveChatPayloadForTab(tabId ?? currentTabId);
       isProcessing = true;
       syncSendButtonState();
     } else {
@@ -2247,6 +2249,7 @@ function bindPlanReviewCard(card) {
 function reattachPlanReviewActiveRun(card) {
   const assistantEl = card?.closest?.('.message.assistant');
   if (!assistantEl) return null;
+  clearActiveChatPayloadForTab(currentTabId);
   currentAssistantEl = assistantEl;
   isProcessing = true;
   abortRequested = false;
@@ -2319,6 +2322,9 @@ function bindErrorRetryButton(btn) {
       showComposerToast(t('sp.retry.attachments_unavailable'), { duration: 5000 });
     }
     setMode(payload.mode);
+    if (payload.apiMutationsAllowed) {
+      setApiMutationsAllowedForTab(currentTabId, true);
+    }
     inputEl.value = payload.text;
     autoResizeInput();
     hideSlashCommandAutocomplete();
@@ -2338,6 +2344,10 @@ function rebindRetryButtons() {
 
 function createActiveChatPayloadState(retryPayload) {
   return { retryPayload, renderedErrorMessages: new Set() };
+}
+
+function clearActiveChatPayloadForTab(tabId) {
+  if (tabId != null) activeChatPayloadsByTab.delete(tabId);
 }
 
 function errorMessageKey(message) {
@@ -3922,6 +3932,7 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
   // so the target field is always injected.
   const isScheduledClarify = !!card.dataset.scheduledJobId;
   if (isScheduledClarify) {
+    clearActiveChatPayloadForTab(tabId);
     const msgEl = card.closest('.message.assistant');
     const scheduledJobId = card.dataset.scheduledJobId;
     if (msgEl && (!currentAssistantEl || currentAssistantEl.dataset?.scheduledJobId === scheduledJobId)) {
@@ -4344,6 +4355,7 @@ function showContinueButton() {
 async function continueAgent() {
   const tabId = currentTabId;
   const modeForSend = agentMode;
+  clearActiveChatPayloadForTab(tabId);
   // Remove the continue bar
   document.querySelectorAll('.continue-bar').forEach(el => el.remove());
 
