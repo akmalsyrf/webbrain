@@ -2084,15 +2084,94 @@ body {
   gap: 8px;
 }
 
+.plan-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .plan-review-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
+.plan-review-confidence {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .plan-review-hint {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* The card's data-editing attribute is the single source of truth for
+   read-only vs editing mode; JS only flips the attribute. */
+.plan-review-card:not([data-editing="true"]) .plan-review-hint,
+.plan-review-card:not([data-editing="true"]) .plan-review-edit {
+  display: none;
+}
+.plan-review-card[data-editing="true"] .plan-review-view,
+.plan-review-card[data-editing="true"] .plan-review-change {
+  display: none;
+}
+
+.plan-review-view {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.plan-review-summary {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.plan-review-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plan-review-step {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.plan-review-step-number {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.plan-review-step-action,
+.plan-review-step-fallback {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .plan-review-edit {
@@ -2115,15 +2194,25 @@ body {
   flex-wrap: wrap;
 }
 
-.plan-review-approve {
+.plan-review-approve,
+.plan-review-change {
   padding: 6px 12px;
-  background: var(--accent);
-  color: #fff;
   border: none;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.plan-review-approve {
+  background: var(--accent);
+  color: #fff;
+}
+
+.plan-review-change {
+  background: var(--bg3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
 }
 
 .plan-review-cancel {
@@ -2137,6 +2226,7 @@ body {
 }
 
 .plan-review-approve:disabled,
+.plan-review-change:disabled,
 .plan-review-cancel:disabled,
 .plan-review-edit:disabled {
   opacity: 0.5;
@@ -2146,6 +2236,12 @@ body {
 .plan-reviewed {
   border-color: var(--success, #4caf50);
   background: rgba(76, 175, 80, 0.06);
+}
+
+.plan-auto-approved-note {
+  margin: 6px 0;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .plan-review-note {

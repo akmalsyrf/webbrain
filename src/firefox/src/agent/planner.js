@@ -15,6 +15,7 @@ export const PLANNER_SYSTEM_PROMPT = `You are the planning subsystem for WebBrai
 Schema:
 {
   "summary": "one-line description of what will be done",
+  "confidence": 0.0,
   "steps": [
     { "id": "1", "action": "what to do in this step", "tools": ["tool_names"] }
   ],
@@ -43,6 +44,7 @@ Rules:
   schedule: schedule_task (future/recurring work the user explicitly asked for), schedule_resume (pause CURRENT run blocked on external event)
   finish: done
 - For repeated same-kind UI mutations (for example following many users), plan visible UI first with bounded batches, verification, progress_update, and wait_for_stable pacing; do not plan one huge same-shape click/tool batch.
+- Set confidence from 0.0 to 1.0 for how clear and safe this plan is. Use 0.90+ only when the task, page state, and next steps are straightforward; use lower scores for ambiguity, destructive changes, payments, credentials, bulk mutations, or uncertain page state.
 - scheduling.tool = schedule_task when the user wants reminders, monitors, or recurring checks later.
 - scheduling.tool = schedule_resume only when the CURRENT task must pause until an external event (deploy finishes, email arrives) — not for generic waits (use wait_for_stable).
 - memory.use_progress_ledger = true for repeated per-item tasks (follow users, collect emails, process each search result). One ledger row per item.
@@ -134,6 +136,11 @@ export function normalizePlan(obj) {
     })).filter((s) => s.action)
     : [];
 
+  let confidence = Number(obj.confidence ?? obj.score ?? obj.probability ?? 0.75);
+  if (!Number.isFinite(confidence)) confidence = 0.75;
+  if (confidence > 1 && confidence <= 100) confidence /= 100;
+  confidence = Math.max(0, Math.min(1, confidence));
+
   const memory = obj.memory && typeof obj.memory === 'object' ? obj.memory : {};
   const scheduling = obj.scheduling && typeof obj.scheduling === 'object' ? obj.scheduling : null;
   const tool = scheduling ? sanitizeText(scheduling.tool, 40) : '';
@@ -143,6 +150,7 @@ export function normalizePlan(obj) {
 
   return {
     summary,
+    confidence,
     steps,
     memory: {
       use_scratchpad: !!memory.use_scratchpad,
@@ -162,7 +170,8 @@ export function normalizePlan(obj) {
 
 export function formatPlanCompactMarkdown(plan) {
   if (!plan) return '';
-  const lines = [`**${plan.summary}**`, ''];
+  const lines = [];
+  if (plan.summary) lines.push(`**${plan.summary}**`, '');
 
   if (plan.steps?.length) {
     lines.push('### Steps');
@@ -172,6 +181,11 @@ export function formatPlanCompactMarkdown(plan) {
   }
 
   return lines.join('\n').trim();
+}
+
+function formatPlanConfidence(plan) {
+  const confidence = Math.max(0, Math.min(1, Number(plan?.confidence ?? 0)));
+  return `${Math.round(confidence * 100)}%`;
 }
 
 function appendPlanExecutionMetadata(lines, plan) {
@@ -205,6 +219,8 @@ function appendPlanExecutionMetadata(lines, plan) {
 export function formatPlanVerboseMarkdown(plan) {
   if (!plan) return '';
   const lines = [`**${plan.summary}**`, ''];
+  lines.push(`Confidence: ${formatPlanConfidence(plan)}`);
+  lines.push('');
 
   if (plan.steps?.length) {
     lines.push('### Steps');

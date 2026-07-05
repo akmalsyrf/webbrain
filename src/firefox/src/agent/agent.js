@@ -119,6 +119,8 @@ export class Agent {
     // plan if planning itself fails. "strict" fails closed.
     this.planBeforeActMode = 'try';
     this.planBeforeAct = true; // legacy boolean mirror for older call sites/tests
+    this.planReviewMode = 'confidence'; // confidence | always | never
+    this.planReviewConfidenceThreshold = 0.9;
     this._pendingPlans = new Map();
     // Strict secret-handling mode — see chrome/agent.js for rationale.
     // Default off; user opts in via Settings → "Strict secret handling".
@@ -3124,6 +3126,44 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     return normalized;
   }
 
+  _normalizePlanReviewMode(mode) {
+    return mode === 'always' || mode === 'never' || mode === 'confidence'
+      ? mode
+      : 'confidence';
+  }
+
+  _normalizePlanReviewConfidenceThreshold(value) {
+    let threshold = Number(value);
+    if (!Number.isFinite(threshold)) threshold = 0.9;
+    if (threshold > 1 && threshold <= 100) threshold /= 100;
+    // Clamp to the same [50%, 99%] range the settings slider enforces, so an
+    // out-of-band stored value (e.g. 0) can't silently disable the review gate
+    // while the settings UI displays an in-range percentage.
+    return Math.max(0.5, Math.min(0.99, threshold));
+  }
+
+  setPlanReviewSettings(settings = {}) {
+    if (Object.prototype.hasOwnProperty.call(settings, 'mode')) {
+      this.planReviewMode = this._normalizePlanReviewMode(settings.mode);
+    }
+    if (Object.prototype.hasOwnProperty.call(settings, 'confidenceThreshold')) {
+      this.planReviewConfidenceThreshold = this._normalizePlanReviewConfidenceThreshold(settings.confidenceThreshold);
+    }
+    return {
+      mode: this.planReviewMode,
+      confidenceThreshold: this.planReviewConfidenceThreshold,
+    };
+  }
+
+  _shouldReviewPlan(plan) {
+    const mode = this._normalizePlanReviewMode(this.planReviewMode);
+    if (mode === 'always') return true;
+    if (mode === 'never') return false;
+    const confidence = Math.max(0, Math.min(1, Number(plan?.confidence ?? 0)));
+    const threshold = this._normalizePlanReviewConfidenceThreshold(this.planReviewConfidenceThreshold);
+    return confidence < threshold;
+  }
+
   _plannerMode() {
     const mode = this._normalizePlanBeforeActMode(this.planBeforeActMode);
     if (mode === 'off' || this.planBeforeAct === false) return 'off';
@@ -3291,7 +3331,13 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       const markdown = formatPlanMarkdown(plan);
       const verboseMarkdown = formatPlanMarkdown(plan, { verbose: true });
       const scheduledPolicy = this.scheduledRunPolicies.get(tabId);
-      if (scheduledPolicy?.autoApprovePlanReview === true) {
+      const scheduledAutoApprove = scheduledPolicy?.autoApprovePlanReview === true;
+      if (scheduledAutoApprove || !this._shouldReviewPlan(plan)) {
+        // Confidence-gated skips leave a visible trace in the conversation so
+        // the run isn't silent; scheduled runs stay quiet as before.
+        if (!scheduledAutoApprove) {
+          onUpdate('plan_auto_approved', { planId, confidence: plan.confidence });
+        }
         const approvedScratchpadText = formatPlanScratchpad(plan, '', verboseMarkdown);
         return { proceed: true, approvedScratchpadText, planId };
       }
