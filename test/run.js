@@ -15296,6 +15296,10 @@ test('scheduled resume turns get a fresh untrusted ledger snapshot appended', as
     assert.ok(hostileIdx > untrustedIdx, `${AgentClass.name}: hostile row labels must only appear inside the untrusted wrapper`);
     assert.doesNotMatch(augmented.slice(0, untrustedIdx), /steal secrets|Ignore previous instructions/, `${AgentClass.name}: hostile row labels must not leak into the trusted preamble`);
 
+    agent.conversationModes.set(tabId, 'dev');
+    const devAugmented = agent._augmentScheduledResumeMessage(tabId, resumeMessage);
+    assert.match(devAugmented, /Fresh progress ledger snapshot at resume time: 2 row\(s\), 1 unresolved/, `${AgentClass.name}: Dev scheduled resumes should get the action-mode snapshot`);
+
     assert.equal(agent._augmentScheduledResumeMessage(tabId, 'hello there'), 'hello there', `${AgentClass.name}: non-resume turns must pass through unchanged`);
 
     agent._progressUpdate(tabId, {
