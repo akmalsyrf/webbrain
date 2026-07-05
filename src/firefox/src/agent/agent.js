@@ -3492,6 +3492,27 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         return rect.width > 0 && rect.height > 0;
       } catch { return true; }
     };
+    const deepQuerySelector = (root, selector) => {
+      try {
+        const hit = root.querySelector(selector);
+        if (hit) return hit;
+      } catch {
+        return null;
+      }
+      let walker = null;
+      try { walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); } catch { return null; }
+      let node = walker.currentNode;
+      while (node) {
+        try {
+          if (node.shadowRoot) {
+            const inner = deepQuerySelector(node.shadowRoot, selector);
+            if (inner) return inner;
+          }
+        } catch {}
+        node = walker.nextNode();
+      }
+      return null;
+    };
     const cssEscape = (value) => {
       if (globalThis.CSS?.escape) return CSS.escape(String(value));
       return String(value).replace(/["\\]/g, '\\$&');
@@ -3520,10 +3541,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       return compact(parts.find(Boolean) || 'field', 80);
     };
     const fieldValue = (el, pendingEl = null, pendingValue = null) => {
-      if (pendingEl && el === pendingEl) return compact(pendingValue, 120);
       const tag = String(el?.tagName || '').toLowerCase();
       const type = String(el?.type || '').toLowerCase();
       if (type === 'password') return '[password redacted]';
+      if (pendingEl && el === pendingEl) return compact(pendingValue, 120);
       if (type === 'file') return el.files?.length ? `${el.files.length} file(s)` : '';
       if (type === 'checkbox' || type === 'radio') return el.checked ? 'checked' : 'unchecked';
       if (tag === 'select') {
@@ -3629,7 +3650,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         const frameHost = host.toLowerCase();
         if (filter && !frameUrl.includes(filter) && !frameHost.includes(filter.replace(/^https?:\/\//, ''))) return null;
         if (args.selector) {
-          try { return doc.querySelector(args.selector); } catch { return null; }
+          return deepQuerySelector(doc, args.selector);
         }
         if (args.text) {
           const needle = compact(args.text).toLowerCase();
@@ -3642,7 +3663,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
       if (toolName !== 'click') return null;
       if (args.selector) {
-        try { return doc.querySelector(args.selector); } catch { return null; }
+        return deepQuerySelector(doc, args.selector);
       }
       if (args.index != null) {
         try {

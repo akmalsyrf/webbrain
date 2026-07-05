@@ -12362,7 +12362,34 @@ test('submit detector source covers submit controls, Enter, set_field, iframes, 
     assert.match(agent, /allFrames/, `${label}: iframe equivalent submit checks should use allFrames`);
     assert.match(agent, /requestSubmit\|submit/, `${label}: execute_js submit/requestSubmit detection missing`);
     assert.match(agent, /__wb_resolve_click_target_for_submit_probe/, `${label}: submit probe should reuse content click-index resolver when available`);
+    assert.match(agent, /const deepQuerySelector = \(root, selector\)/, `${label}: selector submit probing should pierce open shadow roots`);
+    assert.match(agent, /return deepQuerySelector\(doc, args\.selector\)/, `${label}: selector submit probing should use the deep selector resolver`);
   }
+});
+
+test('submit detector redacts pending password values before summaries', () => {
+  for (const [label, rel] of [
+    ['chrome', 'src/chrome/src/agent/agent.js'],
+    ['firefox', 'src/firefox/src/agent/agent.js'],
+  ]) {
+    const agent = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const fieldValueStart = agent.indexOf('const fieldValue = (el, pendingEl = null, pendingValue = null) => {');
+    assert.notEqual(fieldValueStart, -1, `${label}: fieldValue helper missing`);
+    const fieldValueEnd = agent.indexOf('const defaultValue = (el) => {', fieldValueStart);
+    const fieldValueBody = agent.slice(fieldValueStart, fieldValueEnd);
+    const passwordIdx = fieldValueBody.indexOf("if (type === 'password') return '[password redacted]'");
+    const pendingIdx = fieldValueBody.indexOf('if (pendingEl && el === pendingEl)');
+    assert.ok(passwordIdx !== -1, `${label}: password redaction missing`);
+    assert.ok(pendingIdx !== -1, `${label}: pending value handling missing`);
+    assert.ok(passwordIdx < pendingIdx, `${label}: password fields must redact before pending set_field text is substituted`);
+  }
+});
+
+test('chrome submit detector fail-closes CDP-only submit selector targets', () => {
+  const agent = fs.readFileSync(path.join(ROOT, 'src/chrome/src/agent/agent.js'), 'utf8');
+  assert.match(agent, /_detectCdpSubmitSelector/, 'chrome: CDP selector fallback missing');
+  assert.match(agent, /cdpClient\.resolveSelector\(tabId, String\(selector\)/, 'chrome: CDP selector fallback should use the same deep resolver as click({selector})');
+  assert.match(agent, /selector resolves to a submit control in shadow DOM/, 'chrome: CDP selector fallback should force submit confirmation for CDP-only submit controls');
 });
 
 test('submit probe index resolver stays aligned with content click ordering', () => {

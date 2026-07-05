@@ -4179,6 +4179,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       // Fall through to explicit-argument fallbacks below.
     }
 
+    if (name === 'click' && args?.selector) {
+      const cdpDetected = await this._detectCdpSubmitSelector(tabId, args.selector, await fallbackHostForPrompt());
+      if (cdpDetected) return cdpDetected;
+    }
+
     if (name === 'set_field' && args?.submit) {
       return this._fallbackSubmitConfirmationInfo(
         await fallbackHostForPrompt(),
@@ -4188,6 +4193,35 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       );
     }
     return null;
+  }
+
+  async _detectCdpSubmitSelector(tabId, selector, host) {
+    try {
+      if (!selector || !globalThis.chrome?.debugger || typeof cdpClient?.resolveSelector !== 'function') return null;
+      await cdpClient.attach(tabId);
+      const info = await cdpClient.resolveSelector(tabId, String(selector), { retries: 0, delayMs: 0 });
+      if (!info?.found || !info.nodeId) return null;
+      const described = await cdpClient.describeNode(tabId, info.nodeId);
+      const node = described?.node || {};
+      const tag = String(node.nodeName || '').toLowerCase();
+      const rawAttrs = Array.isArray(node.attributes) ? node.attributes : [];
+      const attrs = {};
+      for (let i = 0; i < rawAttrs.length - 1; i += 2) {
+        attrs[String(rawAttrs[i] || '').toLowerCase()] = String(rawAttrs[i + 1] || '');
+      }
+      const type = String(attrs.type || '').toLowerCase();
+      const isSubmit = (tag === 'input' && (type === 'submit' || type === 'image'))
+        || (tag === 'button' && (!type || type === 'submit'));
+      if (!isSubmit) return null;
+      return this._fallbackSubmitConfirmationInfo(
+        host,
+        'click',
+        'selector resolves to a submit control in shadow DOM',
+        'The selector resolves to a submit button/control that the page probe cannot inspect directly.'
+      );
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -4211,6 +4245,27 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
       } catch { return true; }
+    };
+    const deepQuerySelector = (root, selector) => {
+      try {
+        const hit = root.querySelector(selector);
+        if (hit) return hit;
+      } catch {
+        return null;
+      }
+      let walker = null;
+      try { walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); } catch { return null; }
+      let node = walker.currentNode;
+      while (node) {
+        try {
+          if (node.shadowRoot) {
+            const inner = deepQuerySelector(node.shadowRoot, selector);
+            if (inner) return inner;
+          }
+        } catch {}
+        node = walker.nextNode();
+      }
+      return null;
     };
     const cssEscape = (value) => {
       if (globalThis.CSS?.escape) return CSS.escape(String(value));
@@ -4240,10 +4295,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       return compact(parts.find(Boolean) || 'field', 80);
     };
     const fieldValue = (el, pendingEl = null, pendingValue = null) => {
-      if (pendingEl && el === pendingEl) return compact(pendingValue, 120);
       const tag = String(el?.tagName || '').toLowerCase();
       const type = String(el?.type || '').toLowerCase();
       if (type === 'password') return '[password redacted]';
+      if (pendingEl && el === pendingEl) return compact(pendingValue, 120);
       if (type === 'file') return el.files?.length ? `${el.files.length} file(s)` : '';
       if (type === 'checkbox' || type === 'radio') return el.checked ? 'checked' : 'unchecked';
       if (tag === 'select') {
@@ -4349,7 +4404,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         const frameHost = host.toLowerCase();
         if (filter && !frameUrl.includes(filter) && !frameHost.includes(filter.replace(/^https?:\/\//, ''))) return null;
         if (args.selector) {
-          try { return doc.querySelector(args.selector); } catch { return null; }
+          return deepQuerySelector(doc, args.selector);
         }
         if (args.text) {
           const needle = compact(args.text).toLowerCase();
@@ -4362,7 +4417,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
       }
       if (toolName !== 'click') return null;
       if (args.selector) {
-        try { return doc.querySelector(args.selector); } catch { return null; }
+        return deepQuerySelector(doc, args.selector);
       }
       if (args.index != null) {
         try {
