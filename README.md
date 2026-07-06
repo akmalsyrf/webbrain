@@ -351,8 +351,6 @@ All providers normalize to a common response format:
   <img src="https://contrib.rocks/image?repo=webbrain-one/webbrain" />
 </a>
 
-Made with [contrib.rocks](https://contrib.rocks).
-
 ## License
 
 MIT — built by [Emre Sokullu](https://emresokullu.com)
