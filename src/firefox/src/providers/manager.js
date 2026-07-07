@@ -608,7 +608,7 @@ export class ProviderManager {
 
   /**
    * Fetch selectable models for local providers. Ollama uses its native
-   * /api/tags endpoint; llama.cpp, LM Studio, Jan, vLLM, and SGLang use
+   * /api/tags endpoint; llama.cpp, LM Studio, Jan, vLLM, SGLang, and LocalAI use
    * OpenAI-compatible /v1/models.
    */
   async listProviderModels(id) {
