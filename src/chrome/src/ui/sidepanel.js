@@ -4874,6 +4874,11 @@ function truncate(str, len) {
 
 function autoResizeInput() {
   inputEl.style.height = 'auto';
+  if (!inputEl.value) {
+    inputEl.style.height = '';
+    updateSlashCommandHighlight();
+    return;
+  }
   inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
   updateSlashCommandHighlight();
 }

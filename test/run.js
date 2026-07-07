@@ -7188,6 +7188,11 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
     ['firefox', 'src/firefox/src/ui/sidepanel.js'],
   ]) {
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    assert.match(
+      panel,
+      /function autoResizeInput\(\) \{\s*inputEl\.style\.height = 'auto';\s*if \(!inputEl\.value\) \{\s*inputEl\.style\.height = '';\s*updateSlashCommandHighlight\(\);\s*return;\s*\}\s*inputEl\.style\.height = Math\.min\(inputEl\.scrollHeight, 120\) \+ 'px';\s*updateSlashCommandHighlight\(\);\s*\}/,
+      `${label}: empty composer should reset to its rows=1 height instead of autosizing to placeholder scrollHeight`,
+    );
     assert.match(panel, /const tabInputDrafts = new Map\(\);/, `${label}: sidepanel should track per-tab composer drafts`);
     assert.match(panel, /function saveInputDraftForTab\(tabId, text\) \{[\s\S]*?tabInputDrafts\.set\(numericTabId, draft\);[\s\S]*?tabInputDrafts\.delete\(numericTabId\);[\s\S]*?\}/, `${label}: tab drafts should save non-empty text and clear empty text`);
     assert.match(panel, /function restoreInputDraftForTab\(tabId\) \{[\s\S]*?inputEl\.value = draft;[\s\S]*?autoResizeInput\(\);[\s\S]*?updateSlashCommandAutocomplete\(\);[\s\S]*?\}/, `${label}: tab drafts should restore into the composer when returning to a tab`);
@@ -7387,7 +7392,7 @@ test('sidepanel queued composer messages expose edit and delete controls', () =>
 
     assert.match(html, /id="queued-messages" class="queued-messages hidden" role="list"/, `${label}: queued message strip should exist above the composer`);
     assert.match(panel, /const queuedComposerMessagesByTab = new Map\(\);/, `${label}: queued composer messages should be tracked per tab`);
-    assert.match(panel, /function enqueueQueuedComposerMessage\(tabId, text\) \{[\s\S]*?queue\.push\(\{[\s\S]*?text: queuedText,[\s\S]*?inputEl\.value = '';[\s\S]*?syncSendButtonState\(\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: busy drafts should be queued and clear the composer`);
+    assert.match(panel, /function enqueueQueuedComposerMessage\(tabId, text\) \{[\s\S]*?queue\.push\(\{[\s\S]*?text: queuedText,[\s\S]*?inputEl\.value = '';[\s\S]*?autoResizeInput\(\);[\s\S]*?syncSendButtonState\(\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: busy drafts should be queued, clear the composer, and reset its height`);
     assert.match(panel, /function sameTabId\(a, b\) \{\s*return a != null && b != null && String\(a\) === String\(b\);\s*\}/, `${label}: queued-message tab checks should tolerate equivalent tab id types`);
     assert.match(panel, /function editQueuedComposerMessage\(tabId, queueId\) \{[\s\S]*?!sameTabId\(currentTabId, tabId\)[\s\S]*?removeQueuedComposerMessage\(tabId, queueId\);[\s\S]*?inputEl\.value = item\.text;[\s\S]*?inputEl\.setSelectionRange\(inputEl\.value\.length, inputEl\.value\.length\);[\s\S]*?\}/, `${label}: queued message edit should guard the tab and move text back into the composer`);
     assert.match(panel, /function editLastQueuedComposerMessageForCurrentTab\(\) \{[\s\S]*?const atStart = inputEl\.selectionStart === 0 && inputEl\.selectionEnd === 0;[\s\S]*?if \(inputEl\.value\.trim\(\) \|\| !atStart\) return false;[\s\S]*?const item = queue\[queue\.length - 1\];[\s\S]*?editQueuedComposerMessage\(currentTabId, item\.id\);[\s\S]*?return true;[\s\S]*?\}/, `${label}: ArrowUp edit should only pull the latest queued message into an empty composer at the start`);
