@@ -464,6 +464,30 @@
   "blogPost": [
     {
       "@type": "BlogPosting",
+      "headline": "Nex-N2-mini is cheap and fast, but not a WebBrain planner win",
+      "url": "https://webbrain.one/blog/nex-n2-mini-openrouter-planner-benchmark",
+      "datePublished": "2026-07-08",
+      "description": "We ran nex-agi/nex-n2-mini through WebBrain's frozen 100-case browser-agent first-tool benchmark on OpenRouter. The 35B MoE endpoint is fast and extremely cheap, but its planner quality lands well below the current shortlist.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
+      "headline": "Nemotron 3 Ultra is huge, free, and not a WebBrain planner win",
+      "url": "https://webbrain.one/blog/nemotron3-ultra-openrouter-planner-benchmark",
+      "datePublished": "2026-07-08",
+      "description": "We ran nvidia/nemotron-3-ultra-550b-a55b:free through WebBrain's frozen 100-case browser-agent first-tool benchmark on OpenRouter. The 550B-total MoE model completed the run, but landed well below the best planner rows.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
       "headline": "Agents-A1 in WebBrain's frozen planner benchmark",
       "url": "https://webbrain.one/blog/agents-a1-webbrain-planner-benchmark",
       "datePublished": "2026-07-08",
@@ -771,7 +795,17 @@
     <p class="page-sub">Short write-ups on design decisions, failure modes, and benchmarks from building an open-source AI browser agent.</p>
 
     <div class="post-list">
-      <a href="/blog/agents-a1-webbrain-planner-benchmark" class="post-card">
+      <a href="/blog/nex-n2-mini-openrouter-planner-benchmark" class="post-card">
+        <div class="post-meta">July 8, 2026 &middot; 6 min read</div>
+        <div class="post-title">Nex-N2-mini is cheap and fast, but not a WebBrain planner win</div>
+        <div class="post-excerpt">Nex-N2-mini completed WebBrain&#39;s frozen planner suite with 93 parsed tool calls, a 2.23s median latency, and about $0.045 reported OpenRouter cost, but only 65% Sonnet alignment.</div>
+      </a>
+<a href="/blog/nemotron3-ultra-openrouter-planner-benchmark" class="post-card">
+        <div class="post-meta">July 8, 2026 &middot; 6 min read</div>
+        <div class="post-title">Nemotron 3 Ultra is huge, free, and not a WebBrain planner win</div>
+        <div class="post-excerpt">Nemotron 3 Ultra completed WebBrain&#39;s frozen planner benchmark through OpenRouter&#39;s free endpoint, but 81 parsed calls, 65% Sonnet alignment, and a 40.6s p95 keep it out of the planner shortlist.</div>
+      </a>
+<a href="/blog/agents-a1-webbrain-planner-benchmark" class="post-card">
         <div class="post-meta">July 8, 2026 &middot; 7 min read</div>
         <div class="post-title">Agents-A1 in WebBrain&#39;s frozen planner benchmark</div>
         <div class="post-excerpt">Agents-A1 beats Qwen 3.6 35B-A3B on Sonnet alignment and local latency in WebBrain&#39;s frozen planner harness, but it does not beat Qwen on exact or ideal first-call matching.</div>
