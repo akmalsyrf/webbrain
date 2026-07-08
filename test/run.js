@@ -800,7 +800,10 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     for (const action of ['get_user_memory', 'add_user_memory', 'update_user_memory', 'delete_user_memory', 'clear_user_memory', 'export_user_memory', 'import_user_memory', 'enqueue_user_memory_extraction']) {
       assert.match(background, new RegExp(`case '${action}'`), `${label}: ${action} route missing`);
     }
-    assert.match(background, new RegExp(`${runtime}\\.storage\\.local\\.get\\(USER_MEMORY_AUTO_CAPTURE_KEY\\)`), `${label}: auto-capture should be settings-gated`);
+    assert.match(background, new RegExp(`${runtime}\\.storage\\.local\\.get\\(\\[\\s*USER_MEMORY_ENABLED_KEY,[\\s\\S]*USER_MEMORY_AUTO_CAPTURE_KEY`), `${label}: extraction should read both memory and auto-capture toggles`);
+    assert.match(background, /async function isUserMemoryExtractionEnabled\(\)[\s\S]*stored\[USER_MEMORY_ENABLED_KEY\] !== false[\s\S]*stored\[USER_MEMORY_AUTO_CAPTURE_KEY\] === true/, `${label}: extraction should be gated by the main memory toggle`);
+    assert.match(background, /if \(!await isUserMemoryExtractionEnabled\(\)\) return \{ queued: false, reason: 'disabled' \};/, `${label}: enqueue should not run when memory is disabled`);
+    assert.match(background, /while \(true\) \{\s*if \(!await isUserMemoryExtractionEnabled\(\)\) return;/, `${label}: drain should not send memory when memory is disabled`);
     assert.match(background, /let userMemoryExtractionQueueLock = Promise\.resolve\(\);/, `${label}: extraction queue writes should be serialized`);
     assert.match(background, /async function updateUserMemoryExtractionQueue\(updater\)[\s\S]*withUserMemoryExtractionQueueLock/, `${label}: extraction queue mutations should use the lock`);
     assert.match(background, /await updateUserMemoryExtractionQueue\(\(queue\) => \{[\s\S]*queue\.push\(\{[\s\S]*createdAt: Date\.now\(\),[\s\S]*return queue;/, `${label}: enqueue should append through serialized queue update`);

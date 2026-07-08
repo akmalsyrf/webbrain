@@ -199,6 +199,15 @@ async function saveUserMemoryExtractionQueue(queue) {
   });
 }
 
+async function isUserMemoryExtractionEnabled() {
+  const stored = await browser.storage.local.get([
+    USER_MEMORY_ENABLED_KEY,
+    USER_MEMORY_AUTO_CAPTURE_KEY,
+  ]);
+  return stored[USER_MEMORY_ENABLED_KEY] !== false
+    && stored[USER_MEMORY_AUTO_CAPTURE_KEY] === true;
+}
+
 async function withUserMemoryExtractionQueueLock(task) {
   const run = userMemoryExtractionQueueLock.then(task, task);
   userMemoryExtractionQueueLock = run.catch(() => {});
@@ -253,8 +262,7 @@ function scheduleUserMemoryExtractionDrain(delayMs = USER_MEMORY_EXTRACTION_DELA
 }
 
 async function enqueueUserMemoryExtraction(payload = {}) {
-  const stored = await browser.storage.local.get(USER_MEMORY_AUTO_CAPTURE_KEY);
-  if (stored[USER_MEMORY_AUTO_CAPTURE_KEY] !== true) return { queued: false, reason: 'disabled' };
+  if (!await isUserMemoryExtractionEnabled()) return { queued: false, reason: 'disabled' };
   const userText = normalizeUserMemoryText(payload.userText, 2000);
   const assistantText = normalizeUserMemoryText(payload.assistantText, 2000);
   if (!userText || !assistantText) return { queued: false, reason: 'empty' };
@@ -286,8 +294,7 @@ async function drainUserMemoryExtractionQueue() {
   if (userMemoryExtractionDrainPromise) return userMemoryExtractionDrainPromise;
   userMemoryExtractionDrainPromise = (async () => {
     while (true) {
-      const stored = await browser.storage.local.get(USER_MEMORY_AUTO_CAPTURE_KEY);
-      if (stored[USER_MEMORY_AUTO_CAPTURE_KEY] !== true) return;
+      if (!await isUserMemoryExtractionEnabled()) return;
       const job = await peekUserMemoryExtractionJob();
       if (!job) return;
 
