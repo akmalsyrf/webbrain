@@ -15,6 +15,7 @@ The user's message, the current page content (AX tree, screenshot, or extracted 
 | Page content (AX tree / extracted text) | Yes | The agent reads the page to act on it |
 | Viewport screenshot | Yes | If the provider supports vision (or a dedicated vision model is configured) |
 | Tool call history | Yes | Previous tool results are context for the next LLM call |
+| User memory | Yes, if enabled | Active records are injected into the system prompt; disabled memory is not sent |
 | User credentials (passwords, API keys) | Yes | If the user types them in chat or the agent fills them and they appear in tool results |
 | Provider API key | Yes | Sent as an HTTP header (Bearer token) to the provider's API endpoint |
 
@@ -23,6 +24,14 @@ call to the same configured provider before any browser tools run. That call
 contains the user's task, sanitized page URL/title, a short recent-conversation
 digest, and the planner system prompt. Image blocks are dropped before the
 planner call; any screenshot text description is treated as untrusted context.
+
+When **User Memory auto-learn** is enabled, successful chat or continue turns may
+make a best-effort background extractor call to the same configured provider
+after the assistant response has already completed. That call includes only the
+latest user text, the final assistant text, the current saved memory list, mode,
+and success state. It does not include page/tool results, raw trace events,
+screenshots, or attachment bodies. If the provider cost allowance is exhausted,
+the extractor is skipped silently.
 
 **No other data is sent to the provider.** The extension does not inject tracking, telemetry, or analytics.
 
@@ -61,6 +70,22 @@ Provider configs (API keys, base URLs, model selections) are stored in `chrome.s
 
 If the user enables profile auto-fill, the profile text (name, email, throwaway password) is stored in `chrome.storage.local` in plaintext and sent to the LLM provider as part of the system prompt on every turn.
 
+### User Memory
+
+Saved user memory records are stored locally in `chrome.storage.local` /
+`browser.storage.local` under `wb_user_memory_v1` in plaintext. Records are meant
+for user-stated durable preferences, stable profile hints, and recurring
+workflow preferences. WebBrain rejects obvious secrets and credential-like text,
+but users should not store passwords, API keys, tokens, recovery codes, or other
+sensitive secrets as memory.
+
+When user memory is enabled, active records are appended to the agent system
+prompt as a bounded block. Settings -> Profile controls whether memory is
+enabled, whether optional auto-learning runs after completed turns, and the
+maximum prompt characters injected. `/remember <text>` writes an explicit memory
+immediately without an extractor call. Export/import JSON is local-only and is
+the v1 bridge for moving memory between browser profiles.
+
 ### API Shortcut Observer
 
 The background script keeps a small in-memory buffer of same-tab XHR/fetch
@@ -82,7 +107,8 @@ The only outbound HTTP requests are:
 2. **CapSolver API calls** (if the user enables CAPTCHA solving)
 3. **Content fetches** via `fetch_url` / `research_url` tools (to URLs the agent is asked to fetch)
 4. **Skill tool calls** (to the HTTPS endpoint(s) declared by enabled skills — see "Bundled Skills" below for the one enabled by default)
-5. **Slash-driven tab/screen recording** creates no outbound traffic (the .webm is saved to the Downloads folder via `chrome.downloads.download`)
+5. **User memory extraction calls** (only if auto-learn is enabled; sent to the configured LLM provider after a completed turn)
+6. **Slash-driven tab/screen recording** creates no outbound traffic (the .webm is saved to the Downloads folder via `chrome.downloads.download`)
 
 The opt-in `webRequest` API shortcut observer is off by default and does not
 create outbound requests; when enabled, it observes replay metadata for requests
@@ -123,6 +149,7 @@ Side panel → Background (chrome.runtime.sendMessage)
   │
   ▼
 Agent enriches: URL + title + adapter notes + (optional) screenshot
+  │          + enabled user memory prompt block
   │
   ▼
 Optional Plan before Act call: provider.chat(planner messages, no tools)
@@ -175,6 +202,7 @@ CDP capture → JPEG/PNG data URL
 | Boundary | Data crossing it | Protected by |
 |---|---|---|
 | Browser ↔ LLM provider | Chat messages, page content, screenshot | HTTPS; user chose the provider |
+| Browser ↔ LLM provider | Enabled user memory prompt block and optional extractor input | HTTPS; user chose the provider |
 | Browser ↔ CapSolver | CAPTCHA token requests | HTTPS; user opted in |
 | Extension ↔ Offscreen document | Fetch proxy requests | Same extension, same origin |
 | Service worker ↔ IndexedDB | Trace data | Browser sandbox; never transmitted |
@@ -194,6 +222,8 @@ CDP capture → JPEG/PNG data URL
 | Auto-screenshot mode | Controls how frequently viewport captures are sent |
 | Strict secret handling | Prevents credentials from appearing in summaries |
 | Profile auto-fill | Controls whether user profile text is sent to the LLM |
+| User memory | Controls whether saved memory records are sent to the LLM |
+| User memory auto-learn | Controls whether post-turn extractor calls run |
 | Site adapters toggle | Controls whether site-specific guidance is prepended |
 | `/allow-api` | Controls whether the agent can use API mutations |
 | CapSolver toggle | Controls whether CAPTCHA data is sent to a third-party solver |

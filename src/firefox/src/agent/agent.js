@@ -38,6 +38,7 @@ import {
 import { extractFirstJsonObject } from './json-extract.js';
 import { sanitizeText as sanitizePlannerText } from './text-sanitize.js';
 import { buildCustomSkillsPrompt, buildSkillToolDefinitions, buildSkillToolRegistry, normalizeCustomSkills } from './skills.js';
+import { USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS, formatUserMemoryPrompt, normalizeUserMemoryStore } from './user-memory.js';
 
 const DEFAULT_CLOUD_COST_ALLOWANCE_USD = 10;
 const COST_ALLOWANCE_SESSION_KEY = 'costAllowanceSessionUsd';
@@ -110,6 +111,9 @@ export class Agent {
     this.profileEnabled = false;
     this.profileText = '';
     this.customSkills = [];
+    this.userMemoryEnabled = true;
+    this.userMemoryRecords = [];
+    this.userMemoryMaxPromptChars = USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS;
     // CapSolver opt-in. Off by default. When enabled AND an API key is
     // set, the system prompt gets a "[CAPTCHA SOLVER]" note telling the
     // model to try `solve_captcha` once before falling back to asking
@@ -3993,6 +3997,10 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         `\n\n[User profile — use these details when a form or signup needs them, INSTEAD of asking the user. The user has opted in to sharing this with you. Do NOT volunteer these details on pages that don't need them, and NEVER reveal the password in chat output or screenshots. Treat it as sensitive.]\n` +
         this.profileText.trim();
     }
+    if (this.userMemoryEnabled) {
+      const memoryPrompt = formatUserMemoryPrompt(this.userMemoryRecords, this.userMemoryMaxPromptChars);
+      if (memoryPrompt) prompt += `\n\n${memoryPrompt}`;
+    }
     if (this.captchaSolverEnabled) {
       prompt += `\n\n[CAPTCHA SOLVER — the user has configured CapSolver. When a CAPTCHA blocks a step, call \`solve_captcha\` once (with no arguments — it auto-detects reCAPTCHA v2/v3, hCaptcha, and Cloudflare Turnstile). On success, click the form's submit button and continue. On failure, ask the user to solve it manually — do not retry solve_captcha repeatedly.]`;
     }
@@ -4001,6 +4009,20 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   setCustomSkills(skills) {
     this.customSkills = normalizeCustomSkills(skills);
+    this._refreshSystemPrompts();
+  }
+
+  setUserMemory(options = {}) {
+    if (options.enabled != null) this.userMemoryEnabled = options.enabled !== false;
+    if (Array.isArray(options.records)) {
+      this.userMemoryRecords = normalizeUserMemoryStore({ records: options.records }).records;
+    }
+    if (options.maxPromptChars != null) {
+      const n = Number(options.maxPromptChars);
+      this.userMemoryMaxPromptChars = Number.isFinite(n) && n >= 0
+        ? Math.min(10000, Math.floor(n))
+        : USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS;
+    }
     this._refreshSystemPrompts();
   }
 

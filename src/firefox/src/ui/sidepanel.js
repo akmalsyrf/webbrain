@@ -348,6 +348,9 @@ const SLASH_COMMANDS = [
   { value: '/show-scratchpad', descriptionKey: 'sp.slash.show_scratchpad' },
   { value: '/edit-scratchpad', descriptionKey: 'sp.slash.edit_scratchpad' },
   { value: '/clear-scratchpad', descriptionKey: 'sp.slash.clear_scratchpad' },
+  { value: '/remember', descriptionKey: 'sp.slash.remember' },
+  { value: '/show-memory', descriptionKey: 'sp.slash.show_memory' },
+  { value: '/forget-memory', descriptionKey: 'sp.slash.forget_memory' },
   { value: '/allow-api', descriptionKey: 'sp.slash.allow_api' },
   { value: '/dangerously-skip-permissions', descriptionKey: 'sp.slash.dangerously_skip_permissions' },
   { value: '/compact', descriptionKey: 'sp.slash.compact' },
@@ -2023,6 +2026,74 @@ async function showScratchpad(tabId = currentTabId) {
   }
 }
 
+async function showUserMemory(tabId = currentTabId) {
+  try {
+    const res = await sendToBackground('get_user_memory');
+    if (currentTabId !== tabId) return;
+    if (!res?.ok) {
+      addPersistentSlashMessage(systemHtml(tSystemHtml('sp.memory.error', { msg: res?.error || 'unknown error' })));
+      return;
+    }
+    const records = (Array.isArray(res.records) ? res.records : [])
+      .filter((record) => record && !record.archivedAt && record.text);
+    if (!records.length) {
+      addPersistentSlashMessage(t('sp.memory.empty'));
+      return;
+    }
+    const body = records.map((record) => {
+      const kind = record.kind || 'preference';
+      return `${record.id} [${kind}] ${record.text}`;
+    }).join('\n');
+    const msgEl = addPersistentSlashMessage(systemHtml(`${t('sp.memory.title_html')}<pre class="scratchpad-dump">${escapeHtml(body)}</pre>`));
+    addScratchpadCopyButton(msgEl);
+  } catch (e) {
+    if (currentTabId !== tabId) return;
+    addPersistentSlashMessage(systemHtml(tSystemHtml('sp.memory.error', { msg: e.message })));
+  }
+}
+
+async function rememberUserMemory(note, tabId = currentTabId) {
+  const text = String(note || '').trim();
+  if (!text) {
+    if (currentTabId !== tabId) return;
+    showComposerToast(t('sp.memory.remember_empty'), { duration: 5000 });
+    return;
+  }
+  try {
+    const res = await sendToBackground('add_user_memory', { text });
+    if (currentTabId !== tabId) return;
+    if (!res?.ok) {
+      showComposerToast(t('sp.memory.error', { msg: res?.reason || res?.error || 'unknown error' }), { duration: 5000 });
+      return;
+    }
+    showComposerToast(t('sp.memory.remembered'));
+  } catch (e) {
+    if (currentTabId !== tabId) return;
+    showComposerToast(t('sp.memory.error', { msg: e.message }), { duration: 5000 });
+  }
+}
+
+async function forgetUserMemory(id, tabId = currentTabId) {
+  const memoryId = String(id || '').trim();
+  if (!memoryId) {
+    if (currentTabId !== tabId) return;
+    showComposerToast(t('sp.memory.forget_empty'), { duration: 5000 });
+    return;
+  }
+  try {
+    const res = await sendToBackground('delete_user_memory', { id: memoryId });
+    if (currentTabId !== tabId) return;
+    if (!res?.ok) {
+      showComposerToast(t('sp.memory.error', { msg: res?.reason || res?.error || 'unknown error' }), { duration: 5000 });
+      return;
+    }
+    showComposerToast(t('sp.memory.forgotten'));
+  } catch (e) {
+    if (currentTabId !== tabId) return;
+    showComposerToast(t('sp.memory.error', { msg: e.message }), { duration: 5000 });
+  }
+}
+
 async function showProgress(tabId = currentTabId) {
   try {
     const res = await sendToBackground('get_progress', { tabId });
@@ -3091,6 +3162,23 @@ async function parseSlashCommands(text, tabId = currentTabId) {
   // /show-scratchpad — dump the current tab's agent scratchpad
   if (/^\/show-scratchpad\b\s*/i.test(text)) {
     await showScratchpad(tabId);
+    return '';
+  }
+
+  const mRemember = text.match(/^\/remember\b\s*/i);
+  if (mRemember) {
+    await rememberUserMemory(text.slice(mRemember[0].length), tabId);
+    return '';
+  }
+
+  if (/^\/show-memory\b\s*/i.test(text)) {
+    await showUserMemory(tabId);
+    return '';
+  }
+
+  const mForgetMemory = text.match(/^\/forget-memory\b\s*/i);
+  if (mForgetMemory) {
+    await forgetUserMemory(text.slice(mForgetMemory[0].length), tabId);
     return '';
   }
 

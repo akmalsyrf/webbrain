@@ -301,6 +301,12 @@ const { Agent: AgentCh } = await import(
 const { Agent: AgentFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/agent/agent.js').replace(/\\/g, '/')
 );
+const userMemoryCh = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/agent/user-memory.js').replace(/\\/g, '/')
+);
+const userMemoryFx = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/agent/user-memory.js').replace(/\\/g, '/')
+);
 
 // tools.js — pure ESM. We import both browser builds so prompt/tool routing
 // stays in parity.
@@ -617,6 +623,206 @@ test('agent URL normalization preserves query and hash for nav change detection'
       'https://example.com/inbox?page=2#/sent',
       `${label}: query/hash-only history entries should count as URL changes`
     );
+  }
+});
+
+test('user memory store normalizes, dedupes, archives, and rejects sensitive text', async () => {
+  for (const [label, memory] of [['chrome', userMemoryCh], ['firefox', userMemoryFx]]) {
+    const storage = {
+      data: {},
+      async get(key) {
+        return { [key]: this.data[key] };
+      },
+      async set(values) {
+        Object.assign(this.data, values);
+      },
+    };
+    let now = 1700000000000;
+    const storeApi = memory.createUserMemoryStore(storage, { now: () => now });
+
+    const first = await storeApi.add('  Prefer concise engineering summaries.\n', {
+      kind: 'workflow_preference',
+      scope: 'global',
+    });
+    assert.equal(first.changed, true, `${label}: first memory should save`);
+    assert.equal(first.record.kind, 'workflow_preference', `${label}: kind should normalize`);
+    assert.equal(first.record.text, 'Prefer concise engineering summaries.', `${label}: text should normalize`);
+
+    now += 1000;
+    const duplicate = await storeApi.add('Prefer concise engineering summaries!', {
+      kind: 'preference',
+    });
+    assert.equal(duplicate.deduped, true, `${label}: duplicate text should merge`);
+    assert.equal(duplicate.store.records.length, 1, `${label}: duplicate should not add a row`);
+
+    const secret = await storeApi.add('My API key is sk-test_12345678901234567890');
+    assert.equal(secret.changed, false, `${label}: sensitive text should be rejected`);
+    assert.equal(secret.reason, 'invalid_or_sensitive', `${label}: rejection reason should be explicit`);
+
+    const updated = await storeApi.update(first.record.id, {
+      text: 'Prefer short final answers.',
+      kind: 'preference',
+      confidence: 0.9,
+    });
+    assert.equal(updated.changed, true, `${label}: update should apply`);
+    assert.equal(updated.record.text, 'Prefer short final answers.', `${label}: updated text`);
+    assert.equal(updated.record.confidence, 0.9, `${label}: confidence should clamp/store`);
+
+    const archived = await storeApi.archive(first.record.id);
+    assert.equal(archived.changed, true, `${label}: archive should apply`);
+    assert.ok(archived.record.archivedAt, `${label}: archivedAt should be set`);
+    assert.deepEqual(memory.activeUserMemoryRecords(archived.store), [], `${label}: archived rows should not be active`);
+
+    const oversized = memory.normalizeUserMemoryStore({
+      updatedAt: -1,
+      records: [
+        { id: 'bad secret', text: 'password is hunter2', updatedAt: now },
+        { id: 'one', text: 'Prefer concise answers.', updatedAt: now },
+        { id: 'two', text: 'Prefer concise answers!', updatedAt: now + 1 },
+        ...Array.from({ length: 240 }, (_, index) => ({
+          id: `bulk_${index}`,
+          text: `Stable preference ${index}`,
+          kind: index % 2 ? 'profile_hint' : 'not-real',
+          updatedAt: now + index + 2,
+        })),
+      ],
+    }, { now });
+    assert.equal(oversized.version, 1, `${label}: store version`);
+    assert.equal(oversized.records.length, 200, `${label}: malformed import should cap records`);
+    assert.equal(oversized.records.some((record) => /password/i.test(record.text)), false, `${label}: import should drop sensitive records`);
+    assert.equal(oversized.records.filter((record) => /Prefer concise answers/i.test(record.text)).length, 1, `${label}: import should dedupe normalized text`);
+    assert.equal(oversized.records.every((record) => ['preference', 'profile_hint', 'workflow_preference'].includes(record.kind)), true, `${label}: import should normalize kinds`);
+  }
+});
+
+test('user memory prompt injection respects enablement, sort order, caps, and live refresh', () => {
+  for (const [label, AgentClass, memory] of [
+    ['chrome', AgentCh, userMemoryCh],
+    ['firefox', AgentFx, userMemoryFx],
+  ]) {
+    const agent = new AgentClass({});
+    const tabId = label === 'chrome' ? 61101 : 61102;
+    const messages = agent.getConversation(tabId, 'ask');
+    assert.doesNotMatch(messages[0].content, /\[User memory -/, `${label}: empty memory should not inject a block`);
+
+    agent.setUserMemory({
+      enabled: true,
+      records: [
+        { id: 'old', text: 'Use detailed implementation notes.', kind: 'preference', createdAt: 10, updatedAt: 10 },
+        { id: 'new', text: 'Prefer short final answers.', kind: 'workflow_preference', createdAt: 20, updatedAt: 20, lastUsedAt: 30 },
+      ],
+    });
+    assert.match(messages[0].content, /\[User memory - user-stated preferences/, `${label}: memory header missing`);
+    assert.ok(
+      messages[0].content.indexOf('Prefer short final answers.') < messages[0].content.indexOf('Use detailed implementation notes.'),
+      `${label}: memory should sort by lastUsedAt/updatedAt`,
+    );
+
+    messages.push({ role: 'user', content: 'keep this history row' });
+    const cap = memory.USER_MEMORY_PROMPT_HEADER.length + '\n- (workflow_preference) Prefer short final answers.'.length + 2;
+    agent.setUserMemory({
+      enabled: true,
+      maxPromptChars: cap,
+      records: [
+        { id: 'old', text: 'Use detailed implementation notes.', kind: 'preference', createdAt: 10, updatedAt: 10 },
+        { id: 'new', text: 'Prefer short final answers.', kind: 'workflow_preference', createdAt: 20, updatedAt: 20, lastUsedAt: 30 },
+      ],
+    });
+    assert.match(messages[0].content, /Prefer short final answers\./, `${label}: capped prompt should keep newest fitting row`);
+    assert.doesNotMatch(messages[0].content, /Use detailed implementation notes\./, `${label}: capped prompt should omit overflow row`);
+    assert.equal(messages[1].content, 'keep this history row', `${label}: prompt refresh should preserve non-system history`);
+
+    agent.setUserMemory({ enabled: true, maxPromptChars: 0 });
+    assert.doesNotMatch(messages[0].content, /\[User memory -/, `${label}: zero prompt cap should suppress memory injection`);
+    assert.equal(memory.formatUserMemoryPrompt(agent.userMemoryRecords, 0), '', `${label}: pure formatter should preserve explicit zero cap`);
+
+    agent.setUserMemory({ enabled: false });
+    assert.doesNotMatch(messages[0].content, /\[User memory -/, `${label}: disabled memory should not inject a block`);
+  }
+});
+
+test('user memory extraction applies only high-confidence safe operations', () => {
+  for (const [label, memory] of [['chrome', userMemoryCh], ['firefox', userMemoryFx]]) {
+    const base = memory.normalizeUserMemoryStore({
+      records: [
+        { id: 'm1', text: 'Prefer detailed explanations.', kind: 'preference', confidence: 1, createdAt: 10, updatedAt: 10 },
+      ],
+    }, { now: 100 });
+    const parsed = memory.parseUserMemoryExtractionResult(JSON.stringify({
+      memories: [
+        { op: 'update', id: 'm1', text: 'Prefer concise explanations.', kind: 'workflow_preference', confidence: 0.91 },
+        { op: 'add', text: 'This task is only for today.', kind: 'workflow_preference', confidence: 0.4 },
+        { op: 'add', text: 'My password is hunter2', kind: 'profile_hint', confidence: 0.99 },
+        { op: 'none', text: 'ignored', confidence: 1 },
+      ],
+    }));
+    assert.equal(parsed.length, 3, `${label}: parser should drop none operations`);
+    const applied = memory.applyUserMemoryExtractionOperations(base, parsed, { now: 200, threshold: 0.85 });
+    assert.equal(applied.changed, true, `${label}: high-confidence update should apply`);
+    assert.equal(applied.store.records.length, 1, `${label}: low-confidence and sensitive adds should not apply`);
+    assert.equal(applied.store.records[0].text, 'Prefer concise explanations.', `${label}: update text`);
+    assert.equal(applied.store.records[0].kind, 'workflow_preference', `${label}: update kind`);
+
+    const archived = memory.applyUserMemoryExtractionOperations(applied.store, [
+      { op: 'archive', id: 'm1', text: '', kind: 'preference', confidence: 0.9 },
+    ], { now: 300 });
+    assert.equal(memory.activeUserMemoryRecords(archived.store).length, 0, `${label}: archive op should remove active memory`);
+
+    const extractionMessages = memory.buildUserMemoryExtractionMessages({
+      userText: 'Remember that I prefer terse replies.',
+      assistantText: 'Saved.',
+      memories: base.records,
+      mode: 'ask',
+      succeeded: true,
+    });
+    assert.equal(extractionMessages.length, 2, `${label}: extractor should use a tiny two-message prompt`);
+    assert.match(extractionMessages[0].content, /Do not save secrets/, `${label}: safety instruction missing`);
+    const payload = JSON.parse(extractionMessages[1].content);
+    assert.deepEqual(Object.keys(payload).sort(), ['current_memory', 'final_assistant_message', 'latest_user_message', 'mode', 'succeeded'].sort(), `${label}: extractor input should stay bounded`);
+    assert.equal(payload.latest_user_message, 'Remember that I prefer terse replies.', `${label}: latest user text`);
+  }
+});
+
+test('user memory browser wiring is mirrored and non-blocking', () => {
+  for (const [label, prefix, runtime] of [
+    ['chrome', 'src/chrome', 'chrome'],
+    ['firefox', 'src/firefox', 'browser'],
+  ]) {
+    const background = fs.readFileSync(path.join(ROOT, prefix, 'src/background.js'), 'utf8');
+    const sidepanel = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/sidepanel.js'), 'utf8');
+    const settingsHtml = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/settings.html'), 'utf8');
+    const settingsJs = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/settings.js'), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/locales/en.js'), 'utf8');
+
+    assert.match(background, /USER_MEMORY_STORAGE_KEY/, `${label}: background should import memory constants`);
+    assert.match(background, /const userMemoryReady = syncAgentUserMemoryFromStorage\(\)\.catch\(\(\) => \{\}\);/, `${label}: first message should await memory hydration`);
+    assert.match(background, /Promise\.all\(\[planBeforeActReady, planReviewReady, customSkillsReady, userMemoryReady\]\)/, `${label}: handleMessage should await memory hydration`);
+    for (const action of ['get_user_memory', 'add_user_memory', 'update_user_memory', 'delete_user_memory', 'clear_user_memory', 'export_user_memory', 'import_user_memory', 'enqueue_user_memory_extraction']) {
+      assert.match(background, new RegExp(`case '${action}'`), `${label}: ${action} route missing`);
+    }
+    assert.match(background, new RegExp(`${runtime}\\.storage\\.local\\.get\\(USER_MEMORY_AUTO_CAPTURE_KEY\\)`), `${label}: auto-capture should be settings-gated`);
+    assert.match(background, /queueMicrotask\(\(\) => \{[\s\S]*enqueueUserMemoryExtraction\(payload\)/, `${label}: extraction enqueue should be off-path`);
+    assert.doesNotMatch(background, /await enqueueUserMemoryExtractionAfterTurn/, `${label}: chat path must not await extraction enqueue`);
+    assert.match(background, /agent\._isCostAllowanceError\?\.\(error\)/, `${label}: extraction cost limit should be silent`);
+    assert.match(background, /attempts: Number\(job\.attempts \|\| 0\) \+ 1/, `${label}: extraction jobs should retry once`);
+
+    for (const command of ['/remember', '/show-memory', '/forget-memory']) {
+      assert.match(sidepanel, new RegExp(command.replace('/', '\\/')), `${label}: sidepanel missing ${command}`);
+      assert.match(locale, new RegExp(command.replace('/', '\\/')), `${label}: locale missing ${command}`);
+    }
+    assert.match(sidepanel, /async function rememberUserMemory\(note, tabId = currentTabId\)/, `${label}: remember command function missing`);
+    assert.match(sidepanel, /await rememberUserMemory\(text\.slice\(mRemember\[0\]\.length\), tabId\)/, `${label}: remember command handler missing`);
+    assert.match(sidepanel, /await showUserMemory\(tabId\)/, `${label}: show-memory handler missing`);
+    assert.match(sidepanel, /await forgetUserMemory\(text\.slice\(mForgetMemory\[0\]\.length\), tabId\)/, `${label}: forget-memory handler missing`);
+
+    for (const id of ['toggle-user-memory-enabled', 'toggle-user-memory-auto', 'input-user-memory-max-chars', 'user-memory-list', 'btn-export-user-memory', 'btn-clear-user-memory', 'user-memory-import-text', 'btn-import-user-memory']) {
+      assert.match(settingsHtml, new RegExp(`id="${id}"`), `${label}: settings HTML missing ${id}`);
+    }
+    assert.match(settingsJs, /USER_MEMORY_ENABLED_KEY/, `${label}: settings JS should use memory enabled key`);
+    assert.match(settingsJs, /USER_MEMORY_AUTO_CAPTURE_KEY/, `${label}: settings JS should use auto-capture key`);
+    assert.match(settingsJs, /sendToBackground\('get_user_memory'\)/, `${label}: settings should read memory through background`);
+    assert.match(settingsJs, /sendToBackground\('import_user_memory', \{ json \}\)/, `${label}: settings should import JSON through background`);
+    assert.match(locale, /user memory is stored in plaintext/, `${label}: privacy copy missing`);
   }
 });
 

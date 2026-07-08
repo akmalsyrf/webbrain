@@ -40,6 +40,7 @@ import {
 import { extractFirstJsonObject } from './json-extract.js';
 import { sanitizeText as sanitizePlannerText } from './text-sanitize.js';
 import { buildCustomSkillsPrompt, buildSkillToolDefinitions, buildSkillToolRegistry, normalizeCustomSkills } from './skills.js';
+import { USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS, formatUserMemoryPrompt, normalizeUserMemoryStore } from './user-memory.js';
 
 const DEFAULT_CLOUD_COST_ALLOWANCE_USD = 10;
 const COST_ALLOWANCE_SESSION_KEY = 'costAllowanceSessionUsd';
@@ -140,6 +141,9 @@ export class Agent {
     this.profileEnabled = false;
     this.profileText = '';
     this.customSkills = [];
+    this.userMemoryEnabled = true;
+    this.userMemoryRecords = [];
+    this.userMemoryMaxPromptChars = USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS;
 
     // CapSolver integration. Off by default. When enabled AND an API key
     // is set, the system prompt grows a "[CAPTCHA SOLVER]" note that
@@ -4854,6 +4858,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         this.profileText.trim();
     }
 
+    if (this.userMemoryEnabled) {
+      const memoryPrompt = formatUserMemoryPrompt(this.userMemoryRecords, this.userMemoryMaxPromptChars);
+      if (memoryPrompt) prompt += `\n\n${memoryPrompt}`;
+    }
+
     // CAPTCHA solver. Only injected when the user has explicitly enabled
     // CapSolver — otherwise the default "stop and ask the user" rule in
     // SYSTEM_PROMPT_ACT stands. The note unlocks the solve_captcha tool
@@ -4867,6 +4876,20 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   setCustomSkills(skills) {
     this.customSkills = normalizeCustomSkills(skills);
+    this._refreshSystemPrompts();
+  }
+
+  setUserMemory(options = {}) {
+    if (options.enabled != null) this.userMemoryEnabled = options.enabled !== false;
+    if (Array.isArray(options.records)) {
+      this.userMemoryRecords = normalizeUserMemoryStore({ records: options.records }).records;
+    }
+    if (options.maxPromptChars != null) {
+      const n = Number(options.maxPromptChars);
+      this.userMemoryMaxPromptChars = Number.isFinite(n) && n >= 0
+        ? Math.min(10000, Math.floor(n))
+        : USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS;
+    }
     this._refreshSystemPrompts();
   }
 
