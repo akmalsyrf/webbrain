@@ -6341,6 +6341,50 @@ test('sidepanel queues target-tab updates during async tab switches', () => {
   }
 });
 
+test('sidepanel hydrates restored history ids before fallback records', () => {
+  for (const [label, panelRel] of [
+    ['chrome', 'src/chrome/src/ui/sidepanel.js'],
+    ['firefox', 'src/firefox/src/ui/sidepanel.js'],
+  ]) {
+    const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
+    const htmlHelperMatch = panel.match(/function chatHistoryHtmlHasUserMessage\(html\) \{([\s\S]*?)\n\}/);
+    assert.ok(htmlHelperMatch, `${label}: restored history user-message helper missing`);
+    const htmlHelper = htmlHelperMatch[1];
+    assert.ok(htmlHelper.includes("document.createElement('div')"), `${label}: restored history helper should parse restored HTML off-DOM`);
+    assert.ok(htmlHelper.includes("wrapper.innerHTML = String(html || '');"), `${label}: restored history helper should inspect the restored HTML`);
+    assert.ok(htmlHelper.includes("classList?.contains('message')"), `${label}: restored history helper should look for message elements`);
+    assert.ok(htmlHelper.includes("classList.contains('user')"), `${label}: restored history hydration should only run for chats with user messages`);
+    assert.match(panel, /async function hydrateChatHistoryIdentity\(tabId, mode = agentMode, \{ allowFallback = false, refreshTabInfo = false \} = \{\}\) \{[\s\S]*?sendToBackground\('ensure_conversation_id'[\s\S]*?chatHistoryConversationIdsByTab\.set\(numericTabId, identity\.conversationId\);[\s\S]*?chatHistoryRecordIdsByTab\.set\(numericTabId, identity\.conversationId\);[\s\S]*?else if \(allowFallback && !chatHistoryRecordIdsByTab\.has\(numericTabId\)\) \{[\s\S]*?fallbackHistoryRecordId\(numericTabId\);/, `${label}: history identity helper should hydrate conversation ids before allowing fallback records`);
+    assert.match(panel, /async function prepareChatHistoryForTurn\(tabId, mode\) \{\s*await hydrateChatHistoryIdentity\(tabId, mode, \{ allowFallback: true, refreshTabInfo: true \}\);\s*\}/, `${label}: send and continue preflight should use the shared history identity helper`);
+
+    const switchMatch = panel.match(/async function switchToTab\(newTabId\) \{([\s\S]*?)\n\}/);
+    assert.ok(switchMatch, `${label}: switchToTab body missing`);
+    const switchBody = switchMatch[1];
+    const loadIdx = switchBody.indexOf('const html = await loadTabChat(newTabId);');
+    const restoredHasUserIdx = switchBody.indexOf('if (html && chatHistoryHtmlHasUserMessage(html)) {');
+    const hydrateRestoredIdx = switchBody.indexOf('await hydrateChatHistoryIdentity(newTabId, agentMode);');
+    const postHydrateGuardIdx = switchBody.indexOf('if (currentTabId !== newTabId) return;', hydrateRestoredIdx);
+    const restoreDomIdx = switchBody.indexOf('messagesEl.innerHTML = html;');
+    assert.notEqual(loadIdx, -1, `${label}: switchToTab should load persisted tab chat`);
+    assert.notEqual(restoredHasUserIdx, -1, `${label}: switchToTab should detect restored user chats before DOM insertion`);
+    assert.notEqual(hydrateRestoredIdx, -1, `${label}: switchToTab should hydrate restored chat history ids`);
+    assert.notEqual(postHydrateGuardIdx, -1, `${label}: switchToTab should drop stale restores after async history hydration`);
+    assert.notEqual(restoreDomIdx, -1, `${label}: switchToTab should restore chat HTML`);
+    assert.equal(loadIdx < restoredHasUserIdx && restoredHasUserIdx < hydrateRestoredIdx && hydrateRestoredIdx < postHydrateGuardIdx && postHydrateGuardIdx < restoreDomIdx, true, `${label}: restored chat ids must hydrate before the MutationObserver sees restored HTML`);
+
+    const persistMatch = panel.match(/async function persistChatHistorySnapshot\(tabId, \{ refreshTabInfo = false \} = \{\}\) \{([\s\S]*?)\n\}/);
+    assert.ok(persistMatch, `${label}: persistChatHistorySnapshot missing`);
+    const persistBody = persistMatch[1];
+    const hydrateIdx = persistBody.indexOf('await hydrateChatHistoryIdentity(numericTabId, agentMode, { refreshTabInfo });');
+    const recordIdx = persistBody.indexOf('const recordId = chatHistoryRecordIdsByTab.get(numericTabId) || fallbackHistoryRecordId(numericTabId);');
+    const saveIdx = persistBody.indexOf('await saveChatHistoryRecord({');
+    assert.notEqual(hydrateIdx, -1, `${label}: history snapshots should try to hydrate conversation identity`);
+    assert.notEqual(recordIdx, -1, `${label}: history snapshots should still have a local fallback`);
+    assert.notEqual(saveIdx, -1, `${label}: history snapshots should save a record`);
+    assert.equal(hydrateIdx < recordIdx && recordIdx < saveIdx, true, `${label}: snapshots must hydrate ids before minting a fallback record`);
+  }
+});
+
 test('chrome sidepanel persists tab chat to the tab captured before debounce', () => {
   const panel = fs.readFileSync(path.join(ROOT, 'src/chrome/src/ui/sidepanel.js'), 'utf8');
   const start = panel.indexOf('function schedulePersist() {');

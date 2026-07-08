@@ -864,6 +864,14 @@ function extractChatHistoryMessages(root = messagesEl) {
   }).filter((message) => message.text);
 }
 
+function chatHistoryHtmlHasUserMessage(html) {
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = String(html || '');
+  return Array.from(wrapper.children).some((el) => (
+    el.classList?.contains('message') && el.classList.contains('user')
+  ));
+}
+
 function fallbackHistoryRecordId(tabId) {
   const numericTabId = Number(tabId);
   if (!chatHistoryRecordIdsByTab.has(numericTabId)) {
@@ -886,23 +894,36 @@ async function getTabInfoForHistory(tabId) {
   }
 }
 
-async function prepareChatHistoryForTurn(tabId, mode) {
+async function hydrateChatHistoryIdentity(tabId, mode = agentMode, { allowFallback = false, refreshTabInfo = false } = {}) {
   const numericTabId = Number(tabId);
-  if (!Number.isFinite(numericTabId)) return;
+  if (!Number.isFinite(numericTabId)) return null;
   if (!chatHistoryCreatedAtByTab.has(numericTabId)) {
     chatHistoryCreatedAtByTab.set(numericTabId, Date.now());
   }
+  const existingConversationId = chatHistoryConversationIdsByTab.get(numericTabId);
+  if (existingConversationId && !chatHistoryRecordIdsByTab.has(numericTabId)) {
+    chatHistoryRecordIdsByTab.set(numericTabId, existingConversationId);
+  }
+  const needsIdentity = !chatHistoryConversationIdsByTab.has(numericTabId);
+  const needsTabInfo = refreshTabInfo || !chatHistoryTabInfoByTab.has(numericTabId);
   const [identity, tabInfo] = await Promise.all([
-    sendToBackground('ensure_conversation_id', { tabId: numericTabId, mode }).catch(() => null),
-    getTabInfoForHistory(numericTabId),
+    needsIdentity
+      ? sendToBackground('ensure_conversation_id', { tabId: numericTabId, mode }).catch(() => null)
+      : Promise.resolve(null),
+    needsTabInfo ? getTabInfoForHistory(numericTabId) : Promise.resolve(null),
   ]);
   if (identity?.conversationId) {
     chatHistoryConversationIdsByTab.set(numericTabId, identity.conversationId);
     chatHistoryRecordIdsByTab.set(numericTabId, identity.conversationId);
-  } else {
+  } else if (allowFallback && !chatHistoryRecordIdsByTab.has(numericTabId)) {
     fallbackHistoryRecordId(numericTabId);
   }
-  chatHistoryTabInfoByTab.set(numericTabId, tabInfo);
+  if (tabInfo) chatHistoryTabInfoByTab.set(numericTabId, tabInfo);
+  return chatHistoryConversationIdsByTab.get(numericTabId) || null;
+}
+
+async function prepareChatHistoryForTurn(tabId, mode) {
+  await hydrateChatHistoryIdentity(tabId, mode, { allowFallback: true, refreshTabInfo: true });
 }
 
 async function persistChatHistorySnapshot(tabId, { refreshTabInfo = false } = {}) {
@@ -913,9 +934,7 @@ async function persistChatHistorySnapshot(tabId, { refreshTabInfo = false } = {}
   if (!chatHistoryCreatedAtByTab.has(numericTabId)) {
     chatHistoryCreatedAtByTab.set(numericTabId, Date.now());
   }
-  if (refreshTabInfo || !chatHistoryTabInfoByTab.has(numericTabId)) {
-    chatHistoryTabInfoByTab.set(numericTabId, await getTabInfoForHistory(numericTabId));
-  }
+  await hydrateChatHistoryIdentity(numericTabId, agentMode, { refreshTabInfo });
   const tabInfo = chatHistoryTabInfoByTab.get(numericTabId) || {};
   const recordId = chatHistoryRecordIdsByTab.get(numericTabId) || fallbackHistoryRecordId(numericTabId);
   const conversationId = chatHistoryConversationIdsByTab.get(numericTabId) || null;
@@ -2175,6 +2194,10 @@ async function switchToTab(newTabId) {
     // Restore new tab's chat from memory or storage.
     const html = await loadTabChat(newTabId);
     if (currentTabId !== newTabId) return;
+    if (html && chatHistoryHtmlHasUserMessage(html)) {
+      await hydrateChatHistoryIdentity(newTabId, agentMode);
+      if (currentTabId !== newTabId) return;
+    }
     renderedTabId = newTabId;
     if (html) {
       messagesEl.innerHTML = html;
