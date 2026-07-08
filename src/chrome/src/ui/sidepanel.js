@@ -2191,12 +2191,18 @@ async function switchToTab(newTabId) {
     // Save the tab currently represented by the DOM. During an async restore,
     // currentTabId may already point at the target while the DOM is still older.
     if (renderedTabId != null) {
+      const outgoingTabId = renderedTabId;
       await flushRenderedTabChat();
       if (isProcessing) {
         pendingTabSwitch = newTabId;
         return;
       }
-      captureInputDraftForTab(renderedTabId);
+      await flushChatHistorySnapshot(outgoingTabId);
+      if (isProcessing) {
+        pendingTabSwitch = newTabId;
+        return;
+      }
+      captureInputDraftForTab(outgoingTabId);
     }
 
     currentTabId = newTabId;

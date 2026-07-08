@@ -24,6 +24,7 @@ if (initialUrlFilter) {
 let allRecords = [];
 let allRuns = [];
 let selectedRecordId = null;
+let historyRecordRenderRequestId = 0;
 
 function traceRunsForRecord(record) {
   if (!record?.conversationId) return [];
@@ -114,7 +115,13 @@ function renderEmpty() {
 }
 
 async function renderRecord(recordId) {
+  const requestId = ++historyRecordRenderRequestId;
+  selectedRecordId = recordId;
+  renderList();
+  refreshButtons();
+
   const record = await getChatHistoryRecord(recordId);
+  if (requestId !== historyRecordRenderRequestId || selectedRecordId !== recordId) return;
   if (!record) {
     selectedRecordId = null;
     renderEmpty();

@@ -5826,6 +5826,7 @@ test('history page refresh rerenders the selected conversation pane', () => {
     ['firefox', 'src/firefox/src/ui/history.js'],
   ]) {
     const source = fs.readFileSync(path.join(ROOT, historyRel), 'utf8');
+    assert.match(source, /let historyRecordRenderRequestId = 0;/, `${label}: history page should track async record render requests`);
     const match = source.match(/async function refresh\(\) \{([\s\S]*?)\n\}/);
     assert.ok(match, `${label}: history refresh function missing`);
     const body = match[1];
@@ -5845,6 +5846,21 @@ test('history page refresh rerenders the selected conversation pane', () => {
     assert.notEqual(renderSelectedIdx, -1, `${label}: refresh should rerender the selected record pane`);
     assert.equal(recordsIdx < selectedExistsIdx && runsIdx < selectedExistsIdx, true, `${label}: selected-record refresh should use the latest data`);
     assert.equal(missingIdx < renderListIdx && renderListIdx < refreshButtonsIdx && refreshButtonsIdx < renderSelectedIdx, true, `${label}: selected pane should refresh after the sidebar and buttons update`);
+
+    const recordMatch = source.match(/async function renderRecord\(recordId\) \{([\s\S]*?)\n\}/);
+    assert.ok(recordMatch, `${label}: renderRecord function missing`);
+    const recordBody = recordMatch[1];
+    const requestIdx = recordBody.indexOf('const requestId = ++historyRecordRenderRequestId;');
+    const selectIdx = recordBody.indexOf('selectedRecordId = recordId;');
+    const loadIdx = recordBody.indexOf('const record = await getChatHistoryRecord(recordId);');
+    const staleGuardIdx = recordBody.indexOf('if (requestId !== historyRecordRenderRequestId || selectedRecordId !== recordId) return;');
+    const applyIdx = recordBody.indexOf('selectedRecordId = record.id;');
+    assert.notEqual(requestIdx, -1, `${label}: renderRecord should stamp each async request`);
+    assert.notEqual(selectIdx, -1, `${label}: renderRecord should mark the latest requested selection before loading`);
+    assert.notEqual(loadIdx, -1, `${label}: renderRecord should load the selected record asynchronously`);
+    assert.notEqual(staleGuardIdx, -1, `${label}: renderRecord should ignore stale async record loads`);
+    assert.notEqual(applyIdx, -1, `${label}: renderRecord should apply only the loaded current record`);
+    assert.equal(requestIdx < loadIdx && selectIdx < loadIdx && loadIdx < staleGuardIdx && staleGuardIdx < applyIdx, true, `${label}: stale record loads must be guarded before updating the details pane`);
   }
 });
 
@@ -6262,6 +6278,7 @@ test('chrome sidepanel drops stale async tab-chat restores', () => {
   const restoreIdx = body.indexOf('messagesEl.innerHTML =');
   const consumeIdx = body.indexOf('consumePendingContextMenuPrompt()');
   const flushIdx = body.indexOf('await flushRenderedTabChat();');
+  const historyFlushIdx = body.indexOf('await flushChatHistorySnapshot(outgoingTabId);');
   const postFlushProcessingIdx = body.indexOf('if (isProcessing) {', flushIdx);
   const postFlushPendingIdx = body.indexOf('pendingTabSwitch = newTabId;', postFlushProcessingIdx);
   const postFlushReturnIdx = body.indexOf('return;', postFlushPendingIdx);
@@ -6272,12 +6289,14 @@ test('chrome sidepanel drops stale async tab-chat restores', () => {
   assert.notEqual(restoreIdx, -1, 'chrome: switchToTab restore point missing');
   assert.notEqual(consumeIdx, -1, 'chrome: switchToTab context-menu consume point missing');
   assert.notEqual(flushIdx, -1, 'chrome: switchToTab should flush rendered chat before changing tabs');
+  assert.notEqual(historyFlushIdx, -1, 'chrome: switchToTab should flush rendered history before changing tabs');
   assert.notEqual(postFlushProcessingIdx, -1, 'chrome: switchToTab should recheck processing after the async flush yields');
   assert.notEqual(postFlushPendingIdx, -1, 'chrome: switchToTab should defer the requested tab switch if a run starts during the flush');
   assert.notEqual(postFlushReturnIdx, -1, 'chrome: switchToTab should stop before changing currentTabId when a run starts during the flush');
   assert.equal(flushIdx < postFlushProcessingIdx && postFlushProcessingIdx < postFlushPendingIdx && postFlushPendingIdx < postFlushReturnIdx && postFlushReturnIdx < setIdx, true, 'chrome: post-flush processing recheck must happen before currentTabId changes');
+  assert.equal(flushIdx < historyFlushIdx && historyFlushIdx < setIdx, true, 'chrome: pending history snapshots should flush before currentTabId changes');
   assert.equal(setIdx < loadIdx && loadIdx < guardIdx && guardIdx < renderedSetIdx && renderedSetIdx < restoreIdx && guardIdx < consumeIdx, true, 'chrome: stale guard must run after async chat load and before rendered-tab/DOM/context-menu work');
-  assert.match(body, /if \(renderedTabId != null\) \{[\s\S]*?await flushRenderedTabChat\(\);[\s\S]*?captureInputDraftForTab\(renderedTabId\);[\s\S]*?\}/, 'chrome: overlapping tab switches should flush chat and save drafts for the tab represented by the DOM');
+  assert.match(body, /if \(renderedTabId != null\) \{[\s\S]*?const outgoingTabId = renderedTabId;[\s\S]*?await flushRenderedTabChat\(\);[\s\S]*?await flushChatHistorySnapshot\(outgoingTabId\);[\s\S]*?captureInputDraftForTab\(outgoingTabId\);[\s\S]*?\}/, 'chrome: overlapping tab switches should flush chat/history and save drafts for the tab represented by the DOM');
   assert.doesNotMatch(body, /persistTabChat\(currentTabId,\s*messagesEl\.innerHTML\)|captureInputDraftForTab\(currentTabId\)/, 'chrome: overlapping tab switches must not save DOM or drafts under a pending target tab');
 });
 
@@ -6297,17 +6316,19 @@ test('sidepanel queues target-tab updates during async tab switches', () => {
     const body = switchMatch[1];
     const markIdx = body.indexOf('tabSwitchTransitionId = newTabId;');
     const flushIdx = body.indexOf('await flushRenderedTabChat();');
+    const historyFlushIdx = body.indexOf('await flushChatHistorySnapshot(outgoingTabId);');
     const loadIdx = body.indexOf('const html = await loadTabChat(newTabId);');
     const clearTransitionIdx = body.indexOf('if (tabSwitchTransitionId === newTabId) tabSwitchTransitionId = null;');
     const replayIdx = body.indexOf('drainQueuedAgentUpdatesForTab(newTabId);');
     const consumeIdx = body.indexOf('consumePendingContextMenuPrompt()');
     assert.notEqual(markIdx, -1, `${label}: switchToTab should mark the target tab before any async flush can yield`);
     assert.notEqual(flushIdx, -1, `${label}: switchToTab flush point missing`);
+    assert.notEqual(historyFlushIdx, -1, `${label}: switchToTab history flush point missing`);
     assert.notEqual(loadIdx, -1, `${label}: switchToTab restore load point missing`);
     assert.notEqual(clearTransitionIdx, -1, `${label}: switchToTab should clear the transition marker after restore settles`);
     assert.notEqual(replayIdx, -1, `${label}: switchToTab should replay queued target-tab messages after restore`);
     assert.notEqual(consumeIdx, -1, `${label}: switchToTab context-menu consume point missing`);
-    assert.equal(markIdx < flushIdx && flushIdx < loadIdx && loadIdx < clearTransitionIdx && clearTransitionIdx < replayIdx && replayIdx < consumeIdx, true, `${label}: queued target-tab updates must wait until the async restore has settled`);
+    assert.equal(markIdx < flushIdx && flushIdx < historyFlushIdx && historyFlushIdx < loadIdx && loadIdx < clearTransitionIdx && clearTransitionIdx < replayIdx && replayIdx < consumeIdx, true, `${label}: queued target-tab updates must wait until the async restore has settled`);
 
     const listenerStart = panel.indexOf("if (msg.target !== 'sidepanel' || msg.action !== 'agent_update') return;");
     assert.notEqual(listenerStart, -1, `${label}: runtime message listener missing`);
@@ -7228,7 +7249,7 @@ test('sidepanel preserves stale residual slash-command prompts without hidden ru
     const switchStart = panel.indexOf('function switchToTab(newTabId)');
     assert.notEqual(switchStart, -1, `${label}: switchToTab missing`);
     const switchBody = panel.slice(switchStart, panel.indexOf('refreshScheduledJobs({', switchStart));
-    assert.match(switchBody, /captureInputDraftForTab\(renderedTabId\);[\s\S]*?restoreInputDraftForTab\(newTabId\);/, `${label}: tab switches should capture and restore per-tab composer drafts`);
+    assert.match(switchBody, /const outgoingTabId = renderedTabId;[\s\S]*?captureInputDraftForTab\(outgoingTabId\);[\s\S]*?restoreInputDraftForTab\(newTabId\);/, `${label}: tab switches should capture and restore per-tab composer drafts`);
 
     const sendMatch = panel.match(/async function sendMessage\(extraChatParams(?: = \{\})?\) \{[\s\S]*?\n  return accepted;\n\}/);
     assert.ok(sendMatch, `${label}: sendMessage missing`);
