@@ -5758,7 +5758,7 @@ test('Hebrew is registered as a complete RTL locale in both builds', async () =>
   }
 });
 
-test('logo metadata and generated icon assets share the canonical artwork', () => {
+test('logo metadata and generated icon assets use the correct canonical artwork variant', () => {
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel));
   const dimensions = (rel) => {
     const png = read(rel);
@@ -5767,6 +5767,8 @@ test('logo metadata and generated icon assets share the canonical artwork', () =
   };
 
   assert.ok(read('assets/logo-github.png').equals(read('web/logo-github.png')), 'web logo should copy the canonical logo byte-for-byte');
+  assert.deepEqual(dimensions('assets/logo-mark.png'), [1254, 1254]);
+  assert.equal(read('assets/logo-mark.png')[25], 6, 'UI logo mark should be an RGBA PNG');
   for (const [size, paths] of [
     [16, ['src/chrome/icons/icon16.png', 'src/firefox/icons/icon16.png']],
     [48, ['src/chrome/icons/icon48.png', 'src/firefox/icons/icon48.png']],
@@ -5776,6 +5778,7 @@ test('logo metadata and generated icon assets share the canonical artwork', () =
     const expected = read(paths[0]);
     for (const rel of paths) {
       assert.deepEqual(dimensions(rel), [size, size], `${rel}: wrong logo dimensions`);
+      assert.equal(read(rel)[25], 6, `${rel}: small UI logo should retain alpha transparency`);
       assert.ok(expected.equals(read(rel)), `${rel}: same-size logo derivatives should be identical`);
     }
   }
@@ -5783,10 +5786,27 @@ test('logo metadata and generated icon assets share the canonical artwork', () =
   assert.deepEqual(dimensions('web/og-image.png'), [1200, 630]);
   assert.deepEqual(dimensions('assets/store-promo-440x280.png'), [440, 280]);
   assert.deepEqual(dimensions('assets/store-promo-1400x560.png'), [1400, 560]);
+  for (const [rel, size] of [
+    ['assets/banners/webbrain-banner-en.png', [2560, 800]],
+    ['assets/banners/webbrain-banner-tr.png', [2560, 800]],
+    ['assets/banners/webbrain-banner-vertical-en.png', [1280, 2560]],
+    ['assets/webbrain-social-card-300x188.png', [300, 188]],
+    ['assets/webbrain-social-card.png', [1280, 640]],
+    ['web/assets/webbrain-ollama-heart.png', [1200, 630]],
+  ]) {
+    assert.deepEqual(dimensions(rel), size, `${rel}: branded composite dimensions changed`);
+  }
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.match(packageJson.scripts['sync:logo'], /sync-logo-assets\.py/);
   assert.match(packageJson.scripts['sync:logo'], /gen-store-promos\.py/);
+  assert.match(packageJson.scripts['sync:logo'], /webstore-explainer-2026\/render\.mjs/);
+
+  const logoSync = fs.readFileSync(path.join(ROOT, 'scripts/sync-logo-assets.py'), 'utf8');
+  assert.match(logoSync, /MARK = ROOT \/ "assets" \/ "logo-mark\.png"/);
+  assert.match(logoSync, /save_png\(icon_logo\(mark, size\), icon_dir/);
+  assert.match(logoSync, /save_jpeg\(full_logo\(source, 128\), ASSETS \/ "logo-github-128\.jpg"\)/);
+  assert.match(logoSync, /replace_composite_logo\(path, source, box, radius\)/);
 
   const template = fs.readFileSync(path.join(ROOT, 'web/build/template.html'), 'utf8');
   const blogBuilder = fs.readFileSync(path.join(ROOT, 'scripts/build-blog.mjs'), 'utf8');
@@ -5800,11 +5820,24 @@ test('logo metadata and generated icon assets share the canonical artwork', () =
     ['firefox', 'src/firefox/manifest.json'],
   ]) {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
-    assert.deepEqual(manifest.icons, {
+    const expectedIcons = {
       16: 'icons/icon16.png',
       48: 'icons/icon48.png',
       128: 'icons/icon128.png',
-    }, `${label}: manifest icons should use synchronized logo assets`);
+    };
+    assert.deepEqual(manifest.icons, expectedIcons, `${label}: manifest icons should use synchronized logo assets`);
+    assert.deepEqual(
+      label === 'chrome' ? manifest.action.default_icon : manifest.browser_action.default_icon,
+      expectedIcons,
+      `${label}: toolbar action should use synchronized transparent logo assets`,
+    );
+    if (label === 'firefox') {
+      assert.deepEqual(
+        manifest.sidebar_action.default_icon,
+        { 16: 'icons/icon16.png', 48: 'icons/icon48.png' },
+        'firefox: sidebar action should use synchronized transparent logo assets',
+      );
+    }
   }
 });
 
