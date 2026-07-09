@@ -1246,6 +1246,9 @@ function renderProviders() {
         { key: 'model', labelKey: 'st.provider.field.deployment_name', type: 'text', placeholder: 'my-deployment' },
         { key: 'apiVersion', labelKey: 'st.provider.field.api_version', type: 'text', placeholder: '2024-10-21' },
         { key: 'supportsVision', labelKey: 'st.provider.field.supports_vision', type: 'checkbox' },
+        ...COST_ESTIMATE_FIELDS,
+      ],
+    },
     aws_bedrock: {
       fields: [
         { key: 'region', labelKey: 'st.provider.field.aws_region', type: 'text', placeholder: 'us-east-1' },

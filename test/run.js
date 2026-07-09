@@ -10832,6 +10832,9 @@ test('Azure OpenAI streams request usage metadata', () => {
     const noUsageBody = { stream: true };
     disabled._addStreamUsageOptions(noUsageBody);
     assert.equal(noUsageBody.stream_options, undefined);
+  }
+});
+
 test('AWS Bedrock provider normalizes usage and indexes parallel tool calls', () => {
   for (const Provider of [AwsBedrockProviderCh, AwsBedrockProviderFx]) {
     const provider = new Provider({

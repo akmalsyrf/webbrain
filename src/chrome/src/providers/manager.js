@@ -220,6 +220,8 @@ export class ProviderManager {
         model: '',
         apiVersion: '2024-10-21',
         apiKey: '',
+        enabled: false,
+      },
       aws_bedrock: {
         type: 'aws_bedrock',
         category: 'cloud',
