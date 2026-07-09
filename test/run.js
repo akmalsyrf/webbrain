@@ -267,6 +267,12 @@ const { LlamaCppProvider: LlamaCppProviderCh } = await import(
 const { LlamaCppProvider: LlamaCppProviderFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/llamacpp.js').replace(/\\/g, '/')
 );
+const { AzureOpenAIProvider: AzureOpenAIProviderCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/providers/azure-openai.js').replace(/\\/g, '/')
+);
+const { AzureOpenAIProvider: AzureOpenAIProviderFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/providers/azure-openai.js').replace(/\\/g, '/')
+);
 const { AwsBedrockProvider: AwsBedrockProviderCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/aws-bedrock.js').replace(/\\/g, '/')
 );
@@ -10776,6 +10782,56 @@ test('OpenAI-compatible streams request usage metadata only for supporting provi
   }
 });
 
+test('Azure OpenAI provider builds deployment URL, headers, and model getter', () => {
+  for (const Provider of [AzureOpenAIProviderCh, AzureOpenAIProviderFx]) {
+    const provider = new Provider({
+      baseUrl: 'https://my-resource.openai.azure.com/',
+      model: 'my-deploy',
+      apiKey: 'test-key',
+      apiVersion: '2024-10-21',
+    });
+    assert.equal(provider.model, 'my-deploy');
+    assert.equal(provider._headers()['api-key'], 'test-key');
+    assert.equal(
+      provider._chatUrl(),
+      'https://my-resource.openai.azure.com/openai/deployments/my-deploy/chat/completions?api-version=2024-10-21',
+    );
+  }
+});
+
+test('Azure OpenAI provider validates required config', () => {
+  for (const Provider of [AzureOpenAIProviderCh, AzureOpenAIProviderFx]) {
+    const missingEndpoint = new Provider({ model: 'd', apiVersion: '2024-10-21' });
+    assert.throws(() => missingEndpoint._assertConfigured(), /endpoint/i);
+
+    const missingDeployment = new Provider({
+      baseUrl: 'https://x.openai.azure.com',
+      apiVersion: '2024-10-21',
+    });
+    assert.throws(() => missingDeployment._assertConfigured(), /deployment/i);
+  }
+});
+
+test('Azure OpenAI streams request usage metadata', () => {
+  for (const Provider of [AzureOpenAIProviderCh, AzureOpenAIProviderFx]) {
+    const provider = new Provider({
+      baseUrl: 'https://x.openai.azure.com',
+      model: 'd',
+      apiVersion: '2024-10-21',
+    });
+    const body = { stream: true, stream_options: { custom: 'keep' } };
+    provider._addStreamUsageOptions(body);
+    assert.deepEqual(body.stream_options, { custom: 'keep', include_usage: true });
+
+    const disabled = new Provider({
+      baseUrl: 'https://x.openai.azure.com',
+      model: 'd',
+      apiVersion: '2024-10-21',
+      supportsStreamUsageOptions: false,
+    });
+    const noUsageBody = { stream: true };
+    disabled._addStreamUsageOptions(noUsageBody);
+    assert.equal(noUsageBody.stream_options, undefined);
 test('AWS Bedrock provider normalizes usage and indexes parallel tool calls', () => {
   for (const Provider of [AwsBedrockProviderCh, AwsBedrockProviderFx]) {
     const provider = new Provider({
