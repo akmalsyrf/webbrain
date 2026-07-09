@@ -4149,6 +4149,16 @@ function renderClarifyCard(data) {
   card.className = 'clarify-card';
   card.dataset.clarifyId = clarifyId;
   card.dataset.tabId = String(tabId);
+  card.dataset.memorySource = scheduledJobId
+    ? 'scheduled_clarification'
+    : data.submitConfirmation
+      ? 'form_confirmation'
+      : data.permission
+        ? 'permission'
+        : 'clarification_response';
+  if (card.dataset.memorySource === 'clarification_response') {
+    card.dataset.memoryQuestion = String(data.question || '').slice(0, 600);
+  }
   if (scheduledJobId) {
     card.dataset.scheduledJobId = scheduledJobId;
   }
@@ -4473,7 +4483,10 @@ function submitClarify(card, tabId, clarifyId, answer, source) {
     hideRecommendedActions();
     showActivity(t('sp.activity.thinking'));
   }
-  sendToBackground('clarify_response', { tabId, clarifyId, answer, source })
+  const clarifyPayload = { tabId, clarifyId, answer, source };
+  if (card.dataset.memorySource) clarifyPayload.memorySource = card.dataset.memorySource;
+  if (card.dataset.memoryQuestion) clarifyPayload.question = card.dataset.memoryQuestion;
+  sendToBackground('clarify_response', clarifyPayload)
     .catch(() => {
       if (isScheduledClarify) {
         isProcessing = false;

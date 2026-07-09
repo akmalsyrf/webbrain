@@ -554,6 +554,7 @@
     <button class="tab-btn" type="button" role="tab" data-tab="display" data-i18n="st.tab.display"></button>
     <button class="tab-btn active" type="button" role="tab" data-tab="providers" data-i18n="st.tab.providers"></button>
     <button class="tab-btn" type="button" role="tab" data-tab="multimodal" data-i18n="st.tab.multimodal"></button>
+    <button class="tab-btn" type="button" role="tab" data-tab="memory" data-i18n="st.tab.memory"></button>
     <button class="tab-btn" type="button" role="tab" data-tab="skills" data-i18n="st.tab.skills"></button>
     <button class="tab-btn" type="button" role="tab" data-tab="permissions" data-i18n="st.tab.permissions"></button>
   </nav>
@@ -810,91 +811,6 @@
             </label>
           </div>
 
-          <div class="provider-card" id="profile-card">
-            <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.profile.desc_html"></div>
-
-            <div class="setting-row" style="margin-bottom:12px;">
-              <div class="setting-info">
-                <div class="setting-label" data-i18n="st.profile.enabled.label"></div>
-                <div class="setting-desc" data-i18n="st.profile.enabled.desc"></div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="toggle-profile-enabled">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="field">
-              <label data-i18n="st.profile.text.label"></label>
-              <textarea id="profile-text"
-                        rows="8"
-                        data-i18n-placeholder="st.profile.text.placeholder"
-                        style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;resize:vertical;"></textarea>
-            </div>
-            <div class="btn-row">
-              <button class="btn-primary" id="btn-save-profile" data-i18n="st.profile.save"></button>
-              <button class="btn-secondary" id="btn-clear-profile" data-i18n="st.profile.clear"></button>
-            </div>
-            <div class="test-result" id="test-profile"></div>
-
-            <div class="info-box" style="margin-top:16px;" data-i18n-html="st.profile.security_html"></div>
-          </div>
-
-          <div class="provider-card" id="user-memory-card">
-            <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.memory.desc_html"></div>
-
-            <div class="setting-row" style="margin-bottom:12px;">
-              <div class="setting-info">
-                <div class="setting-label" data-i18n="st.memory.enabled.label"></div>
-                <div class="setting-desc" data-i18n="st.memory.enabled.desc"></div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="toggle-user-memory-enabled">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row" style="margin-bottom:12px;">
-              <div class="setting-info">
-                <div class="setting-label" data-i18n="st.memory.auto.label"></div>
-                <div class="setting-desc" data-i18n="st.memory.auto.desc"></div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="toggle-user-memory-auto">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="field">
-              <label data-i18n="st.memory.max_chars.label"></label>
-              <input type="number" id="input-user-memory-max-chars" min="0" max="10000" step="100">
-            </div>
-
-            <div class="field">
-              <label data-i18n="st.memory.list.label"></label>
-              <div id="user-memory-list" style="display:flex;flex-direction:column;gap:10px;"></div>
-            </div>
-
-            <div class="btn-row">
-              <button class="btn-secondary" id="btn-refresh-user-memory" data-i18n="st.memory.refresh"></button>
-              <button class="btn-secondary" id="btn-export-user-memory" data-i18n="st.memory.export"></button>
-              <button class="btn-secondary" id="btn-clear-user-memory" data-i18n="st.memory.clear"></button>
-            </div>
-
-            <div class="field">
-              <label data-i18n="st.memory.import.label"></label>
-              <textarea id="user-memory-import-text"
-                        rows="4"
-                        data-i18n-placeholder="st.memory.import.placeholder"
-                        style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px 12px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5;outline:none;resize:vertical;"></textarea>
-            </div>
-            <div class="btn-row">
-              <button class="btn-primary" id="btn-import-user-memory" data-i18n="st.memory.import.button"></button>
-            </div>
-            <div class="test-result" id="test-user-memory"></div>
-            <div class="info-box" style="margin-top:16px;" data-i18n-html="st.memory.security_html"></div>
-          </div>
-
           <div class="provider-card" id="captcha-card">
             <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.55;" data-i18n-html="st.captcha.desc_html"></div>
 
@@ -979,6 +895,106 @@
         <button class="btn-secondary" id="btn-clear-transcription" data-i18n="st.transcription.clear"></button>
       </div>
       <div class="test-result" id="test-transcription"></div>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="memory" role="tabpanel">
+    <div class="provider-card" id="profile-card">
+      <h3 data-i18n="st.memory.profile_heading" style="margin:0 0 12px;font-size:14px;font-weight:600;"></h3>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.profile.desc_html"></div>
+
+      <div class="setting-row" style="margin-bottom:12px;">
+        <div class="setting-info">
+          <div class="setting-label" data-i18n="st.profile.enabled.label"></div>
+          <div class="setting-desc" data-i18n="st.profile.enabled.desc"></div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-profile-enabled">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label data-i18n="st.profile.text.label"></label>
+        <textarea id="profile-text"
+                  rows="8"
+                  data-i18n-placeholder="st.profile.text.placeholder"
+                  style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;resize:vertical;"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-save-profile" data-i18n="st.profile.save"></button>
+        <button class="btn-secondary" id="btn-clear-profile" data-i18n="st.profile.clear"></button>
+      </div>
+      <div class="test-result" id="test-profile"></div>
+
+      <div class="info-box" style="margin-top:16px;" data-i18n-html="st.profile.security_html"></div>
+    </div>
+
+    <div class="provider-card" id="user-memory-card">
+      <h3 data-i18n="st.memory.heading" style="margin:0 0 12px;font-size:14px;font-weight:600;"></h3>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.memory.desc_html"></div>
+
+      <div class="setting-row" style="margin-bottom:12px;">
+        <div class="setting-info">
+          <div class="setting-label" data-i18n="st.memory.enabled.label"></div>
+          <div class="setting-desc" data-i18n="st.memory.enabled.desc"></div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-user-memory-enabled">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-row" style="margin-bottom:12px;">
+        <div class="setting-info">
+          <div class="setting-label" data-i18n="st.memory.auto.label"></div>
+          <div class="setting-desc" data-i18n="st.memory.auto.desc"></div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-user-memory-auto">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-row" style="margin-bottom:12px;">
+        <div class="setting-info">
+          <div class="setting-label" data-i18n="st.memory.form.label"></div>
+          <div class="setting-desc" data-i18n="st.memory.form.desc"></div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-user-memory-form">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label data-i18n="st.memory.max_chars.label"></label>
+        <input type="number" id="input-user-memory-max-chars" min="0" max="10000" step="100">
+      </div>
+
+      <div class="field">
+        <label data-i18n="st.memory.list.label"></label>
+        <div id="user-memory-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" id="btn-refresh-user-memory" data-i18n="st.memory.refresh"></button>
+        <button class="btn-secondary" id="btn-export-user-memory" data-i18n="st.memory.export"></button>
+        <button class="btn-secondary" id="btn-clear-user-memory" data-i18n="st.memory.clear"></button>
+      </div>
+
+      <div class="field">
+        <label data-i18n="st.memory.import.label"></label>
+        <textarea id="user-memory-import-text"
+                  rows="4"
+                  data-i18n-placeholder="st.memory.import.placeholder"
+                  style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px 12px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5;outline:none;resize:vertical;"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-import-user-memory" data-i18n="st.memory.import.button"></button>
+      </div>
+      <div class="test-result" id="test-user-memory"></div>
+      <div class="info-box" style="margin-top:16px;" data-i18n-html="st.memory.security_html"></div>
     </div>
   </section>
 

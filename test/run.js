@@ -783,11 +783,14 @@ test('user memory extraction applies only high-confidence safe operations', () =
       memories: base.records,
       mode: 'ask',
       succeeded: true,
+      sourceContext: 'clarification_response',
     });
     assert.equal(extractionMessages.length, 2, `${label}: extractor should use a tiny two-message prompt`);
     assert.match(extractionMessages[0].content, /Do not save secrets/, `${label}: safety instruction missing`);
+    assert.match(extractionMessages[0].content, /Clarification answers may be saved only when they express stable preferences/, `${label}: clarification safety instruction missing`);
     const payload = JSON.parse(extractionMessages[1].content);
-    assert.deepEqual(Object.keys(payload).sort(), ['current_memory', 'final_assistant_message', 'latest_user_message', 'mode', 'succeeded'].sort(), `${label}: extractor input should stay bounded`);
+    assert.deepEqual(Object.keys(payload).sort(), ['current_memory', 'final_assistant_message', 'latest_user_message', 'mode', 'source_context', 'succeeded'].sort(), `${label}: extractor input should stay bounded`);
+    assert.equal(payload.source_context, 'clarification_response', `${label}: extractor should include bounded source context`);
     assert.equal(payload.latest_user_message, 'Remember that I prefer terse replies.', `${label}: latest user text`);
   }
 });
@@ -804,6 +807,7 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     const locale = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/locales/en.js'), 'utf8');
 
     assert.match(background, /USER_MEMORY_STORAGE_KEY/, `${label}: background should import memory constants`);
+    assert.match(background, /USER_MEMORY_FORM_CAPTURE_KEY/, `${label}: background should import the form-capture setting key`);
     assert.match(background, /const userMemoryReady = syncAgentUserMemoryFromStorage\(\)\.catch\(\(\) => \{\}\);/, `${label}: first message should await memory hydration`);
     assert.match(background, /Promise\.all\(\[planBeforeActReady, planReviewReady, customSkillsReady, userMemoryReady\]\)/, `${label}: handleMessage should await memory hydration`);
     for (const action of ['get_user_memory', 'add_user_memory', 'update_user_memory', 'delete_user_memory', 'clear_user_memory', 'export_user_memory', 'import_user_memory', 'enqueue_user_memory_extraction']) {
@@ -818,6 +822,9 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     assert.match(background, new RegExp(`${runtime}\\.storage\\.local\\.get\\(\\[\\s*USER_MEMORY_ENABLED_KEY,[\\s\\S]*USER_MEMORY_AUTO_CAPTURE_KEY`), `${label}: extraction should read both memory and auto-capture toggles`);
     assert.match(background, /async function isUserMemoryExtractionEnabled\(\)[\s\S]*stored\[USER_MEMORY_ENABLED_KEY\] !== false[\s\S]*stored\[USER_MEMORY_AUTO_CAPTURE_KEY\] === true/, `${label}: extraction should be gated by the main memory toggle`);
     assert.match(background, /if \(!await isUserMemoryExtractionEnabled\(\)\) return \{ queued: false, reason: 'disabled' \};/, `${label}: enqueue should not run when memory is disabled`);
+    assert.match(background, /sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled\(\)/, `${label}: form-derived memory should be gated by its opt-in setting`);
+    assert.match(background, /recordClarificationMemoryCandidate\(tabId, msg\.question, answer\)/, `${label}: clarify answers should be captured for post-turn extraction`);
+    assert.match(background, /looksLikeSensitiveMemoryText\(normalizedAnswer\)/, `${label}: clarify answers should be filtered for sensitive text before extraction`);
     assert.match(background, /while \(true\) \{\s*if \(!await isUserMemoryExtractionEnabled\(\)\) return;/, `${label}: drain should not send memory when memory is disabled`);
     assert.match(background, /let userMemoryExtractionQueueLock = Promise\.resolve\(\);/, `${label}: extraction queue writes should be serialized`);
     assert.match(background, /async function updateUserMemoryExtractionQueue\(updater\)[\s\S]*withUserMemoryExtractionQueueLock/, `${label}: extraction queue mutations should use the lock`);
@@ -834,6 +841,7 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     assert.match(background, /if \(!await claimUserMemoryExtractionJob\(jobId\)\) return \{ changed: false, claimed: false \};/, `${label}: completed extraction should claim jobs from the current queue before saving`);
     assert.doesNotMatch(background, /const queue = await loadUserMemoryExtractionQueue\(\);[\s\S]*const job = queue\.shift\(\);/, `${label}: drain must not hold and save a stale queue snapshot`);
     assert.match(background, /queueMicrotask\(\(\) => \{[\s\S]*enqueueUserMemoryExtraction\(payload\)/, `${label}: extraction enqueue should be off-path`);
+    assert.match(background, /takeUserMemoryTurnExtractionPayload\(tabId,[\s\S]*enqueueUserMemoryExtractionAfterTurn\(userMemoryPayload\)/, `${label}: chat should fold clarify answers into the post-turn memory job`);
     assert.doesNotMatch(background, /await enqueueUserMemoryExtractionAfterTurn/, `${label}: chat path must not await extraction enqueue`);
     assert.match(background, /agent\._isCostAllowanceError\?\.\(error\)/, `${label}: extraction cost limit should be silent`);
     assert.match(background, /async function markUserMemoryExtractionJobFailed\(jobId\)[\s\S]*attempts: attempts \+ 1/, `${label}: extraction jobs should retry once`);
@@ -847,12 +855,17 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     assert.match(sidepanel, /await rememberUserMemory\(text\.slice\(mRemember\[0\]\.length\), tabId\)/, `${label}: remember command handler missing`);
     assert.match(sidepanel, /await showUserMemory\(tabId\)/, `${label}: show-memory handler missing`);
     assert.match(sidepanel, /await forgetUserMemory\(text\.slice\(mForgetMemory\[0\]\.length\), tabId\)/, `${label}: forget-memory handler missing`);
+    assert.match(sidepanel, /card\.dataset\.memorySource = scheduledJobId[\s\S]*'scheduled_clarification'[\s\S]*'form_confirmation'[\s\S]*'clarification_response'/, `${label}: clarify cards should tag memory source`);
+    assert.match(sidepanel, /clarifyPayload\.memorySource = card\.dataset\.memorySource/, `${label}: clarify responses should include memory source metadata`);
 
-    for (const id of ['toggle-user-memory-enabled', 'toggle-user-memory-auto', 'input-user-memory-max-chars', 'user-memory-list', 'btn-export-user-memory', 'btn-clear-user-memory', 'user-memory-import-text', 'btn-import-user-memory']) {
+    for (const id of ['toggle-user-memory-enabled', 'toggle-user-memory-auto', 'toggle-user-memory-form', 'input-user-memory-max-chars', 'user-memory-list', 'btn-export-user-memory', 'btn-clear-user-memory', 'user-memory-import-text', 'btn-import-user-memory']) {
       assert.match(settingsHtml, new RegExp(`id="${id}"`), `${label}: settings HTML missing ${id}`);
     }
+    assert.match(settingsHtml, /data-tab="memory"/, `${label}: settings should expose a Memory tab`);
+    assert.match(settingsHtml, /data-panel="memory"[\s\S]*id="profile-card"[\s\S]*id="user-memory-card"/, `${label}: Memory tab should own profile and user-memory cards`);
     assert.match(settingsJs, /USER_MEMORY_ENABLED_KEY/, `${label}: settings JS should use memory enabled key`);
     assert.match(settingsJs, /USER_MEMORY_AUTO_CAPTURE_KEY/, `${label}: settings JS should use auto-capture key`);
+    assert.match(settingsJs, /USER_MEMORY_FORM_CAPTURE_KEY/, `${label}: settings JS should use form-capture key`);
     assert.match(settingsJs, /sendToBackground\('get_user_memory'\)/, `${label}: settings should read memory through background`);
     assert.match(settingsJs, /sendToBackground\('import_user_memory', \{ json \}\)/, `${label}: settings should import JSON through background`);
     assert.match(settingsJs, /const rawMaxPromptChars = String\(userMemoryMaxCharsInput\.value \|\| ''\)\.trim\(\);[\s\S]*Number\.isFinite\(parsedMaxPromptChars\)[\s\S]*Math\.floor\(parsedMaxPromptChars\)/, `${label}: settings should preserve a zero memory prompt cap`);
@@ -6250,14 +6263,14 @@ function runSettingsTabsScript(script, { saved = null, hash = '' } = {}) {
       },
     };
   }
-  const buttons = ['display', 'providers', 'multimodal', 'permissions'].map((name) => ({
+  const buttons = ['display', 'providers', 'multimodal', 'memory', 'skills', 'permissions'].map((name) => ({
     dataset: { tab: name },
     classList: makeClassList(),
     addEventListener(type, handler) {
       if (type === 'click') this.clickHandler = handler;
     },
   }));
-  const panels = ['display', 'providers', 'multimodal', 'permissions'].map((name) => ({
+  const panels = ['display', 'providers', 'multimodal', 'memory', 'skills', 'permissions'].map((name) => ({
     dataset: { panel: name },
     classList: makeClassList(),
   }));
@@ -6314,13 +6327,18 @@ test('settings tabs validate saved and hash tab names without selector interpola
     assert.equal(valid.activePanel, 'multimodal', `${label}: valid hash should activate its panel`);
     assert.equal(valid.stored, 'multimodal', `${label}: activated hash tab should persist`);
 
+    const memory = runSettingsTabsScript(script, { saved: 'display', hash: '#memory' });
+    assert.equal(memory.activeButton, 'memory', `${label}: memory hash should activate Memory tab`);
+    assert.equal(memory.activePanel, 'memory', `${label}: memory hash should activate Memory panel`);
+    assert.equal(memory.stored, 'memory', `${label}: activated Memory tab should persist`);
+
     const removed = runSettingsTabsScript(script, { saved: 'profile', hash: '#captcha' });
     assert.equal(removed.activeButton, 'providers', `${label}: removed profile/captcha tabs should fall back to providers`);
     assert.equal(removed.activePanel, 'providers', `${label}: removed profile/captcha panels should not activate`);
   }
 });
 
-test('settings moves profile and CAPTCHA controls into General advanced', () => {
+test('settings moves profile and memory controls into Memory while CAPTCHA stays in General advanced', () => {
   for (const [label, htmlRel] of [
     ['chrome', 'src/chrome/src/ui/settings.html'],
     ['firefox', 'src/firefox/src/ui/settings.html'],
@@ -6336,6 +6354,11 @@ test('settings moves profile and CAPTCHA controls into General advanced', () => 
     const providersStart = html.indexOf('<section class="tab-panel active" data-panel="providers"', displayStart);
     assert.notEqual(providersStart, -1, `${label}: providers panel should follow General panel`);
     const displayPanel = html.slice(displayStart, providersStart);
+    const memoryStart = html.indexOf('<section class="tab-panel" data-panel="memory"', providersStart);
+    assert.notEqual(memoryStart, -1, `${label}: Memory panel missing`);
+    const skillsStart = html.indexOf('<section class="tab-panel" data-panel="skills"', memoryStart);
+    assert.notEqual(skillsStart, -1, `${label}: Skills panel should follow Memory panel`);
+    const memoryPanel = html.slice(memoryStart, skillsStart);
     const advancedStart = displayPanel.indexOf('<details class="advanced-settings">');
     assert.notEqual(advancedStart, -1, `${label}: General panel should include collapsed Advanced settings`);
 
@@ -6355,13 +6378,17 @@ test('settings moves profile and CAPTCHA controls into General advanced', () => 
       'input-cost-total-limit',
       'toggle-strict-secret',
       'toggle-allow-local-network',
-      'profile-card',
       'captcha-card',
     ]) {
       const index = displayPanel.indexOf(`id="${id}"`);
       assert.notEqual(index, -1, `${label}: ${id} should remain in General`);
       assert.ok(index > advancedStart, `${label}: ${id} should be inside Advanced`);
     }
+    for (const id of ['profile-card', 'user-memory-card', 'toggle-user-memory-form']) {
+      assert.equal(displayPanel.indexOf(`id="${id}"`), -1, `${label}: ${id} should move out of General`);
+      assert.notEqual(memoryPanel.indexOf(`id="${id}"`), -1, `${label}: ${id} should live in Memory`);
+    }
+    assert.equal(memoryPanel.indexOf('id="captcha-card"'), -1, `${label}: CAPTCHA should stay out of Memory`);
 
     for (const id of [
       'select-language',
@@ -7985,7 +8012,7 @@ test('sidepanel drains scheduled-clarify rejection prompts after pending tab swi
     ['firefox', 'src/firefox/src/ui/sidepanel.js'],
   ]) {
     const panel = fs.readFileSync(path.join(ROOT, panelRel), 'utf8');
-    const match = panel.match(/sendToBackground\('clarify_response', \{ tabId, clarifyId, answer, source \}\)\s*\.catch\(\(\) => \{\s*if \(isScheduledClarify\) \{([\s\S]*?)\n      \}\s*\/\* background may be torn down/);
+    const match = panel.match(/sendToBackground\('clarify_response', clarifyPayload\)\s*\.catch\(\(\) => \{\s*if \(isScheduledClarify\) \{([\s\S]*?)\n      \}\s*\/\* background may be torn down/);
     assert.ok(match, `${label}: scheduled clarify rejection handler missing`);
     const body = match[1];
     const idleIdx = body.indexOf('isProcessing = false;');
@@ -18158,27 +18185,28 @@ test('settings exposes custom skills tab and packaged skills resource directory'
     const background = fs.readFileSync(path.join(ROOT, prefix, 'src/background.js'), 'utf8');
     const manifest = fs.readFileSync(path.join(ROOT, prefix, 'manifest.json'), 'utf8');
 
-	    assert.match(html, /data-tab="skills"/, `${label}: settings tab missing`);
-	    const tabOrder = ['data-tab="multimodal"', 'data-tab="skills"', 'data-tab="permissions"']
-	      .map((needle) => html.indexOf(needle));
-	    assert.ok(tabOrder.every((index) => index >= 0), `${label}: expected tab order markers missing`);
-	    assert.ok(tabOrder[0] < tabOrder[1] && tabOrder[1] < tabOrder[2], `${label}: Skills tab should appear immediately before Permissions near the end`);
-	    const panelOrder = ['data-panel="multimodal"', 'data-panel="skills"', 'data-panel="permissions"']
-	      .map((needle) => html.indexOf(needle));
-	    assert.ok(panelOrder.every((index) => index >= 0), `${label}: expected panel order markers missing`);
-	    assert.ok(panelOrder[0] < panelOrder[1] && panelOrder[1] < panelOrder[2], `${label}: Skills panel should appear immediately before Permissions near the end`);
-	    assert.match(html, /id="skill-url"/, `${label}: URL skill input missing`);
-	    assert.match(html, /id="skill-text"/, `${label}: raw skill textarea missing`);
-	    assert.match(settingsJs, /CUSTOM_SKILLS_STORAGE_KEY/, `${label}: settings JS should persist custom skills`);
-	    assert.match(settingsJs, /DEFAULT_SKILLS_REMOVED_STORAGE_KEY/, `${label}: settings JS should remember removed default skills`);
-	    assert.match(settingsJs, /removedSkill\?\.sourceType === 'built-in'/, `${label}: only built-in defaults should be marked removed`);
-	    assert.match(settingsJs, /st\.skills\.source\.built_in/, `${label}: settings should label seeded default skills`);
-	    assert.match(settingsJs, /skill\.tools/, `${label}: settings should show exposed skill tools`);
-	    assert.match(background, /customSkillsReady/, `${label}: first chat should wait for custom skills hydration`);
-	    assert.match(background, /DEFAULT_SKILLS_SEEDED_STORAGE_KEY/, `${label}: default skill seeding marker missing`);
-	    assert.match(background, /DEFAULT_SKILLS_REMOVED_STORAGE_KEY/, `${label}: default skill removal marker missing`);
-	    assert.match(background, /!removedDefaultIds\.has\(skill\.id\)/, `${label}: missing default skill migration should respect explicit removals`);
-	    assert.match(background, /loadDefaultSkillRecords/, `${label}: default skill loader missing`);
+    assert.match(html, /data-tab="skills"/, `${label}: settings tab missing`);
+    assert.match(html, /data-tab="memory"/, `${label}: Memory settings tab missing`);
+    const tabOrder = ['data-tab="multimodal"', 'data-tab="memory"', 'data-tab="skills"', 'data-tab="permissions"']
+      .map((needle) => html.indexOf(needle));
+    assert.ok(tabOrder.every((index) => index >= 0), `${label}: expected tab order markers missing`);
+    assert.ok(tabOrder[0] < tabOrder[1] && tabOrder[1] < tabOrder[2] && tabOrder[2] < tabOrder[3], `${label}: Memory should sit between Multimodal and Skills near the end`);
+    const panelOrder = ['data-panel="multimodal"', 'data-panel="memory"', 'data-panel="skills"', 'data-panel="permissions"']
+      .map((needle) => html.indexOf(needle));
+    assert.ok(panelOrder.every((index) => index >= 0), `${label}: expected panel order markers missing`);
+    assert.ok(panelOrder[0] < panelOrder[1] && panelOrder[1] < panelOrder[2] && panelOrder[2] < panelOrder[3], `${label}: Memory panel should sit between Multimodal and Skills near the end`);
+    assert.match(html, /id="skill-url"/, `${label}: URL skill input missing`);
+    assert.match(html, /id="skill-text"/, `${label}: raw skill textarea missing`);
+    assert.match(settingsJs, /CUSTOM_SKILLS_STORAGE_KEY/, `${label}: settings JS should persist custom skills`);
+    assert.match(settingsJs, /DEFAULT_SKILLS_REMOVED_STORAGE_KEY/, `${label}: settings JS should remember removed default skills`);
+    assert.match(settingsJs, /removedSkill\?\.sourceType === 'built-in'/, `${label}: only built-in defaults should be marked removed`);
+    assert.match(settingsJs, /st\.skills\.source\.built_in/, `${label}: settings should label seeded default skills`);
+    assert.match(settingsJs, /skill\.tools/, `${label}: settings should show exposed skill tools`);
+    assert.match(background, /customSkillsReady/, `${label}: first chat should wait for custom skills hydration`);
+    assert.match(background, /DEFAULT_SKILLS_SEEDED_STORAGE_KEY/, `${label}: default skill seeding marker missing`);
+    assert.match(background, /DEFAULT_SKILLS_REMOVED_STORAGE_KEY/, `${label}: default skill removal marker missing`);
+    assert.match(background, /!removedDefaultIds\.has\(skill\.id\)/, `${label}: missing default skill migration should respect explicit removals`);
+    assert.match(background, /loadDefaultSkillRecords/, `${label}: default skill loader missing`);
     assert.match(background, /refreshDefaultSkillRecords/, `${label}: default skill refresh migration missing`);
     assert.match(background, /sourceType:\s*'built-in'/, `${label}: default skill should be removable as a stored skill`);
     assert.match(manifest, /"skills\/\*"/, `${label}: manifest should include packaged skills resources`);

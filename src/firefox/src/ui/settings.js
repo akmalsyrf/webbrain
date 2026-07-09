@@ -20,6 +20,7 @@ import {
   USER_MEMORY_AUTO_CAPTURE_KEY,
   USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS,
   USER_MEMORY_ENABLED_KEY,
+  USER_MEMORY_FORM_CAPTURE_KEY,
   USER_MEMORY_MAX_PROMPT_CHARS_KEY,
 } from '../agent/user-memory.js';
 
@@ -90,6 +91,7 @@ const btnClearProfile = document.getElementById('btn-clear-profile');
 const profileTestResult = document.getElementById('test-profile');
 const userMemoryEnabledToggle = document.getElementById('toggle-user-memory-enabled');
 const userMemoryAutoToggle = document.getElementById('toggle-user-memory-auto');
+const userMemoryFormToggle = document.getElementById('toggle-user-memory-form');
 const userMemoryMaxCharsInput = document.getElementById('input-user-memory-max-chars');
 const userMemoryList = document.getElementById('user-memory-list');
 const btnRefreshUserMemory = document.getElementById('btn-refresh-user-memory');
@@ -1091,6 +1093,7 @@ async function loadUserMemorySettings() {
   }
   if (userMemoryEnabledToggle) userMemoryEnabledToggle.checked = res.enabled !== false;
   if (userMemoryAutoToggle) userMemoryAutoToggle.checked = res.autoCaptureEnabled === true;
+  if (userMemoryFormToggle) userMemoryFormToggle.checked = res.formCaptureEnabled === true;
   if (userMemoryMaxCharsInput) userMemoryMaxCharsInput.value = String(res.maxPromptChars ?? USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS);
   renderUserMemoryRecords(res.records || []);
 }
@@ -1104,6 +1107,12 @@ if (userMemoryEnabledToggle) {
 if (userMemoryAutoToggle) {
   userMemoryAutoToggle.addEventListener('change', async () => {
     await browser.storage.local.set({ [USER_MEMORY_AUTO_CAPTURE_KEY]: userMemoryAutoToggle.checked }).catch(() => {});
+  });
+}
+
+if (userMemoryFormToggle) {
+  userMemoryFormToggle.addEventListener('change', async () => {
+    await browser.storage.local.set({ [USER_MEMORY_FORM_CAPTURE_KEY]: userMemoryFormToggle.checked }).catch(() => {});
   });
 }
 
