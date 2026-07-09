@@ -267,6 +267,12 @@ const { LlamaCppProvider: LlamaCppProviderCh } = await import(
 const { LlamaCppProvider: LlamaCppProviderFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/llamacpp.js').replace(/\\/g, '/')
 );
+const { AwsBedrockProvider: AwsBedrockProviderCh } = await import(
+  'file://' + path.join(ROOT, 'src/chrome/src/providers/aws-bedrock.js').replace(/\\/g, '/')
+);
+const { AwsBedrockProvider: AwsBedrockProviderFx } = await import(
+  'file://' + path.join(ROOT, 'src/firefox/src/providers/aws-bedrock.js').replace(/\\/g, '/')
+);
 const { buildRecommendedActions: buildRecommendedActionsCh, shouldShowRecommendedActions: shouldShowRecommendedActionsCh } = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/ui/recommended-actions.js').replace(/\\/g, '/')
 );
@@ -10767,6 +10773,39 @@ test('OpenAI-compatible streams request usage metadata only for supporting provi
       provider._addStreamUsageOptions(body);
       assert.equal(body.stream_options, undefined);
     }
+  }
+});
+
+test('AWS Bedrock provider normalizes usage and indexes parallel tool calls', () => {
+  for (const Provider of [AwsBedrockProviderCh, AwsBedrockProviderFx]) {
+    const provider = new Provider({
+      region: 'us-east-1',
+      accessKeyId: 'AKIA123',
+      secretAccessKey: 'secret',
+      model: 'anthropic.claude-3-sonnet-20240229-v1:0',
+    });
+    assert.equal(provider.model, 'anthropic.claude-3-sonnet-20240229-v1:0');
+
+    const parsed = provider._fromBedrockResponse({
+      output: {
+        message: {
+          content: [
+            { text: 'hello' },
+            { toolUse: { toolUseId: 'a', name: 'click', input: { x: 1 } } },
+            { toolUse: { toolUseId: 'b', name: 'type_text', input: { text: 'hi' } } },
+          ],
+        },
+      },
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    assert.deepEqual(parsed.usage, {
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+    });
+    assert.equal(parsed.toolCalls.length, 2);
+    assert.equal(parsed.toolCalls[0].index, 0);
+    assert.equal(parsed.toolCalls[1].index, 1);
   }
 });
 
