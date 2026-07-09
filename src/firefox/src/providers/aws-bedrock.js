@@ -25,6 +25,10 @@ export class AwsBedrockProvider extends BaseLLMProvider {
     return String(this.config.model || '').trim();
   }
 
+  get model() {
+    return this.modelId;
+  }
+
   get accessKeyId() {
     return String(this.config.accessKeyId || '').trim();
   }
@@ -215,6 +219,17 @@ export class AwsBedrockProvider extends BaseLLMProvider {
     return await fetchWithTimeout(url, { method, headers: finalHeaders, body: payload });
   }
 
+  _normalizeUsage(usage) {
+    if (!usage) return null;
+    const input = usage.inputTokens ?? usage.prompt_tokens ?? 0;
+    const output = usage.outputTokens ?? usage.completion_tokens ?? 0;
+    return {
+      prompt_tokens: input,
+      completion_tokens: output,
+      total_tokens: usage.totalTokens ?? (input + output),
+    };
+  }
+
   _fromBedrockResponse(data) {
     const message = data?.output?.message;
     const contentBlocks = Array.isArray(message?.content) ? message.content : [];
@@ -222,9 +237,10 @@ export class AwsBedrockProvider extends BaseLLMProvider {
 
     const toolUses = contentBlocks.map((b) => b?.toolUse).filter(Boolean);
     const toolCalls = toolUses.length
-      ? toolUses.map((u) => ({
+      ? toolUses.map((u, index) => ({
           id: u.toolUseId || crypto.randomUUID(),
           type: 'function',
+          index,
           function: {
             name: u.name,
             arguments: JSON.stringify(u.input ?? {}),
@@ -235,7 +251,7 @@ export class AwsBedrockProvider extends BaseLLMProvider {
     return {
       content: text || '',
       toolCalls,
-      usage: data?.usage || null,
+      usage: this._normalizeUsage(data?.usage),
       raw: data,
     };
   }
@@ -270,6 +286,7 @@ export class AwsBedrockProvider extends BaseLLMProvider {
     const res = await this.chat(messages, options);
     if (res.content) yield { type: 'text', content: res.content };
     if (res.toolCalls) yield { type: 'tool_call', content: res.toolCalls };
+    if (res.usage) yield { type: 'usage', usage: res.usage };
     yield { type: 'done', content: '' };
   }
 }
