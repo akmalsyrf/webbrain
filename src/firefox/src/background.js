@@ -443,6 +443,10 @@ async function drainUserMemoryExtractionQueue() {
       if (!await isUserMemoryExtractionEnabled()) return;
       const job = await peekUserMemoryExtractionJob();
       if (!job) return;
+      if (job.sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled()) {
+        await removeUserMemoryExtractionJob(job.id);
+        continue;
+      }
 
       try {
         await customSkillsReady;

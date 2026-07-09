@@ -828,6 +828,7 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     assert.match(background, /return \{ queued: false, reason: 'form_capture_empty' \};/, `${label}: enabled form capture should skip empty sanitized form jobs`);
     assert.match(background, /formCompletionTurn \? '' : payload\.userText/, `${label}: form-derived memory should not send raw form turn text`);
     assert.match(background, /formCompletionTurn \? 'Completed form task; explicit clarification answers recorded\.' : payload\.assistantText/, `${label}: form-derived memory should not send raw form assistant text`);
+    assert.match(background, /job\.sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled\(\)[\s\S]*removeUserMemoryExtractionJob\(job\.id\)[\s\S]*continue;/, `${label}: queued form memory jobs should re-check the form toggle before provider calls`);
     assert.match(background, /recordClarificationMemoryCandidate\(tabId, msg\.question, answer\)/, `${label}: clarify answers should be captured for post-turn extraction`);
     assert.match(background, /looksLikeSensitiveMemoryText\(normalizedAnswer\)/, `${label}: clarify answers should be filtered for sensitive text before extraction`);
     assert.match(background, /while \(true\) \{\s*if \(!await isUserMemoryExtractionEnabled\(\)\) return;/, `${label}: drain should not send memory when memory is disabled`);
