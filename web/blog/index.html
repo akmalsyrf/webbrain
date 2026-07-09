@@ -464,6 +464,18 @@
   "blogPost": [
     {
       "@type": "BlogPosting",
+      "headline": "ThinkingCap Qwen 3.6 27B is a serious WebBrain planner candidate",
+      "url": "https://webbrain.one/blog/thinkingcap-qwen36-27b-planner-benchmark",
+      "datePublished": "2026-07-09",
+      "description": "We ran ThinkingCap-Qwen3.6-27B INT4 AutoRound through WebBrain's frozen browser-agent first-tool benchmark. The model tied Qwen 3.6 27B on all-case Sonnet alignment, returned in 2.25s median latency, and exposed a sharper boundary-behavior tradeoff.",
+      "author": {
+        "@type": "Person",
+        "name": "Emre Sokullu",
+        "url": "https://emresokullu.com"
+      }
+    },
+    {
+      "@type": "BlogPosting",
       "headline": "Nex-N2-mini is cheap and fast, but not a WebBrain planner win",
       "url": "https://webbrain.one/blog/nex-n2-mini-openrouter-planner-benchmark",
       "datePublished": "2026-07-08",
@@ -795,7 +807,12 @@
     <p class="page-sub">Short write-ups on design decisions, failure modes, and benchmarks from building an open-source AI browser agent.</p>
 
     <div class="post-list">
-      <a href="/blog/nex-n2-mini-openrouter-planner-benchmark" class="post-card">
+      <a href="/blog/thinkingcap-qwen36-27b-planner-benchmark" class="post-card">
+        <div class="post-meta">July 9, 2026 &middot; 8 min read</div>
+        <div class="post-title">ThinkingCap Qwen 3.6 27B is a serious WebBrain planner candidate</div>
+        <div class="post-excerpt">ThinkingCap lands at 77% Sonnet alignment, 91 parsed tool calls, 19 exact first actions, and 2.25s median latency. It looks like a real local planner candidate, but not a clean replacement for the Qwen baselines.</div>
+      </a>
+<a href="/blog/nex-n2-mini-openrouter-planner-benchmark" class="post-card">
         <div class="post-meta">July 8, 2026 &middot; 6 min read</div>
         <div class="post-title">Nex-N2-mini is cheap and fast, but not a WebBrain planner win</div>
         <div class="post-excerpt">Nex-N2-mini completed WebBrain&#39;s frozen planner suite with 93 parsed tool calls, a 2.23s median latency, and about $0.045 reported OpenRouter cost, but only 65% Sonnet alignment.</div>

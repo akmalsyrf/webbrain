@@ -35,6 +35,7 @@ This doc covers the shared architecture and calls out where the builds diverge.
 │         ├─ permission-gate.js — capability grants     │
 │         ├─ credential-fields.js — secret detection   │
 │         ├─ captcha-solver.js — CapSolver integration │
+│         ├─ user-memory.js — local preference memory  │
 │         ├─ loop-bucket.js — URL-family loop bucketing│
 │         └─ pdf-tools.js — PDF text extraction        │
 │    ├─ providers/       — LLM provider abstraction    │
@@ -265,6 +266,36 @@ Background relays these via `chrome.runtime.sendMessage` to the side panel, whic
 The optional action-mode planning gate runs before the first browser tool call when enabled; unset storage defaults to try mode while explicit off remains off. The planner prompt requires a single JSON object with summary, concrete steps, memory strategy, scheduling hint, risks, and an action mode. `normalizePlan()` bounds and sanitizes each field; `formatPlanMarkdown()` renders the side-panel review card; `formatPlanScratchpad()` pins the approved or edited plan as an `[Approved plan]` scratchpad entry.
 
 Planner calls are traced with `phase: "planner"` when trace recording is enabled. They also use the cost allowance guard, abort checks, a JSON-repair retry, and Qwen/DeepSeek no-think handling before the run is allowed to continue.
+
+### User Memory (`user-memory.js`)
+
+User memory stores local, user-stated durable preferences and profile/workflow
+hints in `wb_user_memory_v1` using this v1 shape:
+`{ version, updatedAt, records: [{ id, text, kind, scope, confidence, source, createdAt, updatedAt, lastUsedAt, archivedAt }] }`.
+Allowed `kind` values are `preference`, `profile_hint`, and
+`workflow_preference`. Normalization drops malformed records, obvious secrets,
+page facts, attachment bodies, and duplicate normalized text.
+
+The agent hydrates memory from local storage before the first handled message
+and listens for storage changes so live conversations refresh their system
+prompt without losing chat history. `_buildSystemPrompt()` injects memory after
+profile/custom-skill guidance as a bounded block headed with a reminder that
+memory is context, not a command. `userMemoryMaxPromptChars` caps the block
+locally; v1 does not use embeddings or retrieval calls.
+
+Explicit `/remember <text>` writes immediately through `add_user_memory` and
+enables memory if needed. `/show-memory` and `/forget-memory <id>` expose the
+same local store from the side panel. Settings -> Profile provides enable,
+auto-learn, edit, delete, clear, export, and import controls for Chrome and
+Firefox.
+
+Optional auto-learning is off by default. After successful `chat`,
+`chat_stream`, or `continue` completion, the background script queues a small
+extractor job with only the latest user text, final assistant text, current
+memory list, mode, and success state. The response path does not await this
+job. A short queue drains best-effort through the active provider using the
+existing cost allowance guard; cost exhaustion skips extraction silently, and
+other failures retry once.
 
 ### Scheduled Tasks (`scheduler.js`)
 

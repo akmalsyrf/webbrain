@@ -30,6 +30,23 @@ import {
   setProviderManager as setRecorderProviderManager,
 } from './recorder/host.js';
 import { normalizeOllamaLaunchHandoff } from './ollama-handoff.js';
+import {
+  USER_MEMORY_AUTO_CAPTURE_KEY,
+  USER_MEMORY_ENABLED_KEY,
+  USER_MEMORY_EXTRACTION_QUEUE_KEY,
+  USER_MEMORY_FORM_CAPTURE_KEY,
+  USER_MEMORY_MAX_PROMPT_CHARS_KEY,
+  USER_MEMORY_STORAGE_KEY,
+  applyUserMemoryExtractionOperations,
+  buildUserMemoryExtractionMessages,
+  createUserMemoryStore,
+  looksLikeSensitiveMemoryText,
+  normalizeUserMemoryExtractionSourceContext,
+  normalizeUserMemoryMaxPromptChars,
+  normalizeUserMemoryStore,
+  normalizeUserMemoryText,
+  parseUserMemoryExtractionResult,
+} from './agent/user-memory.js';
 
 /**
  * WebBrain Service Worker (Background Script)
@@ -38,6 +55,7 @@ import { normalizeOllamaLaunchHandoff } from './ollama-handoff.js';
 
 const providerManager = new ProviderManager();
 const agent = new Agent(providerManager);
+const userMemoryStore = createUserMemoryStore(chrome.storage.local);
 const scheduler = new ScheduledJobManager({
   api: chrome,
   agent,
@@ -139,6 +157,330 @@ async function loadProfile() {
   // exist yet. Refresh only fires on user-initiated setting changes below.
 }
 loadProfile();
+
+async function syncAgentUserMemoryFromStorage() {
+  const [store, settings] = await Promise.all([
+    userMemoryStore.load(),
+    chrome.storage.local.get([
+      USER_MEMORY_ENABLED_KEY,
+      USER_MEMORY_MAX_PROMPT_CHARS_KEY,
+    ]),
+  ]);
+  agent.setUserMemory({
+    enabled: settings[USER_MEMORY_ENABLED_KEY] !== false,
+    records: store.records,
+    maxPromptChars: normalizeUserMemoryMaxPromptChars(settings[USER_MEMORY_MAX_PROMPT_CHARS_KEY]),
+  });
+  return store;
+}
+const userMemoryReady = syncAgentUserMemoryFromStorage().catch(() => {});
+
+const USER_MEMORY_EXTRACTION_MAX_QUEUE = 10;
+const USER_MEMORY_EXTRACTION_DELAY_MS = 1200;
+// Long enough for a transient network/provider blip to clear, short enough
+// that the timer fires before Chrome's ~30s idle service-worker teardown.
+const USER_MEMORY_EXTRACTION_RETRY_DELAY_MS = 3000;
+const USER_MEMORY_CLARIFICATION_BUFFER_LIMIT = 6;
+let userMemoryExtractionDrainPromise = null;
+let userMemoryExtractionTimer = null;
+let userMemoryExtractionQueueLock = Promise.resolve();
+let userMemoryStoreLock = Promise.resolve();
+const userMemoryTurnContextByTab = new Map();
+
+function userMemoryTurnContextKey(tabId) {
+  return String(tabId || '');
+}
+
+function getUserMemoryTurnContext(tabId) {
+  const key = userMemoryTurnContextKey(tabId);
+  if (!key) return { clarifications: [], formCompletion: false };
+  const existing = userMemoryTurnContextByTab.get(key);
+  if (existing) return existing;
+  const created = { clarifications: [], formCompletion: false };
+  userMemoryTurnContextByTab.set(key, created);
+  return created;
+}
+
+function recordClarificationMemoryCandidate(tabId, question, answer) {
+  const normalizedAnswer = normalizeUserMemoryText(answer, 500);
+  if (!normalizedAnswer) return;
+  const normalizedQuestion = normalizeUserMemoryText(question, 500);
+  if (looksLikeSensitiveMemoryText(normalizedAnswer)
+      || (normalizedQuestion && looksLikeSensitiveMemoryText(normalizedQuestion))) {
+    return;
+  }
+  const context = getUserMemoryTurnContext(tabId);
+  context.clarifications.push({
+    question: normalizedQuestion,
+    answer: normalizedAnswer,
+  });
+  if (context.clarifications.length > USER_MEMORY_CLARIFICATION_BUFFER_LIMIT) {
+    context.clarifications = context.clarifications.slice(-USER_MEMORY_CLARIFICATION_BUFFER_LIMIT);
+  }
+}
+
+function recordFormCompletionMemoryCandidate(tabId, answer) {
+  const normalizedAnswer = String(answer || '').trim().toLowerCase();
+  if (!['once', 'always', 'yes', 'submit'].includes(normalizedAnswer)) return;
+  getUserMemoryTurnContext(tabId).formCompletion = true;
+}
+
+function formatClarificationMemoryText(clarifications = []) {
+  return clarifications
+    .map((item) => {
+      const answer = normalizeUserMemoryText(item?.answer, 500);
+      if (!answer) return '';
+      const question = normalizeUserMemoryText(item?.question, 500);
+      return question
+        ? `Clarification answer: ${question} -> ${answer}`
+        : `Clarification answer: ${answer}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function takeUserMemoryTurnExtractionPayload(tabId, payload = {}) {
+  const key = userMemoryTurnContextKey(tabId);
+  const context = key ? userMemoryTurnContextByTab.get(key) : null;
+  if (key) userMemoryTurnContextByTab.delete(key);
+  const clarificationText = formatClarificationMemoryText(context?.clarifications);
+  return {
+    ...payload,
+    clarificationText,
+    formCompletion: context?.formCompletion === true,
+    sourceContext: context?.formCompletion === true
+      ? 'form_completion'
+      : clarificationText
+        ? 'clarification_response'
+        : payload.sourceContext,
+  };
+}
+
+function clearUserMemoryTurnContext(tabId) {
+  const key = userMemoryTurnContextKey(tabId);
+  if (key) userMemoryTurnContextByTab.delete(key);
+}
+
+async function loadUserMemoryExtractionQueue() {
+  const stored = await chrome.storage.local.get(USER_MEMORY_EXTRACTION_QUEUE_KEY);
+  const queue = Array.isArray(stored[USER_MEMORY_EXTRACTION_QUEUE_KEY])
+    ? stored[USER_MEMORY_EXTRACTION_QUEUE_KEY]
+    : [];
+  return queue.slice(-USER_MEMORY_EXTRACTION_MAX_QUEUE);
+}
+
+async function saveUserMemoryExtractionQueue(queue) {
+  await chrome.storage.local.set({
+    [USER_MEMORY_EXTRACTION_QUEUE_KEY]: Array.isArray(queue)
+      ? queue.slice(-USER_MEMORY_EXTRACTION_MAX_QUEUE)
+      : [],
+  });
+}
+
+async function isUserMemoryExtractionEnabled() {
+  const stored = await chrome.storage.local.get([
+    USER_MEMORY_ENABLED_KEY,
+    USER_MEMORY_AUTO_CAPTURE_KEY,
+  ]);
+  return stored[USER_MEMORY_ENABLED_KEY] !== false
+    && stored[USER_MEMORY_AUTO_CAPTURE_KEY] === true;
+}
+
+async function isUserMemoryFormCaptureEnabled() {
+  const stored = await chrome.storage.local.get(USER_MEMORY_FORM_CAPTURE_KEY);
+  return stored[USER_MEMORY_FORM_CAPTURE_KEY] === true;
+}
+
+async function withUserMemoryExtractionQueueLock(task) {
+  const run = userMemoryExtractionQueueLock.then(task, task);
+  userMemoryExtractionQueueLock = run.catch(() => {});
+  return run;
+}
+
+async function updateUserMemoryExtractionQueue(updater) {
+  return withUserMemoryExtractionQueueLock(async () => {
+    const queue = await loadUserMemoryExtractionQueue();
+    const nextQueue = await updater(queue);
+    await saveUserMemoryExtractionQueue(Array.isArray(nextQueue) ? nextQueue : queue);
+    return nextQueue;
+  });
+}
+
+async function clearUserMemoryExtractionQueue() {
+  await updateUserMemoryExtractionQueue(() => []);
+}
+
+function shouldClearUserMemoryExtractionQueueForChanges(changes) {
+  return changes[USER_MEMORY_ENABLED_KEY]?.newValue === false
+    || (changes[USER_MEMORY_AUTO_CAPTURE_KEY] && changes[USER_MEMORY_AUTO_CAPTURE_KEY].newValue !== true);
+}
+
+async function claimUserMemoryExtractionJob(jobId) {
+  if (!jobId) return false;
+  let claimed = false;
+  await updateUserMemoryExtractionQueue((queue) => {
+    const index = queue.findIndex((job) => job?.id === jobId);
+    if (index >= 0) {
+      queue.splice(index, 1);
+      claimed = true;
+    }
+    return queue;
+  });
+  return claimed;
+}
+
+async function peekUserMemoryExtractionJob() {
+  let job = null;
+  await withUserMemoryExtractionQueueLock(async () => {
+    const queue = await loadUserMemoryExtractionQueue();
+    job = queue[0] || null;
+  });
+  return job;
+}
+
+async function removeUserMemoryExtractionJob(jobId) {
+  if (!jobId) return;
+  await updateUserMemoryExtractionQueue((queue) => {
+    return queue.filter((job) => job?.id !== jobId);
+  });
+}
+
+async function markUserMemoryExtractionJobFailed(jobId) {
+  if (!jobId) return;
+  await updateUserMemoryExtractionQueue((queue) => {
+    return queue.map((job) => {
+      if (job?.id !== jobId) return job;
+      const attempts = Number(job.attempts || 0);
+      if (attempts >= 1) return null;
+      return { ...job, attempts: attempts + 1 };
+    }).filter(Boolean);
+  });
+}
+
+async function withUserMemoryStoreLock(task) {
+  const run = userMemoryStoreLock.then(task, task);
+  userMemoryStoreLock = run.catch(() => {});
+  return run;
+}
+
+async function applyUserMemoryExtractionOperationsToCurrentStore(jobId, operations) {
+  return withUserMemoryStoreLock(async () => {
+    if (!await isUserMemoryExtractionEnabled()) {
+      await clearUserMemoryExtractionQueue();
+      return { changed: false, claimed: false, disabled: true };
+    }
+    if (!await claimUserMemoryExtractionJob(jobId)) return { changed: false, claimed: false };
+    const latestStore = await userMemoryStore.load();
+    const applied = applyUserMemoryExtractionOperations(latestStore, operations);
+    if (applied.changed) applied.store = await userMemoryStore.save(applied.store);
+    return { ...applied, claimed: true };
+  });
+}
+
+function scheduleUserMemoryExtractionDrain(delayMs = USER_MEMORY_EXTRACTION_DELAY_MS) {
+  if (userMemoryExtractionTimer) clearTimeout(userMemoryExtractionTimer);
+  userMemoryExtractionTimer = setTimeout(() => {
+    userMemoryExtractionTimer = null;
+    drainUserMemoryExtractionQueue().catch((error) => {
+      console.warn('[WebBrain] user-memory extraction failed:', error);
+    });
+  }, delayMs);
+}
+
+async function enqueueUserMemoryExtraction(payload = {}) {
+  if (!await isUserMemoryExtractionEnabled()) return { queued: false, reason: 'disabled' };
+  const clarificationText = normalizeUserMemoryText(payload.clarificationText, 1000);
+  const sourceContext = normalizeUserMemoryExtractionSourceContext(payload.sourceContext);
+  const formCompletionTurn = sourceContext === 'form_completion';
+  // Deliberate privacy stance: form-completion turns never forward raw turn
+  // text — the typed message and assistant reply may embed form values — so a
+  // form turn without sanitized clarification answers is skipped entirely,
+  // even if the user also typed a durable preference. /remember still works.
+  if (formCompletionTurn) {
+    if (!await isUserMemoryFormCaptureEnabled()) {
+      return { queued: false, reason: 'form_capture_disabled' };
+    } else if (!clarificationText) {
+      return { queued: false, reason: 'form_capture_empty' };
+    }
+  }
+  const userText = normalizeUserMemoryText([
+    formCompletionTurn ? '' : payload.userText,
+    clarificationText,
+  ].filter(Boolean).join('\n'), 2000);
+  const assistantText = normalizeUserMemoryText(
+    formCompletionTurn ? 'Completed form task; explicit clarification answers recorded.' : payload.assistantText,
+    2000,
+  );
+  if (!userText || !assistantText) return { queued: false, reason: 'empty' };
+  await updateUserMemoryExtractionQueue((queue) => {
+    queue.push({
+      id: `memjob_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userText,
+      assistantText,
+      mode: ['ask', 'act', 'dev'].includes(payload.mode) ? payload.mode : 'ask',
+      succeeded: payload.succeeded !== false,
+      sourceContext,
+      attempts: 0,
+      createdAt: Date.now(),
+    });
+    return queue;
+  });
+  scheduleUserMemoryExtractionDrain();
+  return { queued: true };
+}
+
+function enqueueUserMemoryExtractionAfterTurn(payload) {
+  queueMicrotask(() => {
+    enqueueUserMemoryExtraction(payload).catch((error) => {
+      console.warn('[WebBrain] failed to enqueue user-memory extraction:', error);
+    });
+  });
+}
+
+async function drainUserMemoryExtractionQueue() {
+  if (userMemoryExtractionDrainPromise) return userMemoryExtractionDrainPromise;
+  userMemoryExtractionDrainPromise = (async () => {
+    while (true) {
+      if (!await isUserMemoryExtractionEnabled()) return;
+      const job = await peekUserMemoryExtractionJob();
+      if (!job) return;
+      if (job.sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled()) {
+        await removeUserMemoryExtractionJob(job.id);
+        continue;
+      }
+
+      try {
+        await customSkillsReady;
+        if (providerManager.providers.size === 0) await providerManager.load();
+        const store = await userMemoryStore.load();
+        const provider = providerManager.getActive();
+        const costState = agent._newCostRunState();
+        const result = await agent._chatWithCostAllowance(provider, buildUserMemoryExtractionMessages({
+          userText: job.userText,
+          assistantText: job.assistantText,
+          memories: store.records,
+          mode: job.mode,
+          succeeded: job.succeeded,
+          sourceContext: job.sourceContext,
+        }), { maxTokens: 600, temperature: 0 }, costState);
+        const operations = parseUserMemoryExtractionResult(result?.content || '');
+        const applied = await applyUserMemoryExtractionOperationsToCurrentStore(job.id, operations);
+        if (applied.changed) await syncAgentUserMemoryFromStorage();
+      } catch (error) {
+        if (agent._isCostAllowanceError?.(error)) {
+          await removeUserMemoryExtractionJob(job.id);
+          return;
+        }
+        await markUserMemoryExtractionJobFailed(job.id);
+        scheduleUserMemoryExtractionDrain(USER_MEMORY_EXTRACTION_RETRY_DELAY_MS);
+        return;
+      }
+    }
+  })().finally(() => {
+    userMemoryExtractionDrainPromise = null;
+  });
+  return userMemoryExtractionDrainPromise;
+}
 
 async function loadDefaultSkillRecords() {
   const records = [];
@@ -294,6 +636,8 @@ chrome.runtime.onInstalled.addListener(async () => {
   createContextMenus();
   await providerManager.load();
   await loadMaxSteps();
+  await syncAgentUserMemoryFromStorage().catch(() => {});
+  scheduleUserMemoryExtractionDrain(5000);
   console.log('[WebBrain] Extension installed, providers loaded.');
 });
 
@@ -302,6 +646,8 @@ chrome.runtime.onStartup?.addListener(async () => {
   createContextMenus();
   await providerManager.load();
   await loadMaxSteps();
+  await syncAgentUserMemoryFromStorage().catch(() => {});
+  scheduleUserMemoryExtractionDrain(5000);
 });
 
 // Listen for setting changes
@@ -336,6 +682,24 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.profileText) {
     agent.profileText = changes.profileText.newValue || '';
     refreshPrompts = true;
+  }
+  if (changes[USER_MEMORY_ENABLED_KEY] || changes[USER_MEMORY_MAX_PROMPT_CHARS_KEY] || changes[USER_MEMORY_STORAGE_KEY]) {
+    const memoryUpdate = {};
+    if (changes[USER_MEMORY_ENABLED_KEY]) {
+      memoryUpdate.enabled = changes[USER_MEMORY_ENABLED_KEY].newValue !== false;
+    }
+    if (changes[USER_MEMORY_MAX_PROMPT_CHARS_KEY]) {
+      memoryUpdate.maxPromptChars = normalizeUserMemoryMaxPromptChars(changes[USER_MEMORY_MAX_PROMPT_CHARS_KEY].newValue);
+    }
+    if (changes[USER_MEMORY_STORAGE_KEY]) {
+      memoryUpdate.records = normalizeUserMemoryStore(changes[USER_MEMORY_STORAGE_KEY].newValue).records;
+    }
+    agent.setUserMemory(memoryUpdate);
+  }
+  if (shouldClearUserMemoryExtractionQueueForChanges(changes)) {
+    clearUserMemoryExtractionQueue().catch((error) => {
+      console.warn('[WebBrain] failed to clear user-memory extraction queue:', error);
+    });
   }
   if (changes[CUSTOM_SKILLS_STORAGE_KEY]) {
     agent.customSkills = normalizeCustomSkills(changes[CUSTOM_SKILLS_STORAGE_KEY].newValue);
@@ -932,6 +1296,7 @@ async function loadApiMutationObserverSetting() {
 loadApiMutationObserverSetting();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  clearUserMemoryTurnContext(tabId);
   apiRequestsByTab.delete(tabId);
   for (const [id, replay] of apiRequestReplayById.entries()) {
     if (replay?.tabId === tabId) apiRequestReplayById.delete(id);
@@ -961,7 +1326,7 @@ async function handleMessage(msg, sender) {
     // Agent toggles and prompt add-ons hydrate once at SW boot — await those
     // promises so the first chat can't race ahead of hydration, without a
     // storage round-trip on every message.
-    await Promise.all([planBeforeActReady, planReviewReady, customSkillsReady]);
+    await Promise.all([planBeforeActReady, planReviewReady, customSkillsReady, userMemoryReady]);
   }
 
   switch (msg.action) {
@@ -988,6 +1353,88 @@ async function handleMessage(msg, sender) {
           beforeFinalizeRecording: loadProvidersForRecordingFinalize,
         }),
       };
+
+    // --- User Memory ---
+    case 'get_user_memory': {
+      const store = await userMemoryStore.load();
+      const settings = await chrome.storage.local.get([
+        USER_MEMORY_ENABLED_KEY,
+        USER_MEMORY_AUTO_CAPTURE_KEY,
+        USER_MEMORY_FORM_CAPTURE_KEY,
+        USER_MEMORY_MAX_PROMPT_CHARS_KEY,
+      ]);
+      return {
+        ok: true,
+        store,
+        records: store.records,
+        enabled: settings[USER_MEMORY_ENABLED_KEY] !== false,
+        autoCaptureEnabled: settings[USER_MEMORY_AUTO_CAPTURE_KEY] === true,
+        formCaptureEnabled: settings[USER_MEMORY_FORM_CAPTURE_KEY] === true,
+        maxPromptChars: normalizeUserMemoryMaxPromptChars(settings[USER_MEMORY_MAX_PROMPT_CHARS_KEY]),
+      };
+    }
+
+    case 'add_user_memory': {
+      const result = await withUserMemoryStoreLock(() => userMemoryStore.add(msg.text, {
+        kind: msg.kind,
+        scope: msg.scope,
+        source: 'manual',
+        confidence: 1,
+      }));
+      if (result.changed) await syncAgentUserMemoryFromStorage();
+      return { ok: !!result.record, ...result };
+    }
+
+    case 'update_user_memory': {
+      const result = await withUserMemoryStoreLock(() => userMemoryStore.update(String(msg.id || ''), {
+        text: msg.text,
+        kind: msg.kind,
+        scope: msg.scope,
+        confidence: msg.confidence,
+      }));
+      if (result.changed) await syncAgentUserMemoryFromStorage();
+      return { ok: result.changed, ...result };
+    }
+
+    case 'delete_user_memory': {
+      const result = await withUserMemoryStoreLock(() => userMemoryStore.delete(String(msg.id || '')));
+      if (result.changed) await syncAgentUserMemoryFromStorage();
+      return { ok: result.changed, ...result };
+    }
+
+    case 'clear_user_memory': {
+      const store = await withUserMemoryStoreLock(async () => {
+        await clearUserMemoryExtractionQueue();
+        return userMemoryStore.clear();
+      });
+      await syncAgentUserMemoryFromStorage();
+      return { ok: true, store };
+    }
+
+    case 'export_user_memory': {
+      const store = await userMemoryStore.load();
+      return { ok: true, store, json: JSON.stringify(store, null, 2) };
+    }
+
+    case 'import_user_memory': {
+      let payload = msg.store || msg.json || {};
+      if (typeof payload === 'string') payload = JSON.parse(payload);
+      const store = await withUserMemoryStoreLock(() => userMemoryStore.replace(payload));
+      await syncAgentUserMemoryFromStorage();
+      return { ok: true, store };
+    }
+
+    case 'enqueue_user_memory_extraction': {
+      const result = await enqueueUserMemoryExtraction({
+        userText: msg.userText,
+        assistantText: msg.assistantText,
+        mode: msg.mode,
+        succeeded: msg.succeeded,
+        sourceContext: msg.sourceContext,
+        clarificationText: msg.clarificationText,
+      });
+      return { ok: true, ...result };
+    }
 
     // --- Chat / Agent ---
     case 'ensure_conversation_id': {
@@ -1023,6 +1470,7 @@ async function handleMessage(msg, sender) {
       }
 
       const updates = [];
+      let userMemoryTurnContextTaken = false;
       try {
         const result = await agent.processMessage(tabId, msg.text, (type, data) => {
           updates.push({ type, data });
@@ -1035,8 +1483,17 @@ async function handleMessage(msg, sender) {
           }).catch(() => {});
         }, mode, msg.attachments);
 
+        const userMemoryPayload = takeUserMemoryTurnExtractionPayload(tabId, {
+          userText: msg.text,
+          assistantText: result,
+          mode,
+          succeeded: !updates.some((update) => update?.type === 'error'),
+        });
+        userMemoryTurnContextTaken = true;
+        enqueueUserMemoryExtractionAfterTurn(userMemoryPayload);
         return { content: result, updates, conversationId: await agent.getConversationId(tabId) };
       } finally {
+        if (!userMemoryTurnContextTaken) clearUserMemoryTurnContext(tabId);
         sendAgentRunComplete(tabId);
         sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
       }
@@ -1050,8 +1507,11 @@ async function handleMessage(msg, sender) {
       if (msg.apiMutationsAllowed) agent.setApiMutationsAllowed(tabId, true);
 
       sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS');
+      let userMemoryTurnContextTaken = false;
+      let userMemoryTurnHadError = false;
       try {
         const result = await agent.processMessageStream(tabId, msg.text, (type, data) => {
+          if (type === 'error') userMemoryTurnHadError = true;
           chrome.runtime.sendMessage({
             target: 'sidepanel',
             action: 'agent_update',
@@ -1061,8 +1521,17 @@ async function handleMessage(msg, sender) {
           }).catch(() => {});
         }, mode);
 
+        const userMemoryPayload = takeUserMemoryTurnExtractionPayload(tabId, {
+          userText: msg.text,
+          assistantText: result,
+          mode,
+          succeeded: !userMemoryTurnHadError,
+        });
+        userMemoryTurnContextTaken = true;
+        enqueueUserMemoryExtractionAfterTurn(userMemoryPayload);
         return { content: result, conversationId: await agent.getConversationId(tabId) };
       } finally {
+        if (!userMemoryTurnContextTaken) clearUserMemoryTurnContext(tabId);
         sendAgentRunComplete(tabId);
         sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
       }
@@ -1074,8 +1543,11 @@ async function handleMessage(msg, sender) {
       const mode = msg.mode || 'ask';
 
       sendIndicatorMessage(tabId, 'WB_SHOW_AGENT_INDICATORS');
+      let userMemoryTurnContextTaken = false;
+      let userMemoryTurnHadError = false;
       try {
         const result = await agent.continueProcessing(tabId, (type, data) => {
+          if (type === 'error') userMemoryTurnHadError = true;
           chrome.runtime.sendMessage({
             target: 'sidepanel',
             action: 'agent_update',
@@ -1085,8 +1557,17 @@ async function handleMessage(msg, sender) {
           }).catch(() => {});
         }, mode);
 
+        const userMemoryPayload = takeUserMemoryTurnExtractionPayload(tabId, {
+          userText: 'Please continue from where you left off.',
+          assistantText: result,
+          mode,
+          succeeded: !userMemoryTurnHadError,
+        });
+        userMemoryTurnContextTaken = true;
+        enqueueUserMemoryExtractionAfterTurn(userMemoryPayload);
         return { content: result, conversationId: await agent.getConversationId(tabId) };
       } finally {
+        if (!userMemoryTurnContextTaken) clearUserMemoryTurnContext(tabId);
         sendAgentRunComplete(tabId);
         sendIndicatorMessage(tabId, 'WB_HIDE_AGENT_INDICATORS');
       }
@@ -1198,6 +1679,11 @@ async function handleMessage(msg, sender) {
       if (!clarifyId) return { ok: false, error: 'clarifyId required' };
       if (!answer) return { ok: false, error: 'answer required' };
       const matched = agent.submitClarifyResponse(tabId, clarifyId, answer, msg.source || 'user');
+      if (matched && msg.memorySource === 'clarification_response') {
+        recordClarificationMemoryCandidate(tabId, msg.question, answer);
+      } else if (matched && msg.memorySource === 'form_confirmation') {
+        recordFormCompletionMemoryCandidate(tabId, answer);
+      }
       return { ok: matched, matched };
     }
 

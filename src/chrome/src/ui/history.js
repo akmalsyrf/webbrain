@@ -11,6 +11,7 @@ const listEl = document.getElementById('history-list');
 const mainPane = document.getElementById('main-pane');
 const countPill = document.getElementById('count-pill');
 const filterText = document.getElementById('filter-text');
+const filterClear = document.getElementById('filter-clear');
 const btnRefresh = document.getElementById('btn-refresh');
 const btnExport = document.getElementById('btn-export');
 const btnDelete = document.getElementById('btn-delete');
@@ -39,6 +40,37 @@ function refreshButtons() {
   btnDelete.disabled = !hasSelection;
 }
 
+function clearFilterQueryParam() {
+  try {
+    const url = new URL(location.href);
+    if (!url.searchParams.has('url')) return;
+    url.searchParams.delete('url');
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // Keep filtering local if URL mutation is unavailable.
+  }
+}
+
+function updateFilterControls(filteredCount = allRecords.length) {
+  const filterActive = !!filterText.value.trim();
+  const count = filterActive ? filteredCount : allRecords.length;
+  countPill.textContent = t(count === 1 ? 'hist.record' : 'hist.records', { n: count });
+  countPill.setAttribute('aria-disabled', filterActive ? 'false' : 'true');
+  countPill.title = filterActive ? t('hist.filter.clear') : '';
+  if (filterClear) filterClear.hidden = !filterActive;
+}
+
+function clearFilter({ focus = false } = {}) {
+  if (!filterText.value) {
+    updateFilterControls();
+    return;
+  }
+  filterText.value = '';
+  clearFilterQueryParam();
+  renderList();
+  if (focus) filterText.focus();
+}
+
 async function refresh() {
   const [records, runs] = await Promise.all([
     listChatHistoryRecords({ limit: 1000 }),
@@ -46,7 +78,6 @@ async function refresh() {
   ]);
   allRecords = records;
   allRuns = runs;
-  countPill.textContent = t(records.length === 1 ? 'hist.record' : 'hist.records', { n: records.length });
   const selectedRecordStillExists = selectedRecordId && allRecords.some((record) => record.id === selectedRecordId);
   if (selectedRecordId && !selectedRecordStillExists) {
     selectedRecordId = null;
@@ -72,6 +103,7 @@ function renderList() {
       record.lastAssistantMessage,
     ].some((value) => String(value || '').toLowerCase().includes(needle));
   });
+  updateFilterControls(filtered.length);
 
   if (!filtered.length) {
     listEl.innerHTML = `<div class="empty-inline">${escapeHtml(t('hist.no_match'))}</div>`;
@@ -293,6 +325,10 @@ btnExport.addEventListener('click', exportSelected);
 btnDelete.addEventListener('click', deleteSelected);
 btnClearAll.addEventListener('click', clearAll);
 filterText.addEventListener('input', renderList);
+if (filterClear) filterClear.addEventListener('click', () => clearFilter({ focus: true }));
+countPill.addEventListener('click', () => {
+  if (filterText.value.trim()) clearFilter({ focus: true });
+});
 
 document.addEventListener('wb-locale-changed', () => {
   renderList();

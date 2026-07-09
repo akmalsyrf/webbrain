@@ -41,8 +41,9 @@
     }
   } catch (_) {}
 
-  // Honour #display / #providers / #skills / #multimodal / #permissions in the URL so other parts
-  // of the extension can deep-link into a tab later. The "multimodal" tab
+  // Honour #display / #providers / #multimodal / #memory / #skills /
+  // #permissions in the URL so other parts of the extension can deep-link into
+  // a tab later. The "multimodal" tab
   // was previously named "vision" — old #vision deep-links no longer match
   // anything and silently fall back to the default tab, which is fine.
   const hash = (location.hash || '').replace('#', '');

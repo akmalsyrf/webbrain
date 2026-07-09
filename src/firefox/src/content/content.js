@@ -706,6 +706,16 @@
     return false;
   }
 
+  function _isSubmitControl(el) {
+    const control = el?.closest ? el.closest('button,input') : el;
+    if (!control || !control.tagName) return false;
+    const tag = control.tagName.toUpperCase();
+    const type = (control.getAttribute?.('type') || '').trim().toLowerCase();
+    if (tag === 'INPUT') return type === 'submit' || type === 'image';
+    if (tag === 'BUTTON') return type === 'submit' || (!type && !!(control.form || control.closest?.('form')));
+    return false;
+  }
+
   /** Walk up from a passive child to find its interactive ancestor (up to 5 levels). */
   function _resolveInteractiveAncestor(el) {
     if (!_PASSIVE_TAGS.has(el.tagName) || _isInteractive(el)) return el;
@@ -1105,6 +1115,7 @@
     }
 
     if (!el) return { success: false, error: 'Element not found' };
+    const targetIsSubmitControl = _isSubmitControl(el);
 
     // ── Auto-select: if click text matches a <select> option, select it ──
     if (params.text) {
@@ -1144,7 +1155,7 @@
     }
 
     // Also check if the target element is near a SELECT (sibling pattern)
-    if (!(el instanceof HTMLSelectElement)) {
+    if (!(el instanceof HTMLSelectElement) && !targetIsSubmitControl) {
       const p = el.parentElement;
       let nearbySel = null;
       if (p) { for (const sib of p.children) { if (sib.tagName === 'SELECT') { nearbySel = sib; break; } } }
@@ -1233,7 +1244,7 @@
       _lastEditableTarget = null;
     }
 
-    if (postActive && postActive !== el && postActive instanceof HTMLSelectElement) {
+    if (!targetIsSubmitControl && postActive && postActive !== el && postActive instanceof HTMLSelectElement) {
       postActive.blur();
       postActive.focus(); // close native popup, keep focus
       const postOpts = Array.from(postActive.options).map(o => o.text.trim());

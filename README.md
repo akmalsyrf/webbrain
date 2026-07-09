@@ -29,6 +29,7 @@ Open-source AI browser agent for Chrome and Firefox. Chat with any web page, aut
 - **Onboarding Wizard** — First-launch walkthrough covering Act mode safety and provider setup
 - **Side Panel UI** — Clean chat interface that lives alongside your browsing
 - **Per-Tab Conversations** — Each tab has its own chat history
+- **User Memory** — Optional local memory for user-stated preferences, with explicit `/remember` commands and opt-in background auto-learning
 - **Streaming** — Real-time token streaming from all providers
 - **Smart Context** — Token-aware auto-compaction (summarizes older turns once the conversation nears the model's context window, with a visible "Context automatically compacted" notice), tool result limits, and emergency overflow recovery
 - **Browser History Control** — Act mode can use native `go_back` / `go_forward` history tools instead of CSP-sensitive page JavaScript
@@ -121,6 +122,11 @@ Click the gear icon or go to the extension's Options page to configure:
 - Auto-screenshot — Provide visual context when DOM/page reads are insufficient
 - Max Agent Steps — Configurable step limit (5-200, default 60)
 - Plan before Act — Optionally generate and review a structured Act-mode plan before browser tools run (try mode by default; explicit off is preserved)
+
+**Profile and Memory:**
+- Profile auto-fill and user memory are stored in plaintext browser local storage.
+- User memory can be managed from Settings -> Profile or with `/remember`, `/show-memory`, and `/forget-memory`.
+- When enabled, active memory records are sent to the configured LLM provider as part of the system prompt; optional auto-learning makes a best-effort provider call only after a turn completes.
 
 **Skills:**
 - FreeSkillz.xyz ships enabled by default and exposes `read_youtube_transcript`, `resolve_public_media`, and `download_public_media` through its skill manifest; remove it from Settings → Skills if you do not want those tools available.

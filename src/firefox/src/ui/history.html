@@ -70,6 +70,15 @@
       color: var(--text2);
       white-space: nowrap;
     }
+    button.pill {
+      cursor: pointer;
+    }
+    button.pill[aria-disabled="true"] {
+      cursor: default;
+    }
+    button.pill[aria-disabled="true"]:hover {
+      background: var(--bg2);
+    }
     button, input[type=text] {
       background: var(--bg3);
       color: var(--text);
@@ -108,6 +117,36 @@
       padding: 10px 12px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+    }
+    .filter-wrap {
+      position: relative;
+    }
+    .filter-wrap input[type=text] {
+      padding-right: 32px;
+    }
+    .filter-clear {
+      position: absolute;
+      top: 50%;
+      right: 5px;
+      transform: translateY(-50%);
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text3);
+      font-size: 13px;
+      line-height: 1;
+    }
+    .filter-clear:hover {
+      background: var(--bg4);
+      color: var(--text);
+    }
+    .filter-clear[hidden] {
+      display: none;
     }
     #history-list {
       overflow-y: auto;
@@ -261,7 +300,7 @@
 <body>
   <header>
     <h1 data-i18n="hist.title"></h1>
-    <span id="count-pill" class="pill"></span>
+    <button id="count-pill" class="pill" type="button" aria-disabled="true"></button>
     <div class="spacer"></div>
     <button id="btn-refresh" data-i18n="hist.btn.refresh" data-i18n-title="hist.btn.refresh.title"></button>
     <button id="btn-export" data-i18n="hist.btn.export" data-i18n-title="hist.btn.export.title"></button>
@@ -271,7 +310,10 @@
   <main>
     <aside id="sidebar">
       <div id="filters">
-        <input type="text" id="filter-text" data-i18n-placeholder="hist.filter.placeholder">
+        <div class="filter-wrap">
+          <input type="text" id="filter-text" data-i18n-placeholder="hist.filter.placeholder">
+          <button id="filter-clear" class="filter-clear" type="button" data-i18n-title="hist.filter.clear" data-i18n-aria-label="hist.filter.clear" hidden>x</button>
+        </div>
       </div>
       <div id="history-list"></div>
     </aside>

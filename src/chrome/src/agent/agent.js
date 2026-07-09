@@ -40,6 +40,7 @@ import {
 import { extractFirstJsonObject } from './json-extract.js';
 import { sanitizeText as sanitizePlannerText } from './text-sanitize.js';
 import { buildCustomSkillsPrompt, buildSkillToolDefinitions, buildSkillToolRegistry, normalizeCustomSkills } from './skills.js';
+import { USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS, formatUserMemoryPrompt, normalizeUserMemoryMaxPromptChars, normalizeUserMemoryStore } from './user-memory.js';
 
 const DEFAULT_CLOUD_COST_ALLOWANCE_USD = 10;
 const COST_ALLOWANCE_SESSION_KEY = 'costAllowanceSessionUsd';
@@ -140,6 +141,9 @@ export class Agent {
     this.profileEnabled = false;
     this.profileText = '';
     this.customSkills = [];
+    this.userMemoryEnabled = true;
+    this.userMemoryRecords = [];
+    this.userMemoryMaxPromptChars = USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS;
 
     // CapSolver integration. Off by default. When enabled AND an API key
     // is set, the system prompt grows a "[CAPTCHA SOLVER]" note that
@@ -4854,6 +4858,11 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         this.profileText.trim();
     }
 
+    if (this.userMemoryEnabled) {
+      const memoryPrompt = formatUserMemoryPrompt(this.userMemoryRecords, this.userMemoryMaxPromptChars);
+      if (memoryPrompt) prompt += `\n\n${memoryPrompt}`;
+    }
+
     // CAPTCHA solver. Only injected when the user has explicitly enabled
     // CapSolver — otherwise the default "stop and ask the user" rule in
     // SYSTEM_PROMPT_ACT stands. The note unlocks the solve_captcha tool
@@ -4867,6 +4876,17 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
 
   setCustomSkills(skills) {
     this.customSkills = normalizeCustomSkills(skills);
+    this._refreshSystemPrompts();
+  }
+
+  setUserMemory(options = {}) {
+    if (options.enabled != null) this.userMemoryEnabled = options.enabled !== false;
+    if (Array.isArray(options.records)) {
+      this.userMemoryRecords = normalizeUserMemoryStore({ records: options.records }).records;
+    }
+    if (options.maxPromptChars != null) {
+      this.userMemoryMaxPromptChars = normalizeUserMemoryMaxPromptChars(options.maxPromptChars);
+    }
     this._refreshSystemPrompts();
   }
 
@@ -9166,6 +9186,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
         await cdpClient.evaluate(tabId, `
           if (!window.__wb_sel_guard) {
             window.__wb_sel_guard = true;
+            function findSubmitControl(el) {
+              const control = el?.closest ? el.closest('button,input') : el;
+              if (!control || !control.tagName) return null;
+              const tag = control.tagName.toUpperCase();
+              const type = (control.getAttribute?.('type') || '').trim().toLowerCase();
+              if (tag === 'INPUT' && (type === 'submit' || type === 'image')) return control;
+              if (tag === 'BUTTON' && (type === 'submit' || (!type && !!(control.form || control.closest?.('form'))))) return control;
+              return null;
+            }
             function findNearbySelect(el) {
               if (!el) return null;
               if (el.tagName === 'SELECT') return el;
@@ -9192,6 +9221,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
             }
             ['mousedown','pointerdown','click'].forEach(evt => {
               document.addEventListener(evt, e => {
+                if (findSubmitControl(e.target)) return;
                 const sel = findNearbySelect(e.target);
                 if (sel) { e.preventDefault(); e.stopPropagation(); sel.focus(); }
               }, true);
@@ -9260,6 +9290,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                 const t = (el.getAttribute('type') || 'text').toLowerCase();
                 return t === 'button' || t === 'submit' || t === 'reset';
               };
+              const isSubmitControl = (el) => {
+                const control = el?.closest ? el.closest('button,input') : el;
+                if (!control || !control.tagName) return false;
+                const tag = control.tagName.toUpperCase();
+                const type = (control.getAttribute?.('type') || '').trim().toLowerCase();
+                if (tag === 'INPUT') return type === 'submit' || type === 'image';
+                if (tag === 'BUTTON') return type === 'submit' || (!type && !!(control.form || control.closest?.('form')));
+                return false;
+              };
               const normalized = all.map(el => ({
                 el,
                 txt: (el.innerText || (_valIsLabel(el) ? el.value : '') || el.placeholder || el.ariaLabel || '').trim().toLowerCase(),
@@ -9320,6 +9359,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                       y: r.top + r.height / 2, tag: inp.tagName,
                       width: r.width, height: r.height,
                       text: ltxt.slice(0, 80), focusedInput: true,
+                      isSubmitControl: isSubmitControl(inp),
                     };
                   }
                 }
@@ -9446,6 +9486,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                 height: r.height,
                 tag: el.tagName,
                 text: (el.innerText || el.value || '').slice(0, 80),
+                isSubmitControl: isSubmitControl(el),
               };
             })()
           `);
@@ -9480,6 +9521,15 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                   // typed value, or click({text}) resolves to the filter box
                   // instead of the option and loops.
                   const _valIsLabel = (el) => el.tagName === 'TEXTAREA' ? false : el.tagName !== 'INPUT' ? true : ['button','submit','reset'].includes((el.getAttribute('type')||'text').toLowerCase());
+                  const isSubmitControl = (el) => {
+                    const control = el?.closest ? el.closest('button,input') : el;
+                    if (!control || !control.tagName) return false;
+                    const tag = control.tagName.toUpperCase();
+                    const type = (control.getAttribute?.('type') || '').trim().toLowerCase();
+                    if (tag === 'INPUT') return type === 'submit' || type === 'image';
+                    if (tag === 'BUTTON') return type === 'submit' || (!type && !!(control.form || control.closest?.('form')));
+                    return false;
+                  };
                   const normalized = all.map(el => ({ el, txt: (el.innerText || (_valIsLabel(el) ? el.value : '') || el.placeholder || el.ariaLabel || '').trim().toLowerCase() })).filter(x => !!x.txt);
 
                   // Label→input map
@@ -9518,7 +9568,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                             if (pr.width > 0 && pr.height > 0) { r = pr; break; }
                           }
                         }
-                        return { found: true, mode: 'label', x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height, tag: inp.tagName, text: ltxt.slice(0, 80), focusedInput: true };
+                        return { found: true, mode: 'label', x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height, tag: inp.tagName, text: ltxt.slice(0, 80), focusedInput: true, isSubmitControl: isSubmitControl(inp) };
                       }
                     }
                     return { found: false };
@@ -9583,7 +9633,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
                       if (pr.width > 0 && pr.height > 0) { r = pr; break; }
                     }
                   }
-                  return { found: true, mode: usedMode, x: r.left+r.width/2, y: r.top+r.height/2, width: r.width, height: r.height, tag: el.tagName, text: (el.innerText||el.value||'').slice(0,80) };
+                  return { found: true, mode: usedMode, x: r.left+r.width/2, y: r.top+r.height/2, width: r.width, height: r.height, tag: el.tagName, text: (el.innerText||el.value||'').slice(0,80), isSubmitControl: isSubmitControl(el) };
                 })()
               `);
               const retryInfo = retry?.result?.value;
@@ -9813,7 +9863,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           // Secondary SELECT check: the text resolved to a non-SELECT element,
           // but the click coordinates might land on/near a SELECT (e.g. text
           // "Monthly" resolves to a label/button but a sibling/nearby select exists).
-          const coordSelCheck = await cdpClient.evaluate(tabId, `
+          const coordSelCheck = info.isSubmitControl ? null : await cdpClient.evaluate(tabId, `
             (() => {
               const el = document.elementFromPoint(${info.x}, ${info.y});
               if (!el) return null;
@@ -9887,7 +9937,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
           // global guard prevents the native dropdown from opening, but we
           // still need to detect and return guidance.
           await new Promise(r => setTimeout(r, 200));
-          const postClickSel1 = await cdpClient.evaluate(tabId, `
+          const postClickSel1 = info.isSubmitControl ? null : await cdpClient.evaluate(tabId, `
             (() => {
               const el = document.activeElement;
               if (el?.tagName === 'SELECT') {

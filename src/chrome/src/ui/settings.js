@@ -16,10 +16,18 @@ import {
   normalizeDefaultSkillRemovalIds,
   readSkillImportText,
 } from '../agent/skills.js';
+import {
+  USER_MEMORY_AUTO_CAPTURE_KEY,
+  USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS,
+  USER_MEMORY_ENABLED_KEY,
+  USER_MEMORY_FORM_CAPTURE_KEY,
+  USER_MEMORY_MAX_PROMPT_CHARS_KEY,
+  normalizeUserMemoryMaxPromptChars,
+} from '../agent/user-memory.js';
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '21.7.0';
+const EXT_VERSION = '22.0.0';
 
 const providersContainer = document.getElementById('providers');
 const displaySettings = document.getElementById('display-settings');
@@ -82,6 +90,17 @@ const profileTextArea = document.getElementById('profile-text');
 const btnSaveProfile = document.getElementById('btn-save-profile');
 const btnClearProfile = document.getElementById('btn-clear-profile');
 const profileTestResult = document.getElementById('test-profile');
+const userMemoryEnabledToggle = document.getElementById('toggle-user-memory-enabled');
+const userMemoryAutoToggle = document.getElementById('toggle-user-memory-auto');
+const userMemoryFormToggle = document.getElementById('toggle-user-memory-form');
+const userMemoryMaxCharsInput = document.getElementById('input-user-memory-max-chars');
+const userMemoryList = document.getElementById('user-memory-list');
+const btnRefreshUserMemory = document.getElementById('btn-refresh-user-memory');
+const btnExportUserMemory = document.getElementById('btn-export-user-memory');
+const btnClearUserMemory = document.getElementById('btn-clear-user-memory');
+const userMemoryImportText = document.getElementById('user-memory-import-text');
+const btnImportUserMemory = document.getElementById('btn-import-user-memory');
+const userMemoryTestResult = document.getElementById('test-user-memory');
 const captchaEnabledToggle = document.getElementById('toggle-captcha-enabled');
 const captchaApiKeyInput = document.getElementById('captcha-api-key');
 const btnSaveCaptcha = document.getElementById('btn-save-captcha');
@@ -392,6 +411,7 @@ async function init() {
   const profileStored = await chrome.storage.local.get(['profileEnabled', 'profileText']);
   if (profileEnabledToggle) profileEnabledToggle.checked = !!profileStored.profileEnabled;
   if (profileTextArea) profileTextArea.value = profileStored.profileText || '';
+  await loadUserMemorySettings();
 
   // Load CapSolver config — off by default.
   const captchaStored = await chrome.storage.local.get(['captchaSolverEnabled', 'capsolverApiKey']);
@@ -1036,6 +1056,179 @@ if (btnClearProfile) {
     if (profileTextArea) profileTextArea.value = '';
     await chrome.storage.local.set({ profileText: '' });
     flashProfileResult('ok', t('st.profile.cleared'));
+  });
+}
+
+function flashUserMemoryResult(className, text) {
+  if (!userMemoryTestResult) return;
+  userMemoryTestResult.className = `test-result show ${className}`;
+  userMemoryTestResult.textContent = text;
+  setTimeout(() => userMemoryTestResult.classList.remove('show'), 2500);
+}
+
+const USER_MEMORY_FAILURE_REASON_KEYS = {
+  invalid_or_sensitive: 'st.memory.reason.invalid_or_sensitive',
+  not_found: 'st.memory.reason.not_found',
+};
+
+function userMemoryFailureText(res) {
+  const reasonKey = USER_MEMORY_FAILURE_REASON_KEYS[res?.reason];
+  if (reasonKey) return t(reasonKey);
+  return t('st.memory.failed', { error: res?.reason || res?.error || 'unknown error' });
+}
+
+function renderUserMemoryRecords(records = []) {
+  if (!userMemoryList) return;
+  const active = records.filter((record) => record && !record.archivedAt && record.text);
+  if (!active.length) {
+    userMemoryList.innerHTML = `<div style="font-size:12px;color:var(--text2);">${escapeHtml(t('st.memory.empty'))}</div>`;
+    return;
+  }
+  userMemoryList.innerHTML = active.map((record) => `
+    <div data-memory-id="${escapeHtml(record.id)}" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin:0;padding:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <code style="font-size:11px;color:var(--text2);">${escapeHtml(record.id)}</code>
+        <select class="user-memory-kind" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;">
+          ${['preference', 'profile_hint', 'workflow_preference'].map((kind) => `<option value="${kind}"${record.kind === kind ? ' selected' : ''}>${kind}</option>`).join('')}
+        </select>
+      </div>
+      <textarea class="user-memory-text" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font:inherit;font-size:13px;line-height:1.45;resize:vertical;">${escapeHtml(record.text)}</textarea>
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn-primary btn-save-user-memory" data-memory-id="${escapeHtml(record.id)}" data-i18n="st.memory.save">${escapeHtml(t('st.memory.save'))}</button>
+        <button class="btn-secondary btn-delete-user-memory" data-memory-id="${escapeHtml(record.id)}" data-i18n="st.memory.delete">${escapeHtml(t('st.memory.delete'))}</button>
+      </div>
+    </div>
+  `).join('');
+  userMemoryList.querySelectorAll('.btn-save-user-memory').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const card = btn.closest('[data-memory-id]');
+      const id = btn.dataset.memoryId;
+      const text = card?.querySelector('.user-memory-text')?.value || '';
+      const kind = card?.querySelector('.user-memory-kind')?.value || 'preference';
+      const res = await sendToBackground('update_user_memory', { id, text, kind });
+      if (!res?.ok) {
+        flashUserMemoryResult('error', userMemoryFailureText(res));
+        return;
+      }
+      flashUserMemoryResult('ok', t('st.memory.saved'));
+      await loadUserMemorySettings();
+    });
+  });
+  userMemoryList.querySelectorAll('.btn-delete-user-memory').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const res = await sendToBackground('delete_user_memory', { id: btn.dataset.memoryId });
+      if (!res?.ok) {
+        flashUserMemoryResult('error', userMemoryFailureText(res));
+        return;
+      }
+      flashUserMemoryResult('ok', t('st.memory.deleted'));
+      await loadUserMemorySettings();
+    });
+  });
+}
+
+async function loadUserMemorySettings() {
+  const res = await sendToBackground('get_user_memory').catch((error) => ({ ok: false, error: error.message }));
+  if (!res?.ok) {
+    renderUserMemoryRecords([]);
+    flashUserMemoryResult('error', t('st.memory.failed', { error: res?.error || 'unknown error' }));
+    return;
+  }
+  if (userMemoryEnabledToggle) userMemoryEnabledToggle.checked = res.enabled !== false;
+  if (userMemoryAutoToggle) userMemoryAutoToggle.checked = res.autoCaptureEnabled === true;
+  if (userMemoryFormToggle) userMemoryFormToggle.checked = res.formCaptureEnabled === true;
+  if (userMemoryMaxCharsInput) userMemoryMaxCharsInput.value = String(res.maxPromptChars ?? USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS);
+  renderUserMemoryRecords(res.records || []);
+}
+
+if (userMemoryEnabledToggle) {
+  userMemoryEnabledToggle.addEventListener('change', async () => {
+    await chrome.storage.local.set({ [USER_MEMORY_ENABLED_KEY]: userMemoryEnabledToggle.checked }).catch(() => {});
+  });
+}
+
+if (userMemoryAutoToggle) {
+  userMemoryAutoToggle.addEventListener('change', async () => {
+    await chrome.storage.local.set({ [USER_MEMORY_AUTO_CAPTURE_KEY]: userMemoryAutoToggle.checked }).catch(() => {});
+  });
+}
+
+if (userMemoryFormToggle) {
+  userMemoryFormToggle.addEventListener('change', async () => {
+    await chrome.storage.local.set({ [USER_MEMORY_FORM_CAPTURE_KEY]: userMemoryFormToggle.checked }).catch(() => {});
+  });
+}
+
+if (userMemoryMaxCharsInput) {
+  userMemoryMaxCharsInput.addEventListener('change', async () => {
+    const rawMaxPromptChars = String(userMemoryMaxCharsInput.value || '').trim();
+    const value = rawMaxPromptChars === ''
+      ? USER_MEMORY_DEFAULT_MAX_PROMPT_CHARS
+      : normalizeUserMemoryMaxPromptChars(rawMaxPromptChars);
+    userMemoryMaxCharsInput.value = String(value);
+    await chrome.storage.local.set({ [USER_MEMORY_MAX_PROMPT_CHARS_KEY]: value }).catch(() => {});
+  });
+}
+
+if (btnRefreshUserMemory) {
+  btnRefreshUserMemory.addEventListener('click', loadUserMemorySettings);
+}
+
+if (btnClearUserMemory) {
+  btnClearUserMemory.addEventListener('click', async () => {
+    if (!window.confirm(t('st.memory.clear_confirm'))) return;
+    const res = await sendToBackground('clear_user_memory');
+    if (!res?.ok) {
+      flashUserMemoryResult('error', t('st.memory.failed', { error: res?.error || 'unknown error' }));
+      return;
+    }
+    flashUserMemoryResult('ok', t('st.memory.cleared'));
+    await loadUserMemorySettings();
+  });
+}
+
+if (btnExportUserMemory) {
+  btnExportUserMemory.addEventListener('click', async () => {
+    const res = await sendToBackground('export_user_memory');
+    if (!res?.ok) {
+      flashUserMemoryResult('error', t('st.memory.failed', { error: res?.error || 'unknown error' }));
+      return;
+    }
+    const blob = new Blob([res.json || JSON.stringify(res.store || {}, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `webbrain-user-memory-${Date.now()}.json`;
+    document.body.appendChild(a);
+    try { a.click(); } finally {
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 7000);
+    }
+    flashUserMemoryResult('ok', t('st.memory.exported'));
+  });
+}
+
+if (btnImportUserMemory) {
+  btnImportUserMemory.addEventListener('click', async () => {
+    const json = userMemoryImportText?.value || '';
+    if (!json.trim()) {
+      flashUserMemoryResult('error', t('st.memory.import_empty'));
+      return;
+    }
+    let res;
+    try {
+      res = await sendToBackground('import_user_memory', { json });
+    } catch (error) {
+      flashUserMemoryResult('error', t('st.memory.failed', { error: error?.message || 'invalid JSON' }));
+      return;
+    }
+    if (!res?.ok) {
+      flashUserMemoryResult('error', t('st.memory.failed', { error: res?.error || 'invalid JSON' }));
+      return;
+    }
+    if (userMemoryImportText) userMemoryImportText.value = '';
+    flashUserMemoryResult('ok', t('st.memory.imported'));
+    await loadUserMemorySettings();
   });
 }
 
