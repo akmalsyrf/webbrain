@@ -576,6 +576,7 @@ export default {
   'hist.btn.clear_all': 'Clear all',
   'hist.btn.clear_all.title': 'Delete every saved conversation',
   'hist.filter.placeholder': 'Search chats / URL / provider',
+  'hist.filter.clear': 'Clear filter and show all conversations',
   'hist.no_match': 'No conversations match.',
   'hist.untitled': 'Untitled conversation',
   'hist.empty.title': 'No conversation selected.',

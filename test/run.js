@@ -788,9 +788,15 @@ test('user memory extraction applies only high-confidence safe operations', () =
     assert.equal(extractionMessages.length, 2, `${label}: extractor should use a tiny two-message prompt`);
     assert.match(extractionMessages[0].content, /Do not save secrets/, `${label}: safety instruction missing`);
     assert.match(extractionMessages[0].content, /Clarification answers may be saved only when they express stable preferences/, `${label}: clarification safety instruction missing`);
+    assert.match(extractionMessages[0].content, /clearly changes or contradicts an existing memory/, `${label}: conflict update guidance missing`);
+    assert.match(extractionMessages[0].content, /update operation with the existing memory id/, `${label}: conflict update id guidance missing`);
+    assert.match(extractionMessages[0].content, /instead of adding a second conflicting record/, `${label}: duplicate conflict guidance missing`);
+    assert.match(extractionMessages[0].content, /Use archive only when the user explicitly says/, `${label}: archive revocation guidance missing`);
+    assert.match(extractionMessages[0].content, /conflict is ambiguous, return no operation/, `${label}: ambiguous conflict guidance missing`);
     const payload = JSON.parse(extractionMessages[1].content);
     assert.deepEqual(Object.keys(payload).sort(), ['current_memory', 'final_assistant_message', 'latest_user_message', 'mode', 'source_context', 'succeeded'].sort(), `${label}: extractor input should stay bounded`);
     assert.equal(payload.source_context, 'clarification_response', `${label}: extractor should include bounded source context`);
+    assert.equal(payload.current_memory[0].id, 'm1', `${label}: current memory ids should be available for update operations`);
     assert.equal(payload.latest_user_message, 'Remember that I prefer terse replies.', `${label}: latest user text`);
   }
 });
@@ -6122,6 +6128,28 @@ test('history page refresh rerenders the selected conversation pane', () => {
     assert.notEqual(staleGuardIdx, -1, `${label}: renderRecord should ignore stale async record loads`);
     assert.notEqual(applyIdx, -1, `${label}: renderRecord should apply only the loaded current record`);
     assert.equal(requestIdx < loadIdx && selectIdx < loadIdx && loadIdx < staleGuardIdx && staleGuardIdx < applyIdx, true, `${label}: stale record loads must be guarded before updating the details pane`);
+  }
+});
+
+test('history page filters can be cleared from the count pill and search box', () => {
+  for (const [label, prefix] of [
+    ['chrome', 'src/chrome'],
+    ['firefox', 'src/firefox'],
+  ]) {
+    const source = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/history.js'), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/history.html'), 'utf8');
+    const locale = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/locales/en.js'), 'utf8');
+
+    assert.match(html, /<button id="count-pill" class="pill" type="button"/, `${label}: record count pill should be clickable`);
+    assert.match(html, /id="filter-clear"/, `${label}: history filter should expose a clear button`);
+    assert.match(html, /data-i18n-aria-label="hist\.filter\.clear"/, `${label}: filter clear button should be accessible`);
+    assert.match(source, /const filterClear = document\.getElementById\('filter-clear'\);/, `${label}: history script should bind the clear button`);
+    assert.match(source, /function clearFilter\(\{ focus = false \} = \{\}\) \{[\s\S]*filterText\.value = '';[\s\S]*clearFilterQueryParam\(\);[\s\S]*renderList\(\);/, `${label}: clearFilter should empty the search and rerender all conversations`);
+    assert.match(source, /function updateFilterControls\(filteredCount = allRecords\.length\) \{[\s\S]*const count = filterActive \? filteredCount : allRecords\.length;[\s\S]*countPill\.textContent = t\(count === 1 \? 'hist\.record' : 'hist\.records'/, `${label}: count pill should show filtered count only while filtering`);
+    assert.match(source, /updateFilterControls\(filtered\.length\);/, `${label}: renderList should refresh filter controls with the filtered count`);
+    assert.match(source, /filterClear\.addEventListener\('click', \(\) => clearFilter\(\{ focus: true \}\)\);/, `${label}: clear button should clear the filter`);
+    assert.match(source, /countPill\.addEventListener\('click', \(\) => \{[\s\S]*if \(filterText\.value\.trim\(\)\) clearFilter\(\{ focus: true \}\);[\s\S]*\}\);/, `${label}: count pill should clear an active filter`);
+    assert.match(locale, /'hist\.filter\.clear': 'Clear filter and show all conversations'/, `${label}: clear filter fallback label missing`);
   }
 });
 
@@ -13112,6 +13140,30 @@ test('press_keys: Enter is a submit (CLICK); Tab/Escape are benign (null)', () =
   assert.equal(capabilityFor('press_keys', { key: 'Escape' }), null);
   assert.equal(capabilityFor('press_keys', { key: 'Tab' }), null);
   assert.equal(capabilityFor('press_keys', {}), Capability.CLICK); // unknown → gate, fail safe
+});
+
+test('submit controls bypass native select guards in click paths', () => {
+  const chromeAgent = fs.readFileSync(path.join(ROOT, 'src/chrome/src/agent/agent.js'), 'utf8');
+  assert.match(chromeAgent, /function findSubmitControl\(el\)[\s\S]*tag === 'INPUT' && type === 'submit'[\s\S]*tag === 'BUTTON' && \(type === 'submit' \|\| \(!type && !!\(control\.form \|\| control\.closest\?\.\('form'\)\)\)\)/, 'chrome agent: submit-control helper missing');
+  const globalGuardStart = chromeAgent.indexOf("function findSubmitControl(el)");
+  const submitBypass = chromeAgent.indexOf("if (findSubmitControl(e.target)) return;", globalGuardStart);
+  const nearbySelectCall = chromeAgent.indexOf("const sel = findNearbySelect(e.target);", globalGuardStart);
+  assert.ok(globalGuardStart !== -1 && submitBypass !== -1 && nearbySelectCall !== -1 && submitBypass < nearbySelectCall, 'chrome agent: submit bypass should run before nearby select guard');
+  assert.match(chromeAgent, /isSubmitControl: isSubmitControl\(inp\)/, 'chrome agent: label-resolved controls should expose submit metadata');
+  assert.match(chromeAgent, /isSubmitControl: isSubmitControl\(el\)/, 'chrome agent: text-resolved controls should expose submit metadata');
+  assert.match(chromeAgent, /const coordSelCheck = info\.isSubmitControl \? null : await cdpClient\.evaluate/, 'chrome agent: submit text clicks should skip coordinate select guard');
+  assert.match(chromeAgent, /const postClickSel1 = info\.isSubmitControl \? null : await cdpClient\.evaluate/, 'chrome agent: submit text clicks should skip post-click select false errors');
+
+  for (const [label, rel] of [
+    ['chrome', 'src/chrome/src/content/content.js'],
+    ['firefox', 'src/firefox/src/content/content.js'],
+  ]) {
+    const content = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.match(content, /function _isSubmitControl\(el\)[\s\S]*if \(tag === 'INPUT'\) return type === 'submit'[\s\S]*if \(tag === 'BUTTON'\) return type === 'submit' \|\| \(!type && !!\(control\.form \|\| control\.closest\?\.\('form'\)\)\)/, `${label}: content submit-control helper missing`);
+    assert.match(content, /const targetIsSubmitControl = _isSubmitControl\(el\);/, `${label}: click path should classify submit target before select guards`);
+    assert.ok(content.includes('if (!(el instanceof HTMLSelectElement) && !targetIsSubmitControl) {'), `${label}: nearby select guard should not block submit controls`);
+    assert.ok(content.includes('if (!targetIsSubmitControl && postActive && postActive !== el && postActive instanceof HTMLSelectElement) {'), `${label}: post-click select false error should not block submit controls`);
+  }
 });
 
 test('submit detector source covers submit controls, Enter, set_field, iframes, and execute_js', () => {
