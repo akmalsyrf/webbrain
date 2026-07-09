@@ -394,13 +394,22 @@ function scheduleUserMemoryExtractionDrain(delayMs = USER_MEMORY_EXTRACTION_DELA
 async function enqueueUserMemoryExtraction(payload = {}) {
   if (!await isUserMemoryExtractionEnabled()) return { queued: false, reason: 'disabled' };
   const clarificationText = normalizeUserMemoryText(payload.clarificationText, 1000);
-  const userText = normalizeUserMemoryText([payload.userText, clarificationText].filter(Boolean).join('\n'), 2000);
-  const assistantText = normalizeUserMemoryText(payload.assistantText, 2000);
-  if (!userText || !assistantText) return { queued: false, reason: 'empty' };
   let sourceContext = normalizeUserMemoryExtractionSourceContext(payload.sourceContext);
+  let formCaptureBlocked = false;
   if (sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled()) {
-    sourceContext = clarificationText ? 'clarification_response' : 'chat';
+    if (!clarificationText) return { queued: false, reason: 'form_capture_disabled' };
+    formCaptureBlocked = true;
+    sourceContext = 'clarification_response';
   }
+  const userText = normalizeUserMemoryText([
+    formCaptureBlocked ? '' : payload.userText,
+    clarificationText,
+  ].filter(Boolean).join('\n'), 2000);
+  const assistantText = normalizeUserMemoryText(
+    formCaptureBlocked ? 'Clarification response recorded.' : payload.assistantText,
+    2000,
+  );
+  if (!userText || !assistantText) return { queued: false, reason: 'empty' };
   await updateUserMemoryExtractionQueue((queue) => {
     queue.push({
       id: `memjob_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

@@ -823,6 +823,8 @@ test('user memory browser wiring is mirrored and non-blocking', () => {
     assert.match(background, /async function isUserMemoryExtractionEnabled\(\)[\s\S]*stored\[USER_MEMORY_ENABLED_KEY\] !== false[\s\S]*stored\[USER_MEMORY_AUTO_CAPTURE_KEY\] === true/, `${label}: extraction should be gated by the main memory toggle`);
     assert.match(background, /if \(!await isUserMemoryExtractionEnabled\(\)\) return \{ queued: false, reason: 'disabled' \};/, `${label}: enqueue should not run when memory is disabled`);
     assert.match(background, /sourceContext === 'form_completion' && !await isUserMemoryFormCaptureEnabled\(\)/, `${label}: form-derived memory should be gated by its opt-in setting`);
+    assert.match(background, /return \{ queued: false, reason: 'form_capture_disabled' \};/, `${label}: disabled form capture should skip form-derived jobs`);
+    assert.match(background, /formCaptureBlocked \? '' : payload\.userText/, `${label}: disabled form capture should not reclassify form turn text as chat memory`);
     assert.match(background, /recordClarificationMemoryCandidate\(tabId, msg\.question, answer\)/, `${label}: clarify answers should be captured for post-turn extraction`);
     assert.match(background, /looksLikeSensitiveMemoryText\(normalizedAnswer\)/, `${label}: clarify answers should be filtered for sensitive text before extraction`);
     assert.match(background, /while \(true\) \{\s*if \(!await isUserMemoryExtractionEnabled\(\)\) return;/, `${label}: drain should not send memory when memory is disabled`);
