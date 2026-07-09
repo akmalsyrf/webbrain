@@ -42,7 +42,7 @@
       background: var(--bg);
       color: var(--text);
       padding: 24px;
-      max-width: 640px;
+      max-width: 760px;
       margin: 0 auto;
     }
     h1 {
@@ -66,8 +66,8 @@
 
     /* Tab bar — sticky so it survives long provider lists. */
     .tabs {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 2px;
       margin: 4px 0 20px 0;
       padding: 4px;
@@ -79,16 +79,18 @@
       z-index: 10;
     }
     .tab-btn {
-      flex: 1 1 104px;
+      min-width: 0;
       background: transparent;
       color: var(--text2);
       border: none;
       border-radius: 6px;
-      padding: 9px 12px;
+      padding: 9px 8px;
       font-size: 13px;
       font-weight: 600;
+      line-height: 1.2;
       cursor: pointer;
       transition: background 0.15s, color 0.15s;
+      overflow-wrap: anywhere;
     }
     .tab-btn:hover { color: var(--text); }
     .tab-btn.active {
@@ -96,6 +98,13 @@
       color: #fff;
     }
     .tab-btn.active:hover { color: #fff; }
+
+    @media (max-width: 600px) {
+      .tabs {
+        grid-template-columns: repeat(6, minmax(90px, 1fr));
+        overflow-x: auto;
+      }
+    }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
