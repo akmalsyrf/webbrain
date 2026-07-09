@@ -24,7 +24,7 @@
   <meta name="twitter:image" content="https://webbrain.one/twitter-image.png">
   <meta name="twitter:image:alt" content="{{t:meta.image_alt}}">
   <meta name="robots" content="index, follow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="canonical" href="{{locale_home_url}}">
 {{hreflang_links}}
   <!-- JSON-LD Structured Data -->
@@ -187,7 +187,12 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-    .nav-brand span.emoji { -webkit-text-fill-color: initial; font-size: 22px; }
+    .nav-brand .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      flex: 0 0 auto;
+    }
     .nav-links { display: flex; gap: 28px; align-items: center; margin-inline-start: auto; min-width: 0; }
     .nav-links a {
       color: var(--text-dim);
@@ -447,7 +452,11 @@
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
+    .sp-brand-logo { width: 20px; height: 20px; border-radius: 5px; flex: 0 0 auto; }
     .sp-header .sp-brand .sp-domain {
       font-weight: 500;
       opacity: 1;
@@ -887,6 +896,7 @@
       position: relative;
       z-index: 1;
     }
+    .cc-core img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
     .cc-ring {
       position: absolute;
       inset: -10px;
@@ -1445,7 +1455,7 @@
 <nav>
   <div class="nav-inner">
     <a href="{{locale_home_url}}" class="nav-brand" style="text-decoration:none;">
-      <span class="emoji">🧠</span> WebBrain<span style="opacity:0.5; font-weight:400; -webkit-text-fill-color:currentColor;">.one</span>
+      <img class="brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span style="opacity:0.5; font-weight:400; -webkit-text-fill-color:currentColor;">.one</span>
     </a>
     <div class="nav-links">
       <a href="#features">{{t:nav.features}}</a>
@@ -1531,7 +1541,7 @@
           </div>
           <div class="side-panel">
             <div class="sp-header">
-              <span class="sp-brand">🧠 WebBrain<span class="sp-domain">.one</span></span>
+              <span class="sp-brand"><img class="sp-brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span class="sp-domain">.one</span></span>
               <span class="sp-status"></span>
             </div>
             <div class="sp-messages">
@@ -1579,7 +1589,7 @@
           </div>
           <div class="side-panel">
             <div class="sp-header">
-              <span class="sp-brand">🧠 WebBrain<span class="sp-domain">.one</span></span>
+              <span class="sp-brand"><img class="sp-brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span class="sp-domain">.one</span></span>
               <span class="sp-status"></span>
             </div>
             <div class="sp-messages">
@@ -1633,7 +1643,7 @@
           </div>
           <div class="side-panel">
             <div class="sp-header">
-              <span class="sp-brand">🧠 WebBrain<span class="sp-domain">.one</span></span>
+              <span class="sp-brand"><img class="sp-brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span class="sp-domain">.one</span></span>
               <span class="sp-status"></span>
             </div>
             <div class="sp-messages">
@@ -1673,7 +1683,7 @@
           </div>
           <div class="side-panel">
             <div class="sp-header">
-              <span class="sp-brand">🧠 WebBrain<span class="sp-domain">.one</span></span>
+              <span class="sp-brand"><img class="sp-brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span class="sp-domain">.one</span></span>
               <span class="sp-status"></span>
             </div>
             <div class="sp-messages">
@@ -1832,7 +1842,7 @@
     <div class="constellation-center" aria-hidden="true">
       <div class="cc-ring cc-ring-2"></div>
       <div class="cc-ring"></div>
-      <div class="cc-core">🧠</div>
+      <div class="cc-core"><img src="/logo-github.png" alt="" aria-hidden="true"></div>
     </div>
 
     <a class="provider-node" href="https://github.com/ggerganov/llama.cpp" target="_blank" rel="noopener" style="--x: 10%; --y: 28%; --d: 0s;" data-line="0">

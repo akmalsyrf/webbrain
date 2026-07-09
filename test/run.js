@@ -5616,16 +5616,16 @@ test('sidepanel exposes schedule slash commands in both builds', () => {
   }
 });
 
-test('schedule form time errors mention immediate start in every locale', () => {
+test('schedule form time errors mention immediate start in every locale', async () => {
   for (const [label, localeDir] of [
     ['chrome', 'src/chrome/src/ui/locales'],
     ['firefox', 'src/firefox/src/ui/locales'],
   ]) {
     for (const filename of fs.readdirSync(path.join(ROOT, localeDir)).filter((name) => name.endsWith('.js'))) {
-      const locale = fs.readFileSync(path.join(ROOT, localeDir, filename), 'utf8');
-      const match = locale.match(/'sp\.schedule_form\.error_time':\s*'([^']+)'/);
-      assert.ok(match, `${label}/${filename}: schedule time error locale key missing`);
-      assert.match(match[1], /0/, `${label}/${filename}: schedule time error should mention 0-minute immediate start`);
+      const locale = (await import('file://' + path.join(ROOT, localeDir, filename).replace(/\\/g, '/'))).default;
+      const message = locale['sp.schedule_form.error_time'];
+      assert.equal(typeof message, 'string', `${label}/${filename}: schedule time error locale key missing`);
+      assert.match(message, /0/, `${label}/${filename}: schedule time error should mention 0-minute immediate start`);
     }
   }
 });
@@ -5684,6 +5684,127 @@ test('all locales translate the new-conversation warning', () => {
       const locale = fs.readFileSync(path.join(ROOT, localeDir, filename), 'utf8');
       assert.match(locale, /['"]sp\.clear\.confirm['"]:\s*['"][^'"]+['"]/, `${label}/${filename}: missing translated new-conversation warning`);
     }
+  }
+});
+
+test('all locales cover English keys and preserve interpolation placeholders', async () => {
+  const placeholders = (value) => [...String(value).matchAll(/\{(\w+)\}/g)]
+    .map((match) => match[1])
+    .sort();
+
+  for (const [label, localeDir] of [
+    ['chrome', 'src/chrome/src/ui/locales'],
+    ['firefox', 'src/firefox/src/ui/locales'],
+  ]) {
+    const dir = path.join(ROOT, localeDir);
+    const filenames = fs.readdirSync(dir).filter((name) => name.endsWith('.js')).sort();
+    const english = (await import('file://' + path.join(dir, 'en.js').replace(/\\/g, '/'))).default;
+
+    for (const filename of filenames) {
+      if (filename === 'en.js') continue;
+      const dict = (await import('file://' + path.join(dir, filename).replace(/\\/g, '/'))).default;
+      const missing = Object.keys(english).filter((key) => !Object.hasOwn(dict, key));
+      assert.deepEqual(missing, [], `${label}/${filename}: locale is missing English keys`);
+
+      for (const [key, fallback] of Object.entries(english)) {
+        assert.deepEqual(
+          placeholders(dict[key]),
+          placeholders(fallback),
+          `${label}/${filename}: ${key} must preserve interpolation placeholders`,
+        );
+      }
+    }
+  }
+});
+
+test('locale helpers apply RTL direction for Arabic and Hebrew', () => {
+  for (const [label, rel] of [
+    ['chrome', 'src/chrome/src/ui/i18n.js'],
+    ['firefox', 'src/firefox/src/ui/i18n.js'],
+  ]) {
+    const i18n = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.match(
+      i18n,
+      /const RTL_LOCALES = new Set\(\['ar', 'he'\]\);/,
+      `${label}: Arabic and Hebrew should be registered as RTL locales`,
+    );
+    assert.match(
+      i18n,
+      /document\.documentElement\.dir = RTL_LOCALES\.has\(currentLocale\) \? 'rtl' : 'ltr';/,
+      `${label}: locale application should use RTL for registered locales and reset others to LTR`,
+    );
+  }
+});
+
+test('Hebrew is registered as a complete RTL locale in both builds', async () => {
+  for (const [label, prefix] of [
+    ['chrome', 'src/chrome'],
+    ['firefox', 'src/firefox'],
+  ]) {
+    const i18n = fs.readFileSync(path.join(ROOT, prefix, 'src/ui/i18n.js'), 'utf8');
+    assert.match(i18n, /import he from '\.\/locales\/he\.js';/, `${label}: Hebrew locale import missing`);
+    assert.match(i18n, /\{ code: 'he', label: 'עברית' \}/, `${label}: Hebrew language option missing`);
+    const hebrew = (await import('file://' + path.join(ROOT, prefix, 'src/ui/locales/he.js').replace(/\\/g, '/'))).default;
+    const english = (await import('file://' + path.join(ROOT, prefix, 'src/ui/locales/en.js').replace(/\\/g, '/'))).default;
+    assert.deepEqual(
+      Object.keys(english).filter((key) => !Object.hasOwn(hebrew, key)),
+      [],
+      `${label}: Hebrew must cover every English locale key`,
+    );
+    assert.ok(
+      Object.values(hebrew).filter((value) => /[\u0590-\u05ff]/.test(value)).length >= 600,
+      `${label}: Hebrew locale should contain translated Hebrew copy rather than English fallbacks`,
+    );
+  }
+});
+
+test('logo metadata and generated icon assets share the canonical artwork', () => {
+  const read = (rel) => fs.readFileSync(path.join(ROOT, rel));
+  const dimensions = (rel) => {
+    const png = read(rel);
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], `${rel}: expected PNG`);
+    return [png.readUInt32BE(16), png.readUInt32BE(20)];
+  };
+
+  assert.ok(read('assets/logo-github.png').equals(read('web/logo-github.png')), 'web logo should copy the canonical logo byte-for-byte');
+  for (const [size, paths] of [
+    [16, ['src/chrome/icons/icon16.png', 'src/firefox/icons/icon16.png']],
+    [48, ['src/chrome/icons/icon48.png', 'src/firefox/icons/icon48.png']],
+    [64, ['assets/store-icon-64.png', 'web/favicon.png']],
+    [128, ['assets/store-icon-128.png', 'src/chrome/icons/icon128.png', 'src/firefox/icons/icon128.png']],
+  ]) {
+    const expected = read(paths[0]);
+    for (const rel of paths) {
+      assert.deepEqual(dimensions(rel), [size, size], `${rel}: wrong logo dimensions`);
+      assert.ok(expected.equals(read(rel)), `${rel}: same-size logo derivatives should be identical`);
+    }
+  }
+  assert.deepEqual(dimensions('web/twitter-image.png'), [512, 512]);
+  assert.deepEqual(dimensions('web/og-image.png'), [1200, 630]);
+  assert.deepEqual(dimensions('assets/store-promo-440x280.png'), [440, 280]);
+  assert.deepEqual(dimensions('assets/store-promo-1400x560.png'), [1400, 560]);
+
+  const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  assert.match(packageJson.scripts['sync:logo'], /sync-logo-assets\.py/);
+  assert.match(packageJson.scripts['sync:logo'], /gen-store-promos\.py/);
+
+  const template = fs.readFileSync(path.join(ROOT, 'web/build/template.html'), 'utf8');
+  const blogBuilder = fs.readFileSync(path.join(ROOT, 'scripts/build-blog.mjs'), 'utf8');
+  assert.match(template, /<link rel="icon" type="image\/png" href="\/favicon\.png">/);
+  assert.match(template, /class="brand-logo" src="\/logo-github\.png"/);
+  assert.match(blogBuilder, /class="brand-logo" src="\/logo-github\.png"/);
+  assert.doesNotMatch(template + blogBuilder, /favicon\.svg|brain emoji icon|&#129504;/);
+
+  for (const [label, rel] of [
+    ['chrome', 'src/chrome/manifest.json'],
+    ['firefox', 'src/firefox/manifest.json'],
+  ]) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    assert.deepEqual(manifest.icons, {
+      16: 'icons/icon16.png',
+      48: 'icons/icon48.png',
+      128: 'icons/icon128.png',
+    }, `${label}: manifest icons should use synchronized logo assets`);
   }
 });
 
@@ -8437,19 +8558,19 @@ test('max agent steps treats the slider maximum as unlimited', () => {
   }
 });
 
-test('max agent steps locale copy mentions unlimited in every locale', () => {
+test('max agent steps locale copy mentions unlimited in every locale', async () => {
   for (const dirRel of ['src/chrome/src/ui/locales', 'src/firefox/src/ui/locales']) {
     const dir = path.join(ROOT, dirRel);
     for (const file of fs.readdirSync(dir).filter(name => name.endsWith('.js'))) {
-      const locale = fs.readFileSync(path.join(dir, file), 'utf8');
-      const match = locale.match(/'st\.display\.max_steps\.desc':\s*'((?:\\'|[^'])*)'/);
-      assert.ok(match, `${dirRel}/${file}: max steps description missing`);
-      assert.match(match[1], /∞/, `${dirRel}/${file}: max steps description should mention the unlimited slider setting`);
+      const locale = (await import('file://' + path.join(dir, file).replace(/\\/g, '/'))).default;
+      const description = locale['st.display.max_steps.desc'];
+      assert.equal(typeof description, 'string', `${dirRel}/${file}: max steps description missing`);
+      assert.match(description, /∞/, `${dirRel}/${file}: max steps description should mention the unlimited slider setting`);
     }
   }
 });
 
-test('completion confetti is default-on and success-only in sidepanel completion flow', () => {
+test('completion confetti is default-on and success-only in sidepanel completion flow', async () => {
   for (const [label, settingsRel, settingsHtmlRel, panelRel, cssRel] of [
     ['chrome', 'src/chrome/src/ui/settings.js', 'src/chrome/src/ui/settings.html', 'src/chrome/src/ui/sidepanel.js', 'src/chrome/styles/sidepanel.css'],
     ['firefox', 'src/firefox/src/ui/settings.js', 'src/firefox/src/ui/settings.html', 'src/firefox/src/ui/sidepanel.js', 'src/firefox/styles/sidepanel.css'],
@@ -8484,9 +8605,9 @@ test('completion confetti is default-on and success-only in sidepanel completion
   for (const dirRel of ['src/chrome/src/ui/locales', 'src/firefox/src/ui/locales']) {
     const dir = path.join(ROOT, dirRel);
     for (const file of fs.readdirSync(dir).filter(name => name.endsWith('.js'))) {
-      const locale = fs.readFileSync(path.join(dir, file), 'utf8');
-      assert.match(locale, /'st\.display\.completion_confetti\.label':/, `${dirRel}/${file}: completion confetti label missing`);
-      assert.match(locale, /'st\.display\.completion_confetti\.desc':/, `${dirRel}/${file}: completion confetti description missing`);
+      const locale = (await import('file://' + path.join(dir, file).replace(/\\/g, '/'))).default;
+      assert.equal(typeof locale['st.display.completion_confetti.label'], 'string', `${dirRel}/${file}: completion confetti label missing`);
+      assert.equal(typeof locale['st.display.completion_confetti.desc'], 'string', `${dirRel}/${file}: completion confetti description missing`);
     }
   }
 });

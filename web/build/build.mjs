@@ -36,6 +36,7 @@ const LOCALES_DIR = path.join(BUILD_DIR, 'locales');
 const TEMPLATE_PATH = path.join(BUILD_DIR, 'template.html');
 const SITE_ORIGIN = 'https://webbrain.one';
 const SOCIAL_IMAGE_URL = `${SITE_ORIGIN}/og-image.png`;
+const LOGO_IMAGE_URL = `${SITE_ORIGIN}/logo-github.png`;
 const FEATURED_HOME_PROMO = {
   urlPath: '/blog/ollama-launch-handoff',
   imagePath: '/assets/webbrain-ollama-heart.png',
@@ -169,6 +170,7 @@ function buildSoftwareJsonLd(dict, locale) {
     author: { '@type': 'Person', name: 'Emre Sokullu', url: 'https://emresokullu.com' },
     license: 'https://opensource.org/licenses/MIT',
     isAccessibleForFree: true,
+    image: LOGO_IMAGE_URL,
     screenshot: SOCIAL_IMAGE_URL,
   };
   return JSON.stringify(payload, null, 2);

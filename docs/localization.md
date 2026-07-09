@@ -25,7 +25,9 @@ src/chrome/src/ui/
     ├── id.js              # Indonesian
     ├── th.js              # Thai
     ├── ms.js              # Malay
-    └── tl.js              # Filipino
+    ├── tl.js              # Filipino
+    ├── pl.js              # Polish
+    └── he.js              # Hebrew
 ```
 
 ### Key Functions
@@ -119,7 +121,7 @@ Copy the locale file to `src/firefox/src/ui/locales/<code>.js` and update `src/f
 2. Switch to the new language in the Language dropdown
 3. Verify the side panel, settings, and traces pages render correctly
 4. Check that missing keys fall back to English gracefully
-5. Test RTL layouts if adding Arabic or Hebrew
+5. Test RTL layouts for Arabic and Hebrew; `RTL_LOCALES` in `i18n.js` controls document direction
 
 ---
 

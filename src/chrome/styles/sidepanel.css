@@ -153,6 +153,7 @@ body {
   margin-bottom: 20px;
   color: var(--accent);
 }
+.ob-brand-logo { width: 48px; height: 48px; border-radius: 12px; display: block; }
 
 .ob-icon-warn {
   background: rgba(255, 152, 0, 0.12);

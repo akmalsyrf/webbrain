@@ -17,9 +17,11 @@ import th from './locales/th.js';
 import ms from './locales/ms.js';
 import tl from './locales/tl.js';
 import pl from './locales/pl.js';
+import he from './locales/he.js';
 
-const DICTS = { en, es, fr, tr, zh, ru, uk, ar, ja, ko, id, th, ms, tl, pl };
+const DICTS = { en, es, fr, tr, zh, ru, uk, ar, ja, ko, id, th, ms, tl, pl, he };
 const LS_KEY = 'wbLocale';
+const RTL_LOCALES = new Set(['ar', 'he']);
 
 export const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -37,6 +39,7 @@ export const LANGUAGES = [
   { code: 'ms', label: 'Bahasa Melayu' },
   { code: 'tl', label: 'Filipino' },
   { code: 'pl', label: 'Polski' },
+  { code: 'he', label: 'עברית' },
 ];
 
 function detect() {
@@ -96,6 +99,7 @@ export function applyDOMTranslations(root) {
     el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
   });
   document.documentElement.lang = currentLocale;
+  document.documentElement.dir = RTL_LOCALES.has(currentLocale) ? 'rtl' : 'ltr';
 }
 
 // Cross-page sync: if another page changes the locale, reflect it here too.

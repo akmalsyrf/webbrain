@@ -747,6 +747,7 @@ function blogStyle() {
       text-decoration: none;
     }
     .nav-brand:hover { text-decoration: none; }
+    .nav-brand .brand-logo { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; }
     .nav-brand .domain { opacity: 0.5; font-weight: 400; }
     .nav-links {
       display: flex;
@@ -1102,7 +1103,7 @@ function navHtml() {
 
   return `<nav>
     <div class="nav-inner">
-      <a href="/" class="nav-brand"><span class="emoji" aria-hidden="true">&#129504;</span> WebBrain<span class="domain">.one</span></a>
+      <a href="/" class="nav-brand"><img class="brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span class="domain">.one</span></a>
       <div class="nav-links">
         <a href="/">Home</a>
         <a href="/blog">Blog</a>
@@ -1151,13 +1152,13 @@ function sharedHead({ title, description, canonical, ogType = 'website', ogTitle
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="${SOCIAL_IMAGE_WIDTH}">
   <meta property="og:image:height" content="${SOCIAL_IMAGE_HEIGHT}">
-  <meta property="og:image:alt" content="WebBrain brain emoji icon">
+  <meta property="og:image:alt" content="WebBrain detailed brain logo">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="${escAttr(twitterTitle || ogTitle || title)}">
   <meta name="twitter:description" content="${escAttr(twitterDescription || ogDescription || description)}">
   <meta name="twitter:image" content="${escAttr(twitterImageUrl)}">
-  <meta name="twitter:image:alt" content="WebBrain brain emoji icon">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta name="twitter:image:alt" content="WebBrain detailed brain logo">
+  <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="canonical" href="${escAttr(canonical)}">
   <!-- Blog is English-only; alternates point to locale homepages. -->
 ${hreflangLinks(site)}
@@ -1189,7 +1190,7 @@ function renderPostPage(post, args) {
       name: 'WebBrain',
       logo: {
         '@type': 'ImageObject',
-        url: `${args.site}/favicon.svg`,
+        url: `${args.site}/logo-github.png`,
       },
     },
     mainEntityOfPage: {

@@ -15,7 +15,7 @@
   <link rel="alternate" hreflang="tr" href="https://webbrain.one/tr/">
   <link rel="alternate" hreflang="zh" href="https://webbrain.one/zh/">
   <link rel="alternate" hreflang="x-default" href="https://webbrain.one/">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+  <link rel="icon" type="image/png" href="/favicon.png">
   <style>
     :root {
       --bg: #0b0e17;
@@ -66,7 +66,7 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-    .nav-brand span.emoji { -webkit-text-fill-color: initial; font-size: 22px; }
+    .nav-brand .brand-logo { width: 28px; height: 28px; border-radius: 7px; flex: 0 0 auto; }
     .nav-back {
       font-size: 14px;
       color: var(--text-dim);
@@ -158,7 +158,7 @@
 <nav>
   <div class="nav-inner">
     <a href="/" class="nav-brand" style="text-decoration:none;">
-      <span class="emoji">🧠</span> WebBrain<span style="opacity:0.5; font-weight:400;">.one</span>
+      <img class="brand-logo" src="/logo-github.png" alt="" aria-hidden="true"> WebBrain<span style="opacity:0.5; font-weight:400;">.one</span>
     </a>
     <div class="nav-right">
       <select class="lang-dropdown" id="lang-dropdown" aria-label="Select language" data-current="en">
