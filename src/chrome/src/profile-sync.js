@@ -173,7 +173,7 @@ export class ProfileSyncManager {
   async authStart(email) { const s = await this.storage.get(PROFILE_SYNC_KEYS.deviceGuid); const verifier = randomB64(32); const r = await this.request('/auth/start', { method: 'POST', body: JSON.stringify({ email, device_guid: s[PROFILE_SYNC_KEYS.deviceGuid], verifier }) }); return { ...r.body, verifier }; }
   async authStatus(challengeId, verifier) { const q = new URLSearchParams({ challenge_id: challengeId }); const r = await this.request(`/auth/status?${q}`, { headers: { 'X-WebBrain-Sync-Verifier': verifier } }); if (r.body.token) await this.storage.set({ [PROFILE_SYNC_KEYS.token]: r.body.token }); return r.body; }
   async unlock(password, create = false, preferLocal = false) { this.sessionGeneration++; this.password = password; this.status = 'syncing'; try { await this.sync({ create, preferLocal }); this.status = 'current'; } catch (e) { this.password = null; this.key = null; this.status = e.status === 404 ? 'empty' : [402, 403].includes(e.status) ? 'subscription' : e instanceof TypeError ? 'offline' : 'error'; throw e; } return this.state(); }
-  lock() { this.sessionGeneration++; this.password = null; this.key = null; this.envelope = null; this.status = 'locked'; }
+  lock() { this.sessionGeneration++; clearTimeout(this.timer); this.timer = null; this.password = null; this.key = null; this.envelope = null; this.status = 'locked'; }
   noteChanges(changes) {
     this.changeQueue = this.changeQueue.then(() => this.updateChangeMetadata(changes), () => this.updateChangeMetadata(changes));
     return this.changeQueue;
