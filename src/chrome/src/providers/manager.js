@@ -56,6 +56,7 @@ export class ProviderManager {
    */
   async load() {
     const data = await chrome.storage.local.get(['providers', 'activeProvider', WEBBRAIN_DEVICE_GUID_KEY]);
+    const hadLegacyClaudeSubscription = Object.hasOwn(data.providers || {}, 'claude_subscription');
     const stored = this._migrateStoredProviderConfigs(data.providers || {});
     // Field-level merge: defaults provide the full shape (including new
     // fields like apiKeyUrl), stored values override individual fields
@@ -76,7 +77,7 @@ export class ProviderManager {
     // settings-UI sign-out control with it, so purge any leftover OAuth
     // token bundle here — otherwise a previously-signed-in user's raw
     // access/refresh tokens would sit in storage with no UI path to clear them.
-    await signOutClaude();
+    if (hadLegacyClaudeSubscription) await signOutClaude();
     if (configs[WEBBRAIN_CLOUD_PROVIDER_ID]) {
       configs[WEBBRAIN_CLOUD_PROVIDER_ID].deviceGuid = await this._getDeviceGuid(data[WEBBRAIN_DEVICE_GUID_KEY]);
     }

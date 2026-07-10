@@ -164,6 +164,47 @@
     .advanced-settings[open] summary::after { content: '-'; }
     .advanced-settings-body { margin-top: 12px; }
 
+    .profile-sync-lede {
+      color: var(--text2);
+      font-size: 12px;
+      line-height: 1.55;
+      margin-bottom: 12px;
+    }
+    .profile-sync-lede strong { color: var(--text); }
+    .profile-sync-status {
+      margin: 12px 0;
+      color: var(--text2);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .profile-sync-stage[hidden],
+    .profile-sync-advanced[hidden] {
+      display: none !important;
+    }
+    .profile-sync-actions {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .profile-sync-advanced {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .profile-sync-advanced summary {
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      list-style: none;
+      user-select: none;
+    }
+    .profile-sync-advanced summary::-webkit-details-marker { display: none; }
+    .profile-sync-advanced summary:hover { color: var(--text); }
+    .profile-sync-advanced .btn-row {
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
     .provider-card {
       background: var(--bg2);
       border: 1px solid var(--border);
@@ -939,6 +980,31 @@
   </section>
 
   <section class="tab-panel" data-panel="memory" role="tabpanel">
+    <div class="provider-card" id="profile-sync-card">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Encrypted Cloud Sync</h3>
+      <div class="profile-sync-lede"><strong>WebBrain Cloud members only.</strong> Sync memories, profile autofill, and API-key provider settings across devices. Everything is encrypted with your sync password before upload. WebBrain cannot read or recover it. Chat history and OAuth sign-ins are not synced.</div>
+      <div id="profile-sync-status" class="profile-sync-status"></div>
+      <div class="field profile-sync-stage" id="profile-sync-email-field"><label>WebBrain Cloud email</label><input type="email" id="profile-sync-email" autocomplete="email"></div>
+      <div class="field profile-sync-stage" id="profile-sync-password-field"><label>Sync password for encryption (12+ characters)</label><input type="password" id="profile-sync-password" autocomplete="new-password" minlength="12"></div>
+      <div class="field profile-sync-stage" id="profile-sync-confirm-field"><label>Confirm sync password</label><input type="password" id="profile-sync-confirm" autocomplete="new-password" minlength="12"></div>
+      <div class="btn-row profile-sync-actions">
+        <button class="btn-primary" id="btn-profile-sync-auth">Send sign-in link</button>
+        <button class="btn-primary" id="btn-profile-sync-enable">Turn on encrypted sync</button>
+        <button class="btn-primary" id="btn-profile-sync-unlock">Unlock encrypted sync</button>
+        <button class="btn-secondary" id="btn-profile-sync-now">Sync now</button>
+      </div>
+      <details class="profile-sync-advanced" id="profile-sync-advanced">
+        <summary>Advanced</summary>
+        <div class="btn-row">
+          <button class="btn-secondary" id="btn-profile-sync-lock">Lock</button>
+          <button class="btn-secondary" id="btn-profile-sync-change">Change sync password</button>
+          <button class="btn-secondary" id="btn-profile-sync-disable">Turn off sync on this device</button>
+          <button class="btn-secondary" id="btn-profile-sync-reset">Replace cloud copy with this device</button>
+        </div>
+      </details>
+      <div class="test-result" id="test-profile-sync"></div>
+    </div>
+
     <div class="provider-card" id="profile-card">
       <h3 data-i18n="st.memory.profile_heading" style="margin:0 0 12px;font-size:14px;font-weight:600;"></h3>
       <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.profile.desc_html"></div>

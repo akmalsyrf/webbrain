@@ -27,7 +27,7 @@ import {
 
 // Version shown in the subtitle. Kept here so it only needs one update per
 // release; the subtitle string itself is translated.
-const EXT_VERSION = '22.1.3';
+const EXT_VERSION = '22.2.2';
 
 const providersContainer = document.getElementById('providers');
 const displaySettings = document.getElementById('display-settings');
@@ -90,6 +90,23 @@ const profileTextArea = document.getElementById('profile-text');
 const btnSaveProfile = document.getElementById('btn-save-profile');
 const btnClearProfile = document.getElementById('btn-clear-profile');
 const profileTestResult = document.getElementById('test-profile');
+const profileSyncStatus = document.getElementById('profile-sync-status');
+const profileSyncResult = document.getElementById('test-profile-sync');
+const profileSyncEmail = document.getElementById('profile-sync-email');
+const profileSyncPassword = document.getElementById('profile-sync-password');
+const profileSyncConfirm = document.getElementById('profile-sync-confirm');
+const profileSyncEmailField = document.getElementById('profile-sync-email-field');
+const profileSyncPasswordField = document.getElementById('profile-sync-password-field');
+const profileSyncConfirmField = document.getElementById('profile-sync-confirm-field');
+const profileSyncAdvanced = document.getElementById('profile-sync-advanced');
+const btnProfileSyncAuth = document.getElementById('btn-profile-sync-auth');
+const btnProfileSyncEnable = document.getElementById('btn-profile-sync-enable');
+const btnProfileSyncUnlock = document.getElementById('btn-profile-sync-unlock');
+const btnProfileSyncNow = document.getElementById('btn-profile-sync-now');
+const btnProfileSyncLock = document.getElementById('btn-profile-sync-lock');
+const btnProfileSyncChange = document.getElementById('btn-profile-sync-change');
+const btnProfileSyncDisable = document.getElementById('btn-profile-sync-disable');
+const btnProfileSyncReset = document.getElementById('btn-profile-sync-reset');
 const userMemoryEnabledToggle = document.getElementById('toggle-user-memory-enabled');
 const userMemoryAutoToggle = document.getElementById('toggle-user-memory-auto');
 const userMemoryFormToggle = document.getElementById('toggle-user-memory-form');
@@ -1024,6 +1041,87 @@ if (btnClearTranscription) {
 }
 
 // --- Profile auto-fill ---
+let profileSyncChallenge = null;
+function showProfileSyncResult(ok, text) { if (!profileSyncResult) return; profileSyncResult.className = `test-result show ${ok ? 'ok' : 'fail'}`; profileSyncResult.textContent = text; }
+function setProfileSyncVisible(el, visible) { if (el) el.hidden = !visible; }
+function describeProfileSyncState(state) {
+  if (state.status === 'syncing') return 'Encrypted sync is updating...';
+  if (state.status === 'offline') return 'Encrypted sync is waiting for a connection.';
+  if (state.status === 'subscription') return 'WebBrain Cloud membership is required for encrypted sync.';
+  if (state.status === 'error') return state.error || 'Encrypted sync needs attention.';
+  if (!state.authenticated) return 'Sign in with your WebBrain Cloud email to use encrypted sync.';
+  if (!state.enabled || state.status === 'empty') return 'Signed in. Choose a sync password to turn on encrypted sync.';
+  if (state.unlocked) return 'Encrypted sync is on for this device.';
+  return 'Encrypted sync is locked. Enter your sync password to unlock it on this device.';
+}
+function renderProfileSyncState(state) {
+  const authenticated = !!state.authenticated;
+  const enabled = state.enabled === true && state.status !== 'empty';
+  const unlocked = !!state.unlocked;
+  setProfileSyncVisible(profileSyncEmailField, !authenticated);
+  setProfileSyncVisible(profileSyncPasswordField, authenticated && !unlocked);
+  setProfileSyncVisible(profileSyncConfirmField, authenticated && !enabled);
+  setProfileSyncVisible(btnProfileSyncAuth, !authenticated);
+  setProfileSyncVisible(btnProfileSyncEnable, authenticated && !enabled);
+  setProfileSyncVisible(btnProfileSyncUnlock, authenticated && enabled && !unlocked);
+  setProfileSyncVisible(btnProfileSyncNow, authenticated && enabled && unlocked);
+  setProfileSyncVisible(profileSyncAdvanced, authenticated && enabled && unlocked);
+  if (profileSyncPassword) profileSyncPassword.autocomplete = enabled ? 'current-password' : 'new-password';
+  if (profileSyncPasswordField?.hidden && profileSyncPassword) profileSyncPassword.value = '';
+  if (profileSyncConfirmField?.hidden && profileSyncConfirm) profileSyncConfirm.value = '';
+  if (profileSyncStatus) profileSyncStatus.textContent = describeProfileSyncState(state || {});
+}
+async function refreshProfileSyncState() { const state = await sendToBackground('profile_sync_state').catch(e => ({ status: 'error', error: e.message })); renderProfileSyncState(state); return state; }
+async function reloadProfileSyncData() { const stored = await chrome.storage.local.get(['profileEnabled', 'profileText', 'visionModel', 'transcriptionModel']); if (profileEnabledToggle) profileEnabledToggle.checked = !!stored.profileEnabled; if (profileTextArea) profileTextArea.value = stored.profileText || ''; const vision = stored.visionModel || {}; visionBaseUrlInput.value = vision.baseUrl || ''; visionApiKeyInput.value = vision.apiKey || ''; visionModelInput.value = vision.model || ''; const transcription = stored.transcriptionModel || {}; if (transcriptionBaseUrlInput) transcriptionBaseUrlInput.value = transcription.baseUrl || ''; if (transcriptionApiKeyInput) transcriptionApiKeyInput.value = transcription.apiKey || ''; if (transcriptionModelInput) transcriptionModelInput.value = transcription.model || ''; await loadUserMemorySettings(); const res = await sendToBackground('get_providers'); providersData = res.providers; activeProviderId = res.active; renderProviders(); }
+function profileSyncButtonRestore(button, pendingLabel) {
+  if (!button) return () => {};
+  const previousDisabled = button.disabled;
+  const previousText = button.textContent;
+  button.disabled = true;
+  if (pendingLabel) button.textContent = pendingLabel;
+  return () => { button.disabled = previousDisabled; button.textContent = previousText; };
+}
+async function profileSyncAction(action, data = {}, options = {}) {
+  const restoreButton = profileSyncButtonRestore(options.button, options.pendingLabel);
+  try {
+    if (options.pending) showProfileSyncResult(true, options.pending);
+    const result = await sendToBackground(action, data);
+    if (['profile_sync_unlock', 'profile_sync_now', 'profile_sync_reset'].includes(action)) await reloadProfileSyncData();
+    showProfileSyncResult(true, options.success || 'Encrypted sync updated.');
+    await refreshProfileSyncState();
+    return result;
+  } catch (error) {
+    showProfileSyncResult(false, error?.message || 'Encrypted sync failed.');
+    throw error;
+  } finally {
+    restoreButton();
+  }
+}
+function checkedSyncPassword(requireConfirmation = false) { const password = profileSyncPassword?.value || ''; const confirmation = profileSyncConfirm?.value || ''; if (password.length < 12) throw new Error('Use a sync password of at least 12 characters.'); if (requireConfirmation && !confirmation) throw new Error('Confirm the new sync password.'); if (confirmation && password !== confirmation) throw new Error('Sync passwords do not match.'); return password; }
+function promptConfirmedSyncPassword(label = 'New sync password') {
+  const password = window.prompt(`${label} (12+ characters):`);
+  if (!password) return null;
+  if (password.length < 12) throw new Error('Use a sync password of at least 12 characters.');
+  const confirmation = window.prompt('Confirm sync password:');
+  if (!confirmation) throw new Error('Confirm the sync password.');
+  if (password !== confirmation) throw new Error('Sync passwords do not match.');
+  return password;
+}
+btnProfileSyncAuth?.addEventListener('click', async () => {
+  const email = (profileSyncEmail?.value || '').trim(); if (!email) return showProfileSyncResult(false, 'Enter your WebBrain Cloud billing email.');
+  try { profileSyncChallenge = await profileSyncAction('profile_sync_auth_start', { email }); showProfileSyncResult(true, 'Check your email, approve the WebBrain Cloud sign-in link, then return here.');
+    const poll = setInterval(async () => { if (!profileSyncChallenge) return clearInterval(poll); try { const result = await sendToBackground('profile_sync_auth_status', { challengeId: profileSyncChallenge.challenge_id, verifier: profileSyncChallenge.verifier }); if (result.token) { clearInterval(poll); profileSyncChallenge = null; showProfileSyncResult(true, 'Cloud Sync authenticated. Set a password and enable sync.'); await refreshProfileSyncState(); } } catch (error) { clearInterval(poll); profileSyncChallenge = null; showProfileSyncResult(false, error.message); } }, 3000); setTimeout(() => clearInterval(poll), 30 * 60 * 1000);
+  } catch { /* helper displayed the error */ }
+});
+btnProfileSyncEnable?.addEventListener('click', () => { try { profileSyncAction('profile_sync_unlock', { password: checkedSyncPassword(true), create: true }); } catch (e) { showProfileSyncResult(false, e.message); } });
+btnProfileSyncUnlock?.addEventListener('click', () => { try { profileSyncAction('profile_sync_unlock', { password: checkedSyncPassword(), create: false }); } catch (e) { showProfileSyncResult(false, e.message); } });
+btnProfileSyncNow?.addEventListener('click', () => profileSyncAction('profile_sync_now', {}, { button: btnProfileSyncNow, pending: 'Syncing encrypted cloud copy...', pendingLabel: 'Syncing...', success: 'Encrypted sync is up to date.' }).catch(() => {}));
+btnProfileSyncLock?.addEventListener('click', () => profileSyncAction('profile_sync_lock'));
+btnProfileSyncChange?.addEventListener('click', () => { const oldPassword = window.prompt('Current sync password:'); if (!oldPassword) return; try { const newPassword = promptConfirmedSyncPassword('New sync password'); if (newPassword) profileSyncAction('profile_sync_change_password', { oldPassword, newPassword }); } catch (e) { showProfileSyncResult(false, e.message); } });
+btnProfileSyncDisable?.addEventListener('click', () => { if (window.confirm('Turn off encrypted sync on this device? Local data will remain.')) profileSyncAction('profile_sync_disable'); });
+btnProfileSyncReset?.addEventListener('click', () => { if (!window.confirm('Replace the encrypted cloud copy with this device’s current WebBrain setup?')) return; try { const password = promptConfirmedSyncPassword('Sync password for the replacement cloud copy'); if (password) profileSyncAction('profile_sync_reset', { password }); } catch (e) { showProfileSyncResult(false, e.message); } });
+refreshProfileSyncState();
+
 // Persisted to chrome.storage.local in plaintext; the agent picks the
 // changes up via the storage.onChanged listener in background.js and
 // refreshes open conversations' system prompts on the next turn.

@@ -450,6 +450,8 @@ let currentAssistantEl = null;
 let verboseMode = false;
 let agentMode = 'ask'; // 'ask' | 'act' | 'dev'
 let abortRequested = false;
+let activeRunRestoredFromBackground = false;
+const awaitingPlanReviewTabs = new Set();
 let recommendationsRequestId = 0;
 let providerSelectionRequestId = 0;
 let providerTestRequestId = 0;
@@ -857,6 +859,32 @@ function restoreInputDraftForTab(tabId) {
 
 function sameTabId(a, b) {
   return a != null && b != null && String(a) === String(b);
+}
+
+function normalizePlanReviewTabId(tabId = currentTabId) {
+  const numericTabId = Number(tabId);
+  return Number.isFinite(numericTabId) ? numericTabId : null;
+}
+
+function isAwaitingPlanReviewForTab(tabId = currentTabId) {
+  const numericTabId = normalizePlanReviewTabId(tabId);
+  return numericTabId != null && awaitingPlanReviewTabs.has(numericTabId);
+}
+
+function setPlanReviewAwaiting(tabId, awaiting, assistantEl = null) {
+  const numericTabId = normalizePlanReviewTabId(tabId);
+  if (numericTabId == null) return;
+  if (awaiting) awaitingPlanReviewTabs.add(numericTabId);
+  else awaitingPlanReviewTabs.delete(numericTabId);
+  if (sameTabId(currentTabId, numericTabId)) {
+    if (awaiting) {
+      if (assistantEl) currentAssistantEl = assistantEl;
+      isProcessing = true;
+      abortRequested = false;
+      hideRecommendedActions();
+    }
+    syncSendButtonState();
+  }
 }
 
 function normalizeRetryAttachmentTabId(tabId = renderedTabId ?? currentTabId) {
@@ -2248,6 +2276,7 @@ async function init() {
 
   // Start observing the messages container for changes to persist.
   persistObserver.observe(messagesEl, { childList: true, subtree: true, characterData: true });
+  await restoreActiveRunState(restoreTabId);
 
   await loadProviders();
   await testConnection({ skipWebBrainCloud: true });
@@ -2369,6 +2398,7 @@ async function switchToTab(newTabId) {
     renderAttachmentPreviews();
     renderQueuedComposerMessages(newTabId);
     scrollToBottom();
+    await restoreActiveRunState(newTabId);
     refreshScheduledJobs({ tabId: newTabId });
     refreshRecommendedActions();
   } finally {
@@ -2376,6 +2406,33 @@ async function switchToTab(newTabId) {
   }
   drainQueuedAgentUpdatesForTab(newTabId);
   consumePendingContextMenuPrompt().then(() => drainQueuedContextMenuPrompts()).catch(() => {});
+}
+
+async function restoreActiveRunState(tabId = currentTabId) {
+  const numericTabId = normalizePlanReviewTabId(tabId);
+  if (numericTabId == null) return;
+  let state = null;
+  try {
+    state = await sendToBackground('agent_run_state', { tabId: numericTabId });
+  } catch {
+    return;
+  }
+  if (!sameTabId(currentTabId, numericTabId) || !sameTabId(renderedTabId, numericTabId)) return;
+  if (state?.pendingPlan?.planId) {
+    activeRunRestoredFromBackground = true;
+    renderPlanReviewCard({ ...state.pendingPlan, tabId: numericTabId });
+    return;
+  }
+  if (state?.running) {
+    activeRunRestoredFromBackground = true;
+    isProcessing = true;
+    abortRequested = false;
+    hideRecommendedActions();
+    showActivity(t('sp.activity.thinking'));
+    syncSendButtonState();
+  } else {
+    setPlanReviewAwaiting(numericTabId, false);
+  }
 }
 
 function conversationHasUserMessages() {
@@ -3130,6 +3187,10 @@ function isOutOfBandSlashDraft(value) {
 function syncSendButtonState() {
   if (!sendBtn) return;
   const draft = normalizeScreenshotCommandText(inputEl?.value || '').trim();
+  if (isAwaitingPlanReviewForTab()) {
+    sendBtn.disabled = true;
+    return;
+  }
   if (!isProcessing) {
     sendBtn.disabled = isAttachmentReadPendingForTab();
     return;
@@ -3560,6 +3621,11 @@ async function sendMessage(extraChatParams = {}) {
   if (!text) return;
   const tabId = currentTabId;
   text = normalizeScreenshotCommandText(text);
+  if (isAwaitingPlanReviewForTab(tabId)) {
+    showComposerToast(t('sp.plan.awaiting_review'), { duration: 5000 });
+    syncSendButtonState();
+    return false;
+  }
   if (!retryOptions && !isProcessing && isAttachmentReadPendingForTab(tabId)) {
     syncSendButtonState();
     return false;
@@ -3718,7 +3784,7 @@ async function sendMessage(extraChatParams = {}) {
       // Agent was stopped — show what we got so far
       const textEl = assistantEl?.querySelector('.message-text');
       if (textEl && !textEl.textContent.trim()) {
-        textEl.innerHTML = formatMarkdown(res?.content || t('sp.stopped_by_user'));
+        textEl.innerHTML = t('sp.stopped_by_user_html');
         addMessageCopyButton(assistantEl);
       }
     } else if (renderToCurrentTab && currentTabId === tabId && res?.content && assistantEl) {
@@ -4092,7 +4158,11 @@ function handleAgentUpdateMessage(msg) {
       // owner tear down, avoiding a premature double refresh/drain. When nothing
       // is processing locally (e.g. the panel remounted on a tab switch away and
       // back mid-run), run_complete is the sole finalizer and must tear down. (#4)
-      if (!isProcessing) clearPlanReviewActiveRun(currentAssistantEl);
+      if (!isProcessing || activeRunRestoredFromBackground) {
+        setPlanReviewAwaiting(msg.tabId ?? currentTabId, false);
+        clearPlanReviewActiveRun(currentAssistantEl);
+        activeRunRestoredFromBackground = false;
+      }
       scrollToBottom();
       break;
 
@@ -4332,6 +4402,17 @@ function renderPlanReviewCard(data) {
   const planId = String(data.planId || '');
   if (!planId) return;
 
+  const existing = [...messagesEl.querySelectorAll('.plan-review-card')]
+    .find(card => String(card.dataset.planId || '') === planId
+      && String(card.dataset.tabId || '') === String(tabId)
+      && !card.classList.contains('plan-reviewed'));
+  if (existing) {
+    bindPlanReviewCard(existing);
+    setPlanReviewAwaiting(tabId, true, existing.closest('.message.assistant'));
+    scrollToBottom();
+    return;
+  }
+
   const content = assistantEl.querySelector('.message-content');
   if (!content) return;
 
@@ -4407,6 +4488,7 @@ function renderPlanReviewCard(data) {
   bindPlanReviewCard(card);
 
   content.appendChild(card);
+  setPlanReviewAwaiting(tabId, true, assistantEl);
   scrollToBottom();
 }
 
@@ -4415,6 +4497,7 @@ function submitPlanReview(card, tabId, planId, action, editedText) {
   const activeAssistantEl = action === 'approve' ? reattachPlanReviewActiveRun(card) : null;
   const markdownMode = String(card.dataset.planMarkdownMode || 'compact') === 'verbose' ? 'verbose' : 'compact';
   card.classList.add('plan-reviewed');
+  setPlanReviewAwaiting(tabId, false);
   if (action !== 'approve') {
     card.remove();
     scrollToBottom();
@@ -4427,6 +4510,9 @@ function submitPlanReview(card, tabId, planId, action, editedText) {
   const note = document.createElement('div');
   note.className = 'plan-review-note';
   const expiredText = () => (typeof t === 'function' ? t('sp.plan.expired') : 'This plan is no longer awaiting review — the run was cancelled.');
+  const failureText = (error) => isBackgroundConnectionError(error)
+    ? 'WebBrain reloaded or the background worker stopped before this plan could be approved. Reload the sidebar and try again.'
+    : expiredText();
 
   sendToBackground('plan_response', { tabId, planId, decision: action, editedText, markdownMode })
     .then((res) => {
@@ -4436,14 +4522,16 @@ function submitPlanReview(card, tabId, planId, action, editedText) {
       } else {
         note.textContent = expiredText();
         card.appendChild(note);
+        setPlanReviewAwaiting(tabId, false);
         if (activeAssistantEl) clearPlanReviewActiveRun(activeAssistantEl);
       }
       scrollToBottom();
     })
-    .catch(() => {
+    .catch((error) => {
       if (action === 'approve') {
-        note.textContent = expiredText();
+        note.textContent = failureText(error);
         card.appendChild(note);
+        setPlanReviewAwaiting(tabId, false);
         if (activeAssistantEl) clearPlanReviewActiveRun(activeAssistantEl);
         scrollToBottom();
       }
@@ -4654,6 +4742,14 @@ function renderAssistantTextUpdate(assistantEl, content) {
   const textEl = assistantEl.querySelector('.message-text');
   if (!textEl) return;
 
+  if (isStoppedByUserStatus(content)) {
+    textEl.innerHTML = t('sp.stopped_by_user_html');
+    clearStreamedAssistantText(textEl);
+    delete textEl.dataset.suppressToolCallStream;
+    if (!assistantEl.querySelector('.msg-copy-btn')) addMessageCopyButton(assistantEl);
+    return;
+  }
+
   const streamedText = getStreamedAssistantText(textEl);
   const isDuplicateStreamFinal = streamedText && streamedText === String(content);
 
@@ -4679,6 +4775,13 @@ function renderAssistantTextUpdate(assistantEl, content) {
   if (!assistantEl.querySelector('.msg-copy-btn')) {
     addMessageCopyButton(assistantEl);
   }
+}
+
+function isStoppedByUserStatus(content) {
+  const text = String(content || '')
+    .replace(/<\/?(?:[\w-]+:)?think\b[^>]*>/gi, '')
+    .trim();
+  return /^\[Stopped by user\]?$/i.test(text);
 }
 
 function clearTransientAssistantTextForToolCall() {
@@ -5284,13 +5387,25 @@ function startInputPlaceholderRotation() {
 
 // --- Communication ---
 
+function isBackgroundConnectionError(error) {
+  const message = String(error?.message || error || '');
+  return /Could not establish connection|Receiving end does not exist|Extension context invalidated|No response from WebBrain background|background script may have restarted|extension connection was lost/i.test(message);
+}
+
+function formatBackgroundSendError(action, message) {
+  if (/Could not establish connection|Receiving end does not exist|Extension context invalidated/i.test(String(message || ''))) {
+    return `WebBrain extension connection was lost while sending "${action}". Reload the sidebar/extension and try again.`;
+  }
+  return message;
+}
+
 function sendToBackground(action, data = {}) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
       { target: 'background', action, ...data },
       (response) => {
         if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+          reject(new Error(formatBackgroundSendError(action, chrome.runtime.lastError.message)));
         } else if (response == null) {
           reject(new Error(`No response from WebBrain background for "${action}". The background script may have restarted or crashed; reload the sidebar/extension and check the extension console for the original error.`));
         } else if (response?.error) {

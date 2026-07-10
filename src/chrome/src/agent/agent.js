@@ -267,6 +267,27 @@ export class Agent {
     return this._runningTabs.has(tabId);
   }
 
+  activeRunState(tabId) {
+    const state = {
+      running: this._runningTabs.has(tabId),
+      runId: this.currentRunId.get(tabId) || null,
+      pendingPlan: null,
+    };
+    const tabPending = this._pendingPlans.get(tabId);
+    if (tabPending?.size) {
+      const [planId, entry] = [...tabPending.entries()]
+        .sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0))[0];
+      state.pendingPlan = {
+        tabId,
+        planId,
+        plan: entry?.plan || null,
+        markdown: entry?.markdown || '',
+        verboseMarkdown: entry?.verboseMarkdown || '',
+      };
+    }
+    return state;
+  }
+
   async getConversationId(tabId) {
     await this._hydrate(tabId);
     return this.conversationIds.get(tabId) || null;
@@ -1430,16 +1451,17 @@ Format — keep it terse, structured, no flowery prose:
 Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout description unless it matters (e.g. "left nav is collapsed"). If the page is blank or still loading, say that in one line and stop.`;
 
   /**
-   * Strip <think>...</think> reasoning blocks (and stray orphan think tags) that
-   * some reasoning models leak into content. The model's dedicated reasoning
+   * Strip <think>...</think> reasoning blocks (and stray orphan think tags,
+   * including namespaced variants like <mm:think>) that some reasoning models
+   * leak into content. The model's dedicated reasoning
    * channel is unaffected — we only clean user-visible text. Leading whitespace
    * left by a removed block is trimmed.
    */
   static _stripReasoningTags(s) {
     if (!s) return s;
     const out = String(s)
-      .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
-      .replace(/<\/?think\b[^>]*>/gi, '');
+      .replace(/<(?:[\w-]+:)?think\b[^>]*>[\s\S]*?<\/(?:[\w-]+:)?think>/gi, '')
+      .replace(/<\/?(?:[\w-]+:)?think\b[^>]*>/gi, '');
     return out.replace(/^\s+/, '');
   }
 
@@ -1456,7 +1478,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     if (!raw) return '';
     let s = String(raw);
     // Drop any <think>...</think> blocks (some servers surface them verbatim).
-    s = s.replace(/<think[\s\S]*?<\/think>/gi, '');
+    s = s.replace(/<(?:[\w-]+:)?think\b[^>]*>[\s\S]*?<\/(?:[\w-]+:)?think>/gi, '');
     // Trim to the first numbered list marker ("1)" or "1." or "**1"), which
     // matches the format our system prompt asks for.
     const markerRe = /(^|\n)\s*(?:\*\*)?1[.)][\s\S]/;
@@ -3752,7 +3774,7 @@ Rules: no prose intro, no conclusion, no "this screenshot shows...", no layout d
     const tabPending = this._pendingPlans.get(tabId) || new Map();
     this._pendingPlans.set(tabId, tabPending);
     const responsePromise = new Promise((resolve) => {
-      tabPending.set(planId, { resolve, ts: Date.now() });
+      tabPending.set(planId, { resolve, ts: Date.now(), plan, markdown, verboseMarkdown });
     });
     let timeoutId = null;
     const timeoutPromise = new Promise((resolve) => {

@@ -51,6 +51,16 @@ This is a feature (it makes the agent useful with zero setup) but also the most 
 
 ## Credential Handling
 
+### Encrypted Cloud Sync
+
+Cloud Sync is an optional subscriber feature. Supported provider API-key
+credentials, profile
+autofill, and user memory are encrypted before network egress in an authenticated
+AES-GCM envelope. The service stores opaque ciphertext and hashed, revocable sync
+tokens. Revision-based compare-and-swap prevents silent concurrent overwrite.
+The sync password is never sent or persisted and cannot be recovered by WebBrain.
+Legacy OAuth access and refresh token stores are explicitly outside the sync scope.
+
 ### Detection
 
 After every `set_field` / `type_ax` call, `credential-fields.js` checks whether the filled field is a credential input. Triggers:

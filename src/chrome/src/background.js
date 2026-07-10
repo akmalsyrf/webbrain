@@ -47,6 +47,7 @@ import {
   normalizeUserMemoryText,
   parseUserMemoryExtractionResult,
 } from './agent/user-memory.js';
+import { PROFILE_SYNC_DATA_KEYS, PROFILE_SYNC_KEYS, ProfileSyncManager } from './profile-sync.js';
 
 /**
  * WebBrain Service Worker (Background Script)
@@ -56,6 +57,7 @@ import {
 const providerManager = new ProviderManager();
 const agent = new Agent(providerManager);
 const userMemoryStore = createUserMemoryStore(chrome.storage.local);
+const profileSync = new ProfileSyncManager(chrome.storage.local);
 const scheduler = new ScheduledJobManager({
   api: chrome,
   agent,
@@ -652,6 +654,8 @@ chrome.runtime.onStartup?.addListener(async () => {
 
 // Listen for setting changes
 chrome.storage.onChanged.addListener((changes) => {
+  if (PROFILE_SYNC_DATA_KEYS.some((key) => changes[key])) profileSync.noteChanges(changes).catch(() => {});
+  if (changes.providers || changes.activeProvider) providerManager.load().catch(() => {});
   if (changes.maxAgentSteps) {
     agent.maxSteps = normalizeMaxAgentSteps(changes.maxAgentSteps.newValue);
   }
@@ -1355,6 +1359,35 @@ async function handleMessage(msg, sender) {
       };
 
     // --- User Memory ---
+    case 'profile_sync_state':
+      return { ok: true, ...(await profileSync.state()) };
+    case 'profile_sync_auth_start':
+      return { ok: true, ...(await profileSync.authStart(String(msg.email || '').trim())) };
+    case 'profile_sync_auth_status':
+      return { ok: true, ...(await profileSync.authStatus(msg.challengeId, msg.verifier)) };
+    case 'profile_sync_unlock': {
+      const previous = await chrome.storage.local.get(PROFILE_SYNC_KEYS.enabled);
+      await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: true });
+      let state;
+      try { state = await profileSync.unlock(String(msg.password || ''), !!msg.create); await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.everEnabled]: true }); }
+      catch (error) { await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: previous[PROFILE_SYNC_KEYS.enabled] === true }); throw error; }
+      await providerManager.load();
+      return { ok: true, ...state };
+    }
+    case 'profile_sync_now': {
+      const state = await profileSync.sync();
+      await providerManager.load();
+      return { ok: true, ...state };
+    }
+    case 'profile_sync_lock':
+      profileSync.lock(); return { ok: true, ...(await profileSync.state()) };
+    case 'profile_sync_change_password':
+      return { ok: true, ...(await profileSync.changePassword(String(msg.oldPassword || ''), String(msg.newPassword || ''))) };
+    case 'profile_sync_disable':
+      await profileSync.disable(); return { ok: true };
+    case 'profile_sync_reset':
+      return { ok: true, ...(await profileSync.reset(String(msg.password || ''))) };
+
     case 'get_user_memory': {
       const store = await userMemoryStore.load();
       const settings = await chrome.storage.local.get([
@@ -1593,6 +1626,12 @@ async function handleMessage(msg, sender) {
       const tabId = msg.tabId || sender.tab?.id;
       if (tabId) agent.abort(tabId);
       return { ok: true };
+    }
+
+    case 'agent_run_state': {
+      const tabId = msg.tabId || sender.tab?.id;
+      if (!tabId) return { ok: false, error: 'No tab ID' };
+      return { ok: true, ...agent.activeRunState(tabId) };
     }
 
     case 'get_scratchpad': {

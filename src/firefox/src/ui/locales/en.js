@@ -200,6 +200,7 @@ export default {
   'sp.plan.approved': 'Plan approved — running…',
   'sp.plan.cancelled': 'Plan cancelled.',
   'sp.plan.expired': 'This plan is no longer awaiting review — the run was cancelled.',
+  'sp.plan.awaiting_review': 'Approve or cancel the plan above before sending another message.',
 
   // Permission prompt (structured; returns once/always/deny — no free text)
   'sp.perm.question': 'WebBrain wants to {verb} {host}. Allow it?',
@@ -367,10 +368,10 @@ export default {
   'st.display.api_mutation_observer.label': 'API mutation observer',
   'st.display.api_mutation_observer.desc': 'Observe same-tab XHR/fetch request URLs and methods so WebBrain can detect repeated UI actions and suggest API shortcut patterns. Off by default; enable only while investigating shortcut behavior or latency.',
   'st.display.plan_before_act.label': 'Plan before Act',
-  'st.display.plan_before_act.desc': 'In Act and Dev modes, optionally generate a structured plan before tools run. Off by default. Try mode continues without a pinned plan if planning fails; strict mode cancels instead. Adds one LLM call per action turn when enabled.',
-  'st.display.plan_before_act.try': 'Try planning',
+  'st.display.plan_before_act.desc': 'In Act and Dev modes, optionally generate a structured plan before tools run. Try mode is the default: it continues without a pinned plan if planning fails; strict mode cancels instead. Adds one LLM call per action turn while planning is on.',
+  'st.display.plan_before_act.try': 'Try planning (default)',
   'st.display.plan_before_act.strict': 'Strict planning',
-  'st.display.plan_before_act.off': 'Off (default)',
+  'st.display.plan_before_act.off': 'Off',
   'st.display.plan_review.label': 'Plan review stops',
   'st.display.plan_review.desc': 'Choose when a valid plan pauses for approval. The default only stops when the planner reports confidence below the threshold.',
   'st.display.plan_review.confidence': 'Only below confidence threshold (default)',

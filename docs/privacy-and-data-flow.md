@@ -86,6 +86,22 @@ maximum prompt characters injected. `/remember <text>` writes an explicit memory
 immediately without an extractor call. Export/import JSON is local-only and is
 the v1 bridge for moving memory between browser profiles.
 
+### Optional Encrypted Cloud Sync
+
+Active WebBrain Cloud subscribers may explicitly enable encrypted profile sync in
+Settings. The extension combines user memory, profile autofill, and provider
+configuration (including API keys, but excluding legacy OAuth access/refresh
+token stores) into one vault and
+encrypts it in the browser with AES-256-GCM. Its key is derived from the sync
+password with PBKDF2-HMAC-SHA-256 (600,000 iterations). The password and derived
+key are retained in memory only for the browser session.
+
+WebBrain Cloud receives only ciphertext and cryptographic/version metadata. It
+cannot decrypt the vault or recover a forgotten password. Authentication uses a
+separate email-approved, scoped token; the billing device GUID alone cannot read
+a vault. Sync is off by default, local writes continue while locked or offline,
+and chat history, traces, tasks, permissions, and extraction queues are excluded.
+
 ### API Shortcut Observer
 
 The background script keeps a small in-memory buffer of same-tab XHR/fetch
@@ -108,7 +124,8 @@ The only outbound HTTP requests are:
 3. **Content fetches** via `fetch_url` / `research_url` tools (to URLs the agent is asked to fetch)
 4. **Skill tool calls** (to the HTTPS endpoint(s) declared by enabled skills — see "Bundled Skills" below for the one enabled by default)
 5. **User memory extraction calls** (only if auto-learn is enabled; sent to the configured LLM provider after a completed turn)
-6. **Slash-driven tab/screen recording** creates no outbound traffic (the .webm is saved to the Downloads folder via `chrome.downloads.download`)
+6. **Encrypted Cloud Sync calls** to `https://api.webbrain.one/v1/sync` (only after a subscriber explicitly enables sync; vault content is encrypted before upload)
+7. **Slash-driven tab/screen recording** creates no outbound traffic (the .webm is saved to the Downloads folder via `chrome.downloads.download`)
 
 The opt-in `webRequest` API shortcut observer is off by default and does not
 create outbound requests; when enabled, it observes replay metadata for requests
