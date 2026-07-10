@@ -37,6 +37,7 @@ import {
   normalizeUserMemoryText,
   parseUserMemoryExtractionResult,
 } from './agent/user-memory.js';
+import { PROFILE_SYNC_DATA_KEYS, PROFILE_SYNC_KEYS, ProfileSyncManager } from './profile-sync.js';
 
 /**
  * WebBrain Background Script (Firefox)
@@ -46,6 +47,7 @@ import {
 const providerManager = new ProviderManager();
 const agent = new Agent(providerManager);
 const userMemoryStore = createUserMemoryStore(browser.storage.local);
+const profileSync = new ProfileSyncManager(browser.storage.local);
 const scheduler = new ScheduledJobManager({
   api: browser,
   agent,
@@ -647,6 +649,8 @@ browser.runtime.onStartup?.addListener?.(() => {
 
 // Listen for setting changes
 browser.storage.onChanged.addListener((changes) => {
+  if (PROFILE_SYNC_DATA_KEYS.some((key) => changes[key])) profileSync.noteChanges(changes).catch(() => {});
+  if (changes.providers || changes.activeProvider) providerManager.load().catch(() => {});
   if (changes.maxAgentSteps) {
     agent.maxSteps = normalizeMaxAgentSteps(changes.maxAgentSteps.newValue);
   }
@@ -1179,6 +1183,15 @@ async function handleMessage(msg, sender) {
   await Promise.all([planBeforeActReady, planReviewReady, customSkillsReady, userMemoryReady]);
 
   switch (msg.action) {
+    case 'profile_sync_state': return { ok: true, ...(await profileSync.state()) };
+    case 'profile_sync_auth_start': return { ok: true, ...(await profileSync.authStart(String(msg.email || '').trim())) };
+    case 'profile_sync_auth_status': return { ok: true, ...(await profileSync.authStatus(msg.challengeId, msg.verifier)) };
+    case 'profile_sync_unlock': { const previous = await browser.storage.local.get(PROFILE_SYNC_KEYS.enabled); await browser.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: true }); let state; try { state = await profileSync.unlock(String(msg.password || ''), !!msg.create); await browser.storage.local.set({ [PROFILE_SYNC_KEYS.everEnabled]: true }); } catch (error) { await browser.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: previous[PROFILE_SYNC_KEYS.enabled] === true }); throw error; } await providerManager.load(); return { ok: true, ...state }; }
+    case 'profile_sync_now': { const state = await profileSync.sync(); await providerManager.load(); return { ok: true, ...state }; }
+    case 'profile_sync_lock': profileSync.lock(); return { ok: true, ...(await profileSync.state()) };
+    case 'profile_sync_change_password': return { ok: true, ...(await profileSync.changePassword(String(msg.oldPassword || ''), String(msg.newPassword || ''))) };
+    case 'profile_sync_disable': await profileSync.disable(); return { ok: true };
+    case 'profile_sync_reset': return { ok: true, ...(await profileSync.reset(String(msg.password || ''))) };
     case 'get_user_memory': {
       const store = await userMemoryStore.load();
       const settings = await browser.storage.local.get([

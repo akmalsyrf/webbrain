@@ -19913,4 +19913,271 @@ test('sidepanel wires store review prompt after successful agent completion', ()
   }
 });
 
+test('profile sync encrypts provider secrets and rejects wrong passwords', async () => {
+  const { encryptProfileVault, decryptProfileVault } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const payload = { providers: { openai: { apiKey: 'sk-secret-test' } }, profile: { text: 'private' }, memory: { records: [] } };
+  const { envelope } = await encryptProfileVault(payload, 'correct horse battery staple');
+  assert.equal(JSON.stringify(envelope).includes('sk-secret-test'), false);
+  assert.deepEqual((await decryptProfileVault(envelope, 'correct horse battery staple')).payload, payload);
+  await assert.rejects(() => decryptProfileVault(envelope, 'wrong password'), /Incorrect sync password/);
+});
+
+test('profile sync preserves KDF iterations when reusing a derived key', async () => {
+  const { encryptProfileVault, decryptProfileVault } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const password = 'correct horse battery staple'; const payload = { providers: { openai: { apiKey: 'secret' } } };
+  const first = await encryptProfileVault(payload, password, { iterations: 1000 });
+  const decrypted = await decryptProfileVault(first.envelope, password);
+  const salt = Uint8Array.from(atob(first.envelope.kdf.salt), c => c.charCodeAt(0));
+  const second = await encryptProfileVault(payload, password, { vaultId: first.envelope.vaultId, salt, iterations: first.envelope.kdf.iterations, key: decrypted.key });
+  assert.equal(second.envelope.kdf.iterations, 1000);
+  assert.deepEqual((await decryptProfileVault(second.envelope, password)).payload, payload);
+});
+
+test('profile sync merge keeps newer provider/profile data and memory tombstones', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const base = { version: 1, providers: { a: { apiKey: 'local' } }, activeProvider: 'a', profile: { text: 'local' }, memory: { records: [{ id: 'gone', text: 'old', updatedAt: 5 }, { id: 'keep', text: 'local', updatedAt: 20 }, { id: 'tie', text: 'local tie', updatedAt: 40 }] }, tombstones: {}, meta: { providersAt: 10, profileAt: 10, memoryAt: 20 } };
+  const remote = { ...base, providers: { a: { apiKey: 'remote' } }, profile: { text: 'remote' }, memory: { records: [{ id: 'gone', text: 'old', updatedAt: 5 }, { id: 'keep', text: 'remote', updatedAt: 10 }, { id: 'tie', text: 'remote tie', updatedAt: 40 }] }, tombstones: { gone: 30 }, meta: { providersAt: 30, profileAt: 30, memoryAt: 30 } };
+  const { vault, conflicts } = mergeProfileVaults(base, remote);
+  assert.equal(vault.providers.a.apiKey, 'remote');
+  assert.equal(vault.profile.text, 'remote');
+  assert.equal(vault.memory.records.some(r => r.id === 'gone'), false);
+  assert.equal(vault.memory.records.find(r => r.id === 'keep').text, 'local');
+  assert.equal(vault.memory.records.find(r => r.id === 'tie').text, 'local tie');
+  assert.equal(conflicts.some(conflict => conflict.dataset === 'memory' && conflict.remote.text === 'remote tie'), true);
+});
+
+test('profile sync prefers an established remote vault when legacy metadata ties at zero', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const local = { providers: {}, activeProvider: '', profile: { enabled: false, text: '' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const remote = { providers: { openai: { apiKey: 'remote-secret' } }, activeProvider: 'openai', profile: { enabled: true, text: 'remote profile' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.deepEqual(vault.providers, remote.providers);
+  assert.equal(vault.activeProvider, 'openai');
+  assert.deepEqual(vault.profile, remote.profile);
+});
+
+test('profile sync preserves meaningful local legacy data when metadata ties at zero', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const local = { providers: { openai: { apiKey: 'local-secret' } }, activeProvider: 'openai', profile: { enabled: true, text: 'local profile' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const remote = { providers: { anthropic: { apiKey: 'remote-secret' } }, activeProvider: 'anthropic', profile: { enabled: true, text: 'remote profile' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const { vault, conflicts } = mergeProfileVaults(local, remote);
+  assert.deepEqual(vault.providers, { ...remote.providers, ...local.providers });
+  assert.equal(vault.activeProvider, 'openai');
+  assert.deepEqual(vault.profile, local.profile);
+  assert.equal(conflicts.some(conflict => conflict.dataset === 'profile'), true);
+});
+
+test('profile sync treats saved credential-empty provider defaults as empty on legacy ties', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const local = { providers: { openai: { apiKey: '', apiKeyUrl: 'https://example.test/key', model: 'default' } }, activeProvider: 'openai', profile: { enabled: false, text: '' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const remote = { providers: { openai: { apiKey: 'remote-secret', model: 'custom' } }, activeProvider: 'openai', profile: { enabled: false, text: '' }, memory: { records: [] }, tombstones: {}, meta: {} };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.deepEqual(vault.providers, remote.providers);
+});
+
+test('profile sync ignores dummy local keys while preserving credentialless local endpoints', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const local = { providers: { ollama: { apiKey: 'ollama', baseUrl: 'http://remote-lan:11434/v1', model: 'custom-local' } }, activeProvider: 'ollama', profile: {}, memory: { records: [] }, tombstones: {}, meta: {} };
+  const remote = { providers: { openai: { apiKey: 'remote-secret' } }, activeProvider: 'openai', profile: {}, memory: { records: [] }, tombstones: {}, meta: {} };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.deepEqual(vault.providers.ollama, local.providers.ollama);
+  assert.deepEqual(vault.providers.openai, remote.providers.openai);
+  assert.equal(vault.activeProvider, 'openai');
+});
+
+test('profile sync preserves remote auxiliary providers when local legacy values are null', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const local = { providers: {}, auxiliaryProviders: { visionModel: null, transcriptionModel: null }, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} };
+  const remote = { providers: {}, auxiliaryProviders: { visionModel: { apiKey: 'vision-secret' }, transcriptionModel: { apiKey: 'speech-secret' } }, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.deepEqual(vault.auxiliaryProviders, remote.auxiliaryProviders);
+});
+
+test('profile sync merges independently edited provider configurations by item timestamp', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const shared = { activeProvider: 'openai', auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {} };
+  const local = { ...shared, providers: { openai: { apiKey: 'old-openai' }, anthropic: { apiKey: 'new-anthropic' } }, meta: { providersAt: 20, providerItemsAt: { openai: 5, anthropic: 20 } } };
+  const remote = { ...shared, providers: { openai: { apiKey: 'new-openai' }, anthropic: { apiKey: 'old-anthropic' } }, meta: { providersAt: 15, providerItemsAt: { openai: 15, anthropic: 5 } } };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.equal(vault.providers.openai.apiKey, 'new-openai');
+  assert.equal(vault.providers.anthropic.apiKey, 'new-anthropic');
+});
+
+test('profile sync keeps auxiliary timestamps independent from provider edits', async () => {
+  const { mergeProfileVaults } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const shared = { providers: { openai: {} }, activeProvider: 'openai', profile: {}, memory: { records: [] }, tombstones: {} };
+  const local = { ...shared, auxiliaryProviders: { visionModel: null, transcriptionModel: null }, meta: { providersAt: 30, providerItemsAt: { openai: 30 } } };
+  const remote = { ...shared, auxiliaryProviders: { visionModel: { apiKey: 'remote-vision' }, transcriptionModel: null }, meta: { providersAt: 20, auxiliaryItemsAt: { visionModel: 20 } } };
+  const { vault } = mergeProfileVaults(local, remote);
+  assert.equal(vault.auxiliaryProviders.visionModel.apiKey, 'remote-vision');
+});
+
+test('profile sync password change uploads a vault encrypted with the new password', async () => {
+  const { ProfileSyncManager, decryptProfileVault } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const payload = { providers: { openai: { apiKey: 'secret' } }, profile: { text: 'private' }, memory: { records: [] } };
+  let uploaded = null;
+  const manager = new ProfileSyncManager({
+    get: async () => ({ profileSyncEnabled: true, profileSyncToken: 'token' }),
+  });
+  manager.unlock = async password => {
+    assert.equal(password, 'old password');
+    manager.password = password;
+    manager.envelope = { vaultId: 'vault-1' };
+    manager.revision = 7;
+  };
+  manager.localVault = async () => payload;
+  manager.request = async (_path, options) => {
+    uploaded = JSON.parse(options.body).envelope;
+    assert.equal(options.headers['If-Match'], '7');
+    return { body: { revision: 8 } };
+  };
+  await manager.changePassword('old password', 'new password long enough');
+  assert.deepEqual((await decryptProfileVault(uploaded, 'new password long enough')).payload, payload);
+  await assert.rejects(() => decryptProfileVault(uploaded, 'old password'), /Incorrect sync password/);
+});
+
+test('profile sync serializes metadata updates and re-reads local state before apply', async () => {
+  const { ProfileSyncManager, encryptProfileVault, decryptProfileVault } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  let metadata = {};
+  const storage = {
+    get: async () => ({ profileSyncEnabled: true, profileSyncMetadataV1: structuredClone(metadata) }),
+    set: async values => { if (values.profileSyncMetadataV1) metadata = structuredClone(values.profileSyncMetadataV1); },
+  };
+  const manager = new ProfileSyncManager(storage);
+  manager.schedule = () => {};
+  await Promise.all([
+    manager.noteChanges({ providers: { newValue: {} } }),
+    manager.noteChanges({ profileText: { newValue: 'updated' } }),
+  ]);
+  assert.ok(metadata.providersAt);
+  assert.ok(metadata.profileAt);
+
+  const password = 'correct horse battery staple';
+  const remotePayload = { providers: { openai: { apiKey: 'remote' } }, activeProvider: 'openai', auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: { providersAt: 5 } };
+  const { envelope } = await encryptProfileVault(remotePayload, password);
+  const initial = { ...remotePayload, providers: { openai: { apiKey: 'stale-local' } }, meta: { providersAt: 1 } };
+  const latest = { ...remotePayload, providers: { openai: { apiKey: 'new-local' } }, meta: { providersAt: 10 } };
+  let reads = 0;
+  let applied;
+  let uploaded;
+  manager.password = password;
+  manager.localVault = async () => structuredClone(reads++ === 0 ? initial : latest);
+  manager.apply = async vault => { applied = structuredClone(vault); };
+  manager.request = async (_path, options = {}) => {
+    if (!options.method) return { body: { envelope, revision: 1 } };
+    uploaded = JSON.parse(options.body).envelope;
+    return { body: { revision: 2 } };
+  };
+  await manager.sync();
+  assert.equal(applied.providers.openai.apiKey, 'new-local');
+  assert.equal((await decryptProfileVault(uploaded, password)).payload.providers.openai.apiKey, 'new-local');
+});
+
+test('profile sync runs a follow-up pass when another sync joins an upload', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({ get: async () => ({ profileSyncEnabled: true, profileSyncToken: 'token' }) });
+  let release;
+  let runs = 0;
+  manager.runSync = async () => { runs++; if (runs === 1) await new Promise(resolve => { release = resolve; }); return { runs }; };
+  const first = manager.sync();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const joined = manager.sync();
+  release();
+  await Promise.all([first, joined]);
+  assert.equal(runs, 2);
+});
+
+test('profile sync aborts an upload when the session locks in flight', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({});
+  manager.password = 'correct horse battery staple';
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  let release;
+  let uploads = 0;
+  manager.request = async (_path, options = {}) => {
+    if (options.method === 'PUT') { uploads++; return { body: { revision: 1 } }; }
+    await new Promise(resolve => { release = resolve; });
+    const error = new Error('missing'); error.status = 404; throw error;
+  };
+  const syncing = manager.sync({ create: true });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  manager.lock();
+  release();
+  await assert.rejects(syncing, /locked/);
+  assert.equal(uploads, 0);
+});
+
+test('profile sync clears stale cloud state before creating after a 404', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({ get: async () => ({ profileSyncEnabled: true, profileSyncToken: 'token' }) });
+  manager.password = 'correct horse battery staple'; manager.revision = 42; manager.envelope = { vaultId: 'stale' }; manager.key = {};
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  let putOptions;
+  manager.request = async (_path, options = {}) => { if (!options.method) { const error = new Error('missing'); error.status = 404; throw error; } putOptions = options; return { body: { revision: 43 } }; };
+  await manager.sync({ create: true });
+  assert.equal(putOptions.headers['If-Match'], undefined);
+  assert.notEqual(manager.envelope.vaultId, 'stale');
+});
+
+test('profile sync reset replaces atomically without deleting the old vault first', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({});
+  manager.revision = 7; manager.envelope = { vaultId: 'old-vault' };
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  const methods = [];
+  manager.request = async (_path, options = {}) => { methods.push(options.method || 'GET'); throw new TypeError('offline'); };
+  await assert.rejects(manager.reset('new password long enough'), /offline/);
+  assert.deepEqual(methods, ['PUT']);
+  assert.equal(manager.revision, 7);
+  assert.equal(manager.envelope.vaultId, 'old-vault');
+});
+
+test('profile sync reset does not re-unlock after an in-flight lock', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({ get: async () => ({ profileSyncEnabled: true, profileSyncToken: 'token' }) });
+  manager.password = 'old password'; manager.revision = 7;
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  let release;
+  manager.request = async () => { await new Promise(resolve => { release = resolve; }); return { body: { revision: 8 } }; };
+  const resetting = manager.reset('new password long enough');
+  while (!release) await new Promise(resolve => setTimeout(resolve, 10));
+  manager.lock(); release(); await resetting;
+  assert.equal(manager.password, null);
+  assert.equal(manager.status, 'locked');
+});
+
 await run();

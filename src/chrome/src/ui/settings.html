@@ -939,6 +939,26 @@
   </section>
 
   <section class="tab-panel" data-panel="memory" role="tabpanel">
+    <div class="provider-card" id="profile-sync-card">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Encrypted Cloud Sync</h3>
+      <div class="info-box"><strong>Zero-knowledge encryption:</strong> memory, profile autofill, and supported provider configuration—including API keys—are encrypted before upload. Legacy OAuth access and refresh tokens are not synced. The password cannot be recovered. Chat history is never synced.</div>
+      <div id="profile-sync-status" style="margin:12px 0;font-size:12px;color:var(--text2);"></div>
+      <div class="field"><label>WebBrain Cloud billing email</label><input type="email" id="profile-sync-email" autocomplete="email"></div>
+      <div class="field"><label>Sync password (12+ characters)</label><input type="password" id="profile-sync-password" autocomplete="new-password" minlength="12"></div>
+      <div class="field"><label>Confirm sync password</label><input type="password" id="profile-sync-confirm" autocomplete="new-password" minlength="12"></div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-profile-sync-auth">Email sign-in link</button>
+        <button class="btn-primary" id="btn-profile-sync-enable">Enable &amp; upload</button>
+        <button class="btn-secondary" id="btn-profile-sync-unlock">Unlock</button>
+        <button class="btn-secondary" id="btn-profile-sync-now">Sync now</button>
+        <button class="btn-secondary" id="btn-profile-sync-lock">Lock</button>
+        <button class="btn-secondary" id="btn-profile-sync-change">Change password</button>
+        <button class="btn-secondary" id="btn-profile-sync-disable">Disable sync</button>
+        <button class="btn-secondary" id="btn-profile-sync-reset">Reset cloud vault</button>
+      </div>
+      <div class="test-result" id="test-profile-sync"></div>
+    </div>
+
     <div class="provider-card" id="profile-card">
       <h3 data-i18n="st.memory.profile_heading" style="margin:0 0 12px;font-size:14px;font-weight:600;"></h3>
       <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.55;" data-i18n-html="st.profile.desc_html"></div>
