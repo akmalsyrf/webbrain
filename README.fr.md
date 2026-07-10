@@ -80,7 +80,7 @@ vllm serve your-model --port 8000
 python -m sglang.launch_server --model-path your-model --port 30000
 ```
 
-> **Fenêtre de contexte :** Pour des exécutions d'agent fiables, chargez un modèle local avec **au moins une fenêtre de contexte de 16k jetons** (le minimum utilisable). 8k peut fonctionner avec le **mode Compact** activé (Paramètres → case à cocher par fournisseur) ; 4k est trop petit pour contenir le prompt système + les schémas d'outils. WebBrain compacte automatiquement la conversation à l'approche de la fenêtre — il suppose 16k pour les modèles locaux sauf si vous définissez une taille de contexte explicite, alors donnez au serveur du modèle (par ex. `llama-server -c 16384`) suffisamment d'espace.
+> **Fenêtre de contexte :** Pour des exécutions d'agent fiables, chargez un modèle local avec **au moins une fenêtre de contexte de 16k jetons** (le minimum utilisable). 8k peut fonctionner avec le **mode Compact** activé (Paramètres → niveau Prompt par fournisseur) ; 4k est trop petit pour contenir le prompt système + les schémas d'outils. WebBrain compacte automatiquement la conversation à l'approche de la fenêtre. Les fournisseurs locaux utilisent 16k par défaut sauf taille explicite dans les Paramètres, et **Tester la connexion** / **Charger les modèles** détectent la fenêtre réelle quand le backend la rapporte (llama.cpp `/props`, Ollama `/api/ps` puis `/api/show` `num_ctx`, LM Studio `/api/v0/models`). La détection rafraîchit le 16k par défaut et réduit une valeur surestimée ; une surcharge manuelle plus petite est conservée.
 
 ### Utilisation
 

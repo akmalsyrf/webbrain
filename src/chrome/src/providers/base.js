@@ -65,8 +65,8 @@ export class BaseLLMProvider {
    * model-aware for known cloud/router models and category-aware otherwise.
    * Local backends default to a conservative 16k because the actual runtime
    * context depends on how the server/model was launched. Set
-   * `config.contextWindow` in Settings to lift that cap for large-window local
-   * models.
+   * `config.contextWindow` in Settings (or let Test connection / Load models
+   * auto-detect it) to match the server's real window.
    */
   get contextWindow() {
     const n = Number(this.config.contextWindow);

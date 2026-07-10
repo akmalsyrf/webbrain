@@ -243,10 +243,30 @@ const { ProviderManager: ProviderManagerCh } = await import(
 const { ProviderManager: ProviderManagerFx } = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/manager.js').replace(/\\/g, '/')
 );
-const { inferContextWindow: inferContextWindowCh } = await import(
+const {
+  inferContextWindow: inferContextWindowCh,
+  normalizeDetectedContextWindow: normalizeDetectedContextWindowCh,
+  shouldApplyDetectedContextWindow: shouldApplyDetectedContextWindowCh,
+  parseLlamaCppPropsContextWindow: parseLlamaCppPropsContextWindowCh,
+  parseOllamaShowContextWindow: parseOllamaShowContextWindowCh,
+  parseOllamaPsContextWindow: parseOllamaPsContextWindowCh,
+  parseOllamaNumCtx: parseOllamaNumCtxCh,
+  parseOllamaModelMaxContextWindow: parseOllamaModelMaxContextWindowCh,
+  parseLmStudioModelsContextWindow: parseLmStudioModelsContextWindowCh,
+} = await import(
   'file://' + path.join(ROOT, 'src/chrome/src/providers/context-windows.js').replace(/\\/g, '/')
 );
-const { inferContextWindow: inferContextWindowFx } = await import(
+const {
+  inferContextWindow: inferContextWindowFx,
+  normalizeDetectedContextWindow: normalizeDetectedContextWindowFx,
+  shouldApplyDetectedContextWindow: shouldApplyDetectedContextWindowFx,
+  parseLlamaCppPropsContextWindow: parseLlamaCppPropsContextWindowFx,
+  parseOllamaShowContextWindow: parseOllamaShowContextWindowFx,
+  parseOllamaPsContextWindow: parseOllamaPsContextWindowFx,
+  parseOllamaNumCtx: parseOllamaNumCtxFx,
+  parseOllamaModelMaxContextWindow: parseOllamaModelMaxContextWindowFx,
+  parseLmStudioModelsContextWindow: parseLmStudioModelsContextWindowFx,
+} = await import(
   'file://' + path.join(ROOT, 'src/firefox/src/providers/context-windows.js').replace(/\\/g, '/')
 );
 const { normalizeOllamaLaunchHandoff: normalizeOllamaLaunchHandoffCh } = await import(
@@ -10470,6 +10490,90 @@ test('inferContextWindow: model-aware cloud/router defaults and local 16k fallba
     assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-max' }), 32768);
     assert.equal(infer({ category: 'cloud', providerName: 'alibaba', model: 'qwen-plus' }), 1000000);
     assert.equal(infer({ category: 'cloud', providerName: 'unknown', model: 'whatever' }), 128000);
+  }
+});
+
+test('local context-window detection parsers: llama.cpp / Ollama / LM Studio', () => {
+  const parsers = [
+    {
+      normalize: normalizeDetectedContextWindowCh,
+      shouldApply: shouldApplyDetectedContextWindowCh,
+      llama: parseLlamaCppPropsContextWindowCh,
+      ollamaShow: parseOllamaShowContextWindowCh,
+      ollamaPs: parseOllamaPsContextWindowCh,
+      ollamaNumCtx: parseOllamaNumCtxCh,
+      ollamaMax: parseOllamaModelMaxContextWindowCh,
+      lmstudio: parseLmStudioModelsContextWindowCh,
+    },
+    {
+      normalize: normalizeDetectedContextWindowFx,
+      shouldApply: shouldApplyDetectedContextWindowFx,
+      llama: parseLlamaCppPropsContextWindowFx,
+      ollamaShow: parseOllamaShowContextWindowFx,
+      ollamaPs: parseOllamaPsContextWindowFx,
+      ollamaNumCtx: parseOllamaNumCtxFx,
+      ollamaMax: parseOllamaModelMaxContextWindowFx,
+      lmstudio: parseLmStudioModelsContextWindowFx,
+    },
+  ];
+
+  for (const p of parsers) {
+    assert.equal(p.normalize(8192), 8192);
+    assert.equal(p.normalize('32768'), 32768);
+    // Below Settings min: reject (do not invent a larger window than reported).
+    assert.equal(p.normalize(100), null);
+    assert.equal(p.normalize(2048), null);
+    assert.equal(p.normalize(99999999), 1048576);
+    assert.equal(p.normalize(0), null);
+    assert.equal(p.normalize('nope'), null);
+
+    assert.equal(p.shouldApply(16384, 8192), true);
+    assert.equal(p.shouldApply(16384, 32768), true);
+    assert.equal(p.shouldApply(32768, 8192), true);
+    assert.equal(p.shouldApply(8192, 32768), false);
+    assert.equal(p.shouldApply('', 8192), true);
+
+    assert.equal(p.llama({ default_generation_settings: { n_ctx: 8192 } }), 8192);
+    assert.equal(p.llama({ n_ctx: 32768 }), 32768);
+    assert.equal(p.llama({}), null);
+
+    // Architecture max must NOT drive auto-detect (overstates runtime window).
+    assert.equal(p.ollamaShow({ model_info: { 'qwen2.context_length': 8192 } }), null);
+    assert.equal(p.ollamaShow({ model_info: { 'llama.context_length': 131072 } }), null);
+    assert.equal(p.ollamaMax({ model_info: { 'llama.context_length': 131072 } }), 131072);
+    assert.equal(p.ollamaNumCtx('num_ctx                        8192\nstop                           "<|eot|>"'), 8192);
+    assert.equal(p.ollamaNumCtx({ num_ctx: 16384 }), 16384);
+    assert.equal(p.ollamaShow({ parameters: 'num_ctx 8192\nstop "<|eot|>"' }), 8192);
+    assert.equal(p.ollamaShow({
+      model_info: { 'llama.context_length': 131072 },
+      parameters: 'num_ctx 8192',
+    }), 8192);
+    assert.equal(p.ollamaShow({ context_length: 16384 }), 16384);
+    assert.equal(p.ollamaShow({}), null);
+
+    assert.equal(p.ollamaPs({
+      models: [
+        { name: 'other:latest', context_length: 32768 },
+        { name: 'qwen3:8b', context_length: 8192 },
+      ],
+    }, 'qwen3:8b'), 8192);
+    assert.equal(p.ollamaPs({ models: [{ name: 'only:latest', context_length: 16384 }] }), 16384);
+    assert.equal(p.ollamaPs({ models: [] }), null);
+
+    assert.equal(p.lmstudio({
+      data: [
+        { id: 'embed', type: 'embeddings', max_context_length: 512 },
+        { id: 'chat-a', type: 'llm', state: 'not-loaded', max_context_length: 32768 },
+        { id: 'chat-b', type: 'llm', state: 'loaded', loaded_context_length: 8192, max_context_length: 32768 },
+      ],
+    }), 8192);
+    assert.equal(p.lmstudio({
+      data: [
+        { id: 'chat-a', type: 'llm', state: 'not-loaded', max_context_length: 32768 },
+        { id: 'chat-b', type: 'llm', state: 'loaded', loaded_context_length: 8192, max_context_length: 32768 },
+      ],
+    }, 'chat-a'), 32768);
+    assert.equal(p.lmstudio({ data: [] }), null);
   }
 });
 

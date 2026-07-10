@@ -1,8 +1,11 @@
+import {
+  MIN_CONTEXT_WINDOW,
+  MAX_CONTEXT_WINDOW,
+} from './providers/context-windows.js';
+
 const OLLAMA_LAUNCH_PROVIDER_ID = 'ollama';
 const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434/v1';
 const DEFAULT_CONTEXT_WINDOW = 65536;
-const MIN_CONTEXT_WINDOW = 4096;
-const MAX_CONTEXT_WINDOW = 1048576;
 const LOCAL_OLLAMA_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 function normalizeModel(value) {

@@ -69,7 +69,7 @@ class BaseLLMProvider {
 
 以上七个均默认 `supportsVision: true`，因为 2026 年本地加载的大多数模型都是多模态的。
 
-**上下文窗口。** 为获得可靠的智能体运行，请使用**至少 16k 令牌上下文窗口**加载本地模型 — 这是可用的最低要求。8k 在选择了 Compact 层级时可以工作；4k 太小，无法容纳系统提示 + 工具模式。智能体从 `provider.contextWindow`（`providers/base.js`）读取窗口以驱动自动压缩；当提供商配置未设置 `contextWindow` 时，本地提供商默认保守的 **16k**（云端/路由器默认 128k）。显式设置 `config.contextWindow` 以匹配更大的本地窗口，并确保模型服务器实际以那么大的上下文启动（例如 `llama-server -c 16384`）。
+**上下文窗口。** 为获得可靠的智能体运行，请使用**至少 16k 令牌上下文窗口**加载本地模型 — 这是可用的最低要求。8k 在选择了 Compact 层级时可以工作；4k 太小，无法容纳系统提示 + 工具模式。智能体从 `provider.contextWindow`（`providers/base.js`）读取窗口以驱动自动压缩；当提供商配置未设置 `contextWindow` 时，本地提供商默认保守的 **16k**（云端/路由器默认 128k）。**测试连接** / **加载模型** 会在后端报告时自动检测真实窗口（llama.cpp `GET /props` 的 `n_ctx`、Ollama `GET /api/ps` 实时上下文然后 `/api/show` 的 `num_ctx`、LM Studio `/api/v0/models` 的 `loaded_context_length`）。检测会刷新默认 16k 并缩小被高估的值；更小的手动覆盖会保留。仍可显式设置 `config.contextWindow`，并确保模型服务器实际以那么大的上下文启动（例如 `llama-server -c 16384`）。
 
 ### 提示/工具层级和模式
 

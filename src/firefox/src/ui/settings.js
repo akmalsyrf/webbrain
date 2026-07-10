@@ -1912,6 +1912,14 @@ function applyProviderBaseUrl(id, baseUrl) {
   if (input && input.value !== baseUrl) input.value = baseUrl;
 }
 
+function applyProviderContextWindow(id, contextWindow) {
+  const n = Number(contextWindow);
+  if (!Number.isFinite(n) || n <= 0) return;
+  if (providersData[id]) providersData[id].contextWindow = n;
+  const input = document.querySelector(`input[data-provider="${id}"][data-key="contextWindow"]`);
+  if (input && input.value !== String(n)) input.value = String(n);
+}
+
 function closeLoadedModelDialog(dialog) {
   if (!dialog) return;
   if (typeof dialog.close === 'function') dialog.close();
@@ -1960,6 +1968,7 @@ async function loadProviderModels(id) {
   if (!datalistEl) return;
   if (res?.ok) {
     applyProviderBaseUrl(id, res.baseUrl);
+    applyProviderContextWindow(id, res.contextWindow);
     const loadedDialogEl = document.querySelector(`.loaded-model-dialog[data-loaded-models-for="${id}"]`);
     datalistEl.innerHTML = res.models
       .map((m) => `<option value="${escapeHtml(m)}"></option>`)
@@ -2025,6 +2034,7 @@ async function testProvider(id) {
     const res = await sendToBackground('test_provider', { providerId: id });
     if (res.ok) {
       applyProviderBaseUrl(id, res.baseUrl);
+      applyProviderContextWindow(id, res.contextWindow);
       setProviderTestResult(id, 'ok', t('st.providers.connected', { model: res.model || t('st.providers.unknown_model') }));
     } else {
       setProviderTestResult(id, 'fail', t('st.providers.failed', { error: res.error }));

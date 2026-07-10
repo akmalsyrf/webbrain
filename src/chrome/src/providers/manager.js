@@ -11,8 +11,16 @@ import { AwsBedrockProvider } from './aws-bedrock.js';
 // detection — listProviderModels/testTranscriptionProvider threw before the
 // fetch ever ran, so onboarding reported "no models" for a reachable server.)
 import { fetchWithFallback } from './fetch-with-fallback.js';
+import {
+  parseLlamaCppPropsContextWindow,
+  parseLmStudioModelsContextWindow,
+  parseOllamaPsContextWindow,
+  parseOllamaShowContextWindow,
+  shouldApplyDetectedContextWindow,
+} from './context-windows.js';
 
 const WEBBRAIN_CLOUD_PROVIDER_ID = 'webbrain_cloud';
+const LOCAL_MODEL_LIST_PROVIDER_IDS = ['llamacpp', 'ollama', 'lmstudio', 'jan', 'vllm', 'sglang', 'localai'];
 const WEBBRAIN_CLOUD_CONTEXT_WINDOW = 1000000;
 const WEBBRAIN_CLOUD_LEGACY_CONTEXT_WINDOW = 256000;
 const WEBBRAIN_DEVICE_GUID_KEY = 'webbrainDeviceGuid';
@@ -588,7 +596,10 @@ export class ProviderManager {
     if (!provider) return { ok: false, error: 'Provider not found' };
     const observedBaseUrl = provider.config.baseUrl;
     const candidates = this._baseUrlCandidates(provider.config);
-    if (!candidates.length) return provider.testConnection();
+    if (!candidates.length) {
+      const result = await provider.testConnection();
+      return this._attachDetectedContextWindow(id, provider, result);
+    }
 
     let firstFailure = null;
     for (const baseUrl of candidates) {
@@ -597,11 +608,13 @@ export class ProviderManager {
         : this._createProvider(id, { ...provider.config, baseUrl });
       const result = await candidateProvider.testConnection();
       if (result.ok) {
+        let next = result;
         if (baseUrl !== observedBaseUrl) {
           const updated = await this._updateProviderBaseUrl(id, baseUrl, observedBaseUrl);
-          return updated ? { ...result, baseUrl } : result;
+          if (updated) next = { ...result, baseUrl };
         }
-        return result;
+        const active = this.providers.get(id) || candidateProvider;
+        return this._attachDetectedContextWindow(id, active, next);
       }
       if (!firstFailure) firstFailure = result;
     }
@@ -675,7 +688,7 @@ export class ProviderManager {
   async listProviderModels(id) {
     const provider = this.providers.get(id);
     if (!provider) return { ok: false, error: 'Provider not found' };
-    if (!['llamacpp', 'ollama', 'lmstudio', 'jan', 'vllm', 'sglang', 'localai'].includes(id)) {
+    if (!LOCAL_MODEL_LIST_PROVIDER_IDS.includes(id)) {
       return { ok: false, error: 'Model loading is only supported for local providers' };
     }
 
@@ -698,7 +711,8 @@ export class ProviderManager {
       try {
         const res = await fetchWithFallback(`${host}/api/v0/models`, { method: 'GET', headers });
         if (res.ok) {
-          const models = this._extractLmStudioModels(await res.json());
+          const payload = await res.json();
+          const models = this._extractLmStudioModels(payload);
           if (models.length) {
             const configBaseUrl = `${host}/v1`;
             const result = { ok: true, models };
@@ -707,7 +721,10 @@ export class ProviderManager {
                 result.baseUrl = configBaseUrl;
               }
             }
-            return result;
+            return this._attachDetectedContextWindow(id, this.providers.get(id) || provider, result, {
+              lmStudioData: payload,
+              model: provider.config.model || models[0],
+            });
           }
         }
       } catch { /* fall through to /v1/models */ }
@@ -740,7 +757,11 @@ export class ProviderManager {
             result.baseUrl = candidate.configBaseUrl;
           }
         }
-        return result;
+        const active = this.providers.get(id) || provider;
+        return this._attachDetectedContextWindow(id, active, result, {
+          model: active.config.model || models[0],
+          requestBaseUrl: candidate.requestBaseUrl,
+        });
       } catch (e) {
         if (!firstFailure) firstFailure = { ok: false, error: e.message };
       }
@@ -834,6 +855,82 @@ export class ProviderManager {
     this.providers.set(id, this._createProvider(id, { ...current.config, baseUrl }));
     await this.save();
     return true;
+  }
+
+  async _updateProviderContextWindow(id, contextWindow) {
+    const current = this.providers.get(id);
+    if (!current || !Number.isFinite(contextWindow) || contextWindow <= 0) return false;
+    if (Number(current.config.contextWindow) === contextWindow) return true;
+    this.providers.set(id, this._createProvider(id, { ...current.config, contextWindow }));
+    await this.save();
+    return true;
+  }
+
+  async _attachDetectedContextWindow(id, provider, result, options = {}) {
+    if (!result?.ok || !LOCAL_MODEL_LIST_PROVIDER_IDS.includes(id)) return result;
+    const contextWindow = await this._detectLocalContextWindow(id, provider, options);
+    if (contextWindow == null) return result;
+    const current = this.providers.get(id) || provider;
+    if (!shouldApplyDetectedContextWindow(current?.config?.contextWindow, contextWindow)) {
+      return result;
+    }
+    await this._updateProviderContextWindow(id, contextWindow);
+    return { ...result, contextWindow };
+  }
+
+  async _detectLocalContextWindow(id, provider, options = {}) {
+    if (!LOCAL_MODEL_LIST_PROVIDER_IDS.includes(id)) return null;
+    const headers = this._modelListHeaders(provider);
+    const rawBaseUrl = String(options.requestBaseUrl || provider?.config?.baseUrl || '')
+      .trim()
+      .replace(/\/+$/, '');
+    if (!rawBaseUrl && id !== 'lmstudio') return null;
+    const root = rawBaseUrl.replace(/\/v1$/i, '');
+    const model = String(options.model || provider?.config?.model || '').trim();
+
+    try {
+      if (id === 'lmstudio') {
+        if (options.lmStudioData) {
+          return parseLmStudioModelsContextWindow(options.lmStudioData, model);
+        }
+        const host = root || rawBaseUrl.replace(/\/v1\/?$/, '');
+        if (!host) return null;
+        const res = await fetchWithFallback(`${host}/api/v0/models`, { method: 'GET', headers });
+        if (!res.ok) return null;
+        return parseLmStudioModelsContextWindow(await res.json(), model);
+      }
+
+      if (id === 'llamacpp') {
+        const res = await fetchWithFallback(`${root}/props`, { method: 'GET', headers });
+        if (!res.ok) return null;
+        return parseLlamaCppPropsContextWindow(await res.json());
+      }
+
+      if (id === 'ollama') {
+        // Prefer live allocated context from /api/ps (honors runtime num_ctx /
+        // OLLAMA_CONTEXT_LENGTH). Fall back to /api/show num_ctx — never the
+        // architecture max in model_info.*.context_length (overstates).
+        try {
+          const psRes = await fetchWithFallback(`${root}/api/ps`, { method: 'GET', headers });
+          if (psRes.ok) {
+            const live = parseOllamaPsContextWindow(await psRes.json(), model);
+            if (live != null) return live;
+          }
+        } catch { /* fall through to /api/show */ }
+
+        if (!model) return null;
+        const res = await fetchWithFallback(`${root}/api/show`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: model }),
+        });
+        if (!res.ok) return null;
+        return parseOllamaShowContextWindow(await res.json());
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   _extractModelIds(id, data) {
