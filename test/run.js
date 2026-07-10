@@ -20164,4 +20164,20 @@ test('profile sync reset replaces atomically without deleting the old vault firs
   assert.equal(manager.envelope.vaultId, 'old-vault');
 });
 
+test('profile sync reset does not re-unlock after an in-flight lock', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({ get: async () => ({ profileSyncEnabled: true, profileSyncToken: 'token' }) });
+  manager.password = 'old password'; manager.revision = 7;
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  let release;
+  manager.request = async () => { await new Promise(resolve => { release = resolve; }); return { body: { revision: 8 } }; };
+  const resetting = manager.reset('new password long enough');
+  while (!release) await new Promise(resolve => setTimeout(resolve, 10));
+  manager.lock(); release(); await resetting;
+  assert.equal(manager.password, null);
+  assert.equal(manager.status, 'locked');
+});
+
 await run();

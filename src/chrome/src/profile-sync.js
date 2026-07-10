@@ -228,6 +228,7 @@ export class ProfileSyncManager {
   async changePassword(oldPassword, nextPassword) {
     for (let attempt = 0; attempt < 2; attempt++) {
       await this.unlock(oldPassword);
+      const generation = this.sessionGeneration;
       const local = await this.localVault();
       const vaultId = this.envelope?.vaultId;
       const encrypted = await encryptProfileVault(local, nextPassword, { vaultId });
@@ -237,6 +238,7 @@ export class ProfileSyncManager {
           headers: { 'If-Match': String(this.revision) },
           body: JSON.stringify({ envelope: encrypted.envelope }),
         });
+        if (generation !== this.sessionGeneration) return this.state();
         this.password = nextPassword;
         this.key = encrypted.key;
         this.envelope = encrypted.envelope;
@@ -254,12 +256,14 @@ export class ProfileSyncManager {
   }
   async disable() { try { await this.request('/auth/revoke', { method: 'POST' }); } catch {} this.lock(); await this.storage.remove([PROFILE_SYNC_KEYS.token]); await this.storage.set({ [PROFILE_SYNC_KEYS.enabled]: false }); this.status = 'disabled'; }
   async reset(password) {
+    const generation = this.sessionGeneration;
     const local = await this.localVault();
     for (let attempt = 0; attempt < 2; attempt++) {
       if (this.revision == null) { try { const current = await this.request('/vault'); this.revision = current.body.revision; } catch (error) { if (error.status !== 404) throw error; } }
       const encrypted = await encryptProfileVault(local, password);
       try {
         const put = await this.request('/vault', { method: 'PUT', headers: this.revision != null ? { 'If-Match': String(this.revision) } : {}, body: JSON.stringify({ envelope: encrypted.envelope }) });
+        if (generation !== this.sessionGeneration) return this.state();
         this.password = password; this.key = encrypted.key; this.envelope = encrypted.envelope; this.revision = put.body.revision; this.status = 'current'; return this.state();
       } catch (error) { if (error.status !== 409 || attempt === 1) throw error; this.revision = null; }
     }
