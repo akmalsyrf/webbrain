@@ -20149,4 +20149,19 @@ test('profile sync clears stale cloud state before creating after a 404', async 
   assert.notEqual(manager.envelope.vaultId, 'stale');
 });
 
+test('profile sync reset replaces atomically without deleting the old vault first', async () => {
+  const { ProfileSyncManager } = await import(
+    'file://' + path.join(ROOT, 'src/chrome/src/profile-sync.js').replace(/\\/g, '/')
+  );
+  const manager = new ProfileSyncManager({});
+  manager.revision = 7; manager.envelope = { vaultId: 'old-vault' };
+  manager.localVault = async () => ({ providers: {}, auxiliaryProviders: {}, profile: {}, memory: { records: [] }, tombstones: {}, meta: {} });
+  const methods = [];
+  manager.request = async (_path, options = {}) => { methods.push(options.method || 'GET'); throw new TypeError('offline'); };
+  await assert.rejects(manager.reset('new password long enough'), /offline/);
+  assert.deepEqual(methods, ['PUT']);
+  assert.equal(manager.revision, 7);
+  assert.equal(manager.envelope.vaultId, 'old-vault');
+});
+
 await run();

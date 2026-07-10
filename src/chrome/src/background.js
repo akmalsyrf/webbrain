@@ -1366,12 +1366,11 @@ async function handleMessage(msg, sender) {
     case 'profile_sync_auth_status':
       return { ok: true, ...(await profileSync.authStatus(msg.challengeId, msg.verifier)) };
     case 'profile_sync_unlock': {
-      const previous = await chrome.storage.local.get([PROFILE_SYNC_KEYS.enabled, PROFILE_SYNC_KEYS.metadata]);
-      const reenable = previous[PROFILE_SYNC_KEYS.enabled] !== true && Object.keys(previous[PROFILE_SYNC_KEYS.metadata] || {}).length > 0;
+      const previous = await chrome.storage.local.get(PROFILE_SYNC_KEYS.enabled);
       await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: true });
       let state;
-      try { if (reenable) await profileSync.markAllLocalDataChanged(); state = await profileSync.unlock(String(msg.password || ''), !!msg.create, reenable); }
-      catch (error) { await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: previous[PROFILE_SYNC_KEYS.enabled] === true, [PROFILE_SYNC_KEYS.metadata]: previous[PROFILE_SYNC_KEYS.metadata] || {} }); throw error; }
+      try { state = await profileSync.unlock(String(msg.password || ''), !!msg.create); await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.everEnabled]: true }); }
+      catch (error) { await chrome.storage.local.set({ [PROFILE_SYNC_KEYS.enabled]: previous[PROFILE_SYNC_KEYS.enabled] === true }); throw error; }
       await providerManager.load();
       return { ok: true, ...state };
     }
